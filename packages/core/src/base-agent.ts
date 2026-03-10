@@ -1,11 +1,19 @@
-import type { AgentConfig, IMessageBus, MessageHandler, Task, TaskResult } from './types/index.js';
+import type {
+  AgentConfig,
+  IMessageBus,
+  IStateStore,
+  IGitService,
+  MessageHandler,
+  Task,
+  TaskResult,
+  TaskRow,
+} from './types/index.js';
 import { MESSAGE_TYPES } from './types/index.js';
 
 export interface AgentDependencies {
   messageBus: IMessageBus;
-  // Week 2에서 추가 예정:
-  // stateStore: IStateStore;
-  // gitService: IGitService;
+  stateStore: IStateStore;
+  gitService: IGitService;
 }
 
 export type AgentStatus = 'idle' | 'busy' | 'paused' | 'error';
@@ -19,12 +27,16 @@ export abstract class BaseAgent {
   private _status: AgentStatus = 'idle';
 
   protected messageBus: IMessageBus;
+  protected stateStore: IStateStore;
+  protected gitService: IGitService;
 
   constructor(config: AgentConfig, deps: AgentDependencies) {
     this.id = config.id;
     this.domain = config.domain;
     this.config = config;
     this.messageBus = deps.messageBus;
+    this.stateStore = deps.stateStore;
+    this.gitService = deps.gitService;
   }
 
   get status(): AgentStatus {
@@ -87,10 +99,53 @@ export abstract class BaseAgent {
   }
 
   /**
-   * Board Ready 컬럼에서 자신의 도메인 라벨이 있는 가장 높은 우선순위 태스크를 찾는다.
-   * 서브클래스에서 구현한다.
+   * DB에서 Ready 컬럼의 자기 도메인 태스크 중 우선순위가 가장 높은 것을 가져온다.
+   * BoardWatcher가 GitHub Board → DB 동기화를 담당하므로, Agent는 DB만 읽는다.
+   * 서브클래스에서 오버라이드 가능하다.
    */
-  protected abstract findNextTask(): Promise<Task | null>;
+  protected async findNextTask(): Promise<Task | null> {
+    const rows = await this.stateStore.getReadyTasksForAgent(this.id);
+    if (rows.length === 0) return null;
+
+    // Pick highest priority (lowest number = highest priority)
+    rows.sort((a, b) => (a.priority ?? 3) - (b.priority ?? 3));
+
+    // Try to claim — atomic UPDATE WHERE status='ready' prevents race conditions
+    for (const row of rows) {
+      const claimed = await this.stateStore.claimTask(row.id);
+      if (!claimed) continue; // another agent got it first
+
+      // Sync Board
+      if (row.githubIssueNumber) {
+        await this.gitService.moveIssueToColumn(row.githubIssueNumber, 'In Progress');
+      }
+
+      return this.taskRowToTask(row);
+    }
+
+    return null; // all candidates were claimed by others
+  }
+
+  /**
+   * TaskRow (DB) → Task (domain object) 변환.
+   */
+  protected taskRowToTask(row: TaskRow): Task {
+    return {
+      id: row.id,
+      epicId: row.epicId,
+      title: row.title,
+      description: row.description ?? '',
+      assignedAgent: row.assignedAgent,
+      status: 'in-progress',
+      githubIssueNumber: row.githubIssueNumber,
+      boardColumn: 'In Progress',
+      dependencies: (row.dependencies as string[]) ?? [],
+      priority: (row.priority ?? 3) as Task['priority'],
+      complexity: (row.complexity ?? 'medium') as Task['complexity'],
+      retryCount: row.retryCount ?? 0,
+      artifacts: [],
+    };
+  }
 
   /**
    * 태스크를 실행한다. 서브클래스에서 구현한다.

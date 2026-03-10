@@ -171,6 +171,54 @@ export interface ApiSpec {
   description: string;
 }
 
+// ===== Board Columns =====
+export const BOARD_COLUMNS = ['Backlog', 'Ready', 'In Progress', 'Review', 'Failed', 'Done'] as const;
+export type BoardColumn = (typeof BOARD_COLUMNS)[number];
+
+// ===== IStateStore =====
+export interface IStateStore {
+  // Agent
+  registerAgent(agent: AgentInsert): Promise<void>;
+  getAgent(id: string): Promise<AgentRow | null>;
+  updateAgentStatus(id: string, status: string): Promise<void>;
+  updateHeartbeat(id: string): Promise<void>;
+  // Task
+  createTask(task: TaskInsert): Promise<void>;
+  getTask(id: string): Promise<TaskRow | null>;
+  updateTask(id: string, updates: Partial<TaskRow>): Promise<void>;
+  getTasksByColumn(column: string): Promise<TaskRow[]>;
+  getTasksByAgent(agentId: string): Promise<TaskRow[]>;
+  getReadyTasksForAgent(agentId: string): Promise<TaskRow[]>;
+  /** Atomically claim a Ready task → In Progress. Returns true if this agent won the claim. */
+  claimTask(taskId: string): Promise<boolean>;
+  // Epic
+  createEpic(epic: EpicInsert): Promise<void>;
+  getEpic(id: string): Promise<EpicRow | null>;
+  updateEpic(id: string, updates: Partial<EpicRow>): Promise<void>;
+  // Message
+  saveMessage(message: Message): Promise<void>;
+  // Artifact
+  saveArtifact(artifact: ArtifactInsert): Promise<void>;
+}
+
+// ===== IGitService =====
+export interface IGitService {
+  validateConnection(): Promise<void>;
+  // Issues
+  createIssue(spec: IssueSpec): Promise<number>;
+  updateIssue(issueNumber: number, updates: Partial<IssueSpec>): Promise<void>;
+  closeIssue(issueNumber: number): Promise<void>;
+  getIssue(issueNumber: number): Promise<BoardIssue>;
+  getIssuesByLabel(label: string): Promise<BoardIssue[]>;
+  getEpicIssues(epicId: string): Promise<BoardIssue[]>;
+  // Board — single query for all items
+  getAllProjectItems(): Promise<BoardIssue[]>;
+  moveIssueToColumn(issueNumber: number, column: string): Promise<void>;
+  // Git operations
+  createBranch(branchName: string, baseBranch?: string): Promise<void>;
+  createPR(title: string, body: string, head: string, base?: string): Promise<number>;
+}
+
 // ===== UserInput =====
 export interface UserInput {
   source: 'cli' | 'dashboard';

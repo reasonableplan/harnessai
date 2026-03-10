@@ -1,16 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BaseAgent } from './base-agent.js';
-import type { AgentConfig, IMessageBus, Message, Task, TaskResult } from './types/index.js';
+import type {
+  AgentConfig,
+  IMessageBus,
+  IStateStore,
+  IGitService,
+  Message,
+  Task,
+  TaskResult,
+} from './types/index.js';
 
 class TestAgent extends BaseAgent {
-  public findNextTaskFn = vi.fn<() => Promise<Task | null>>().mockResolvedValue(null);
   public executeTaskFn = vi
     .fn<(task: Task) => Promise<TaskResult>>()
     .mockResolvedValue({ success: true, artifacts: [] });
-
-  protected async findNextTask(): Promise<Task | null> {
-    return this.findNextTaskFn();
-  }
 
   protected async executeTask(task: Task): Promise<TaskResult> {
     return this.executeTaskFn(task);
@@ -26,6 +29,43 @@ function createMockMessageBus(): IMessageBus {
   };
 }
 
+function createMockStateStore(): IStateStore {
+  return {
+    registerAgent: vi.fn(),
+    getAgent: vi.fn(),
+    updateAgentStatus: vi.fn(),
+    updateHeartbeat: vi.fn(),
+    createTask: vi.fn(),
+    getTask: vi.fn().mockResolvedValue(null),
+    updateTask: vi.fn(),
+    getTasksByColumn: vi.fn().mockResolvedValue([]),
+    getTasksByAgent: vi.fn().mockResolvedValue([]),
+    getReadyTasksForAgent: vi.fn().mockResolvedValue([]),
+    claimTask: vi.fn().mockResolvedValue(true),
+    createEpic: vi.fn(),
+    getEpic: vi.fn(),
+    updateEpic: vi.fn(),
+    saveMessage: vi.fn(),
+    saveArtifact: vi.fn(),
+  };
+}
+
+function createMockGitService(): IGitService {
+  return {
+    validateConnection: vi.fn(),
+    createIssue: vi.fn(),
+    updateIssue: vi.fn(),
+    closeIssue: vi.fn(),
+    getIssue: vi.fn(),
+    getIssuesByLabel: vi.fn(),
+    getEpicIssues: vi.fn(),
+    getAllProjectItems: vi.fn().mockResolvedValue([]),
+    moveIssueToColumn: vi.fn(),
+    createBranch: vi.fn(),
+    createPR: vi.fn(),
+  };
+}
+
 const TEST_CONFIG: AgentConfig = {
   id: 'test-agent',
   domain: 'test',
@@ -36,7 +76,7 @@ const TEST_CONFIG: AgentConfig = {
   tokenBudget: 50_000,
 };
 
-const MOCK_TASK: Task = {
+const MOCK_TASK_ROW = {
   id: 'task-001',
   epicId: 'epic-001',
   title: 'Test task',
@@ -45,20 +85,31 @@ const MOCK_TASK: Task = {
   status: 'ready',
   githubIssueNumber: 1,
   boardColumn: 'Ready',
-  dependencies: [],
   priority: 3,
   complexity: 'medium',
+  dependencies: [],
   retryCount: 0,
-  artifacts: [],
+  createdAt: new Date(),
+  startedAt: null,
+  completedAt: null,
+  reviewNote: null,
 };
 
 describe('BaseAgent', () => {
   let bus: IMessageBus;
+  let store: IStateStore;
+  let git: IGitService;
   let agent: TestAgent;
 
   beforeEach(() => {
     bus = createMockMessageBus();
-    agent = new TestAgent(TEST_CONFIG, { messageBus: bus });
+    store = createMockStateStore();
+    git = createMockGitService();
+    agent = new TestAgent(TEST_CONFIG, {
+      messageBus: bus,
+      stateStore: store,
+      gitService: git,
+    });
   });
 
   it('초기 상태는 idle이다', () => {
@@ -70,27 +121,59 @@ describe('BaseAgent', () => {
     expect(agent.domain).toBe('test');
   });
 
-  it('startPolling 후 findNextTask가 호출된다', async () => {
+  it('startPolling 후 findNextTask가 DB를 조회한다', async () => {
     agent.startPolling(50);
 
     await new Promise((r) => setTimeout(r, 80));
     agent.stopPolling();
 
-    expect(agent.findNextTaskFn).toHaveBeenCalled();
+    expect(store.getReadyTasksForAgent).toHaveBeenCalledWith('test-agent');
   });
 
-  it('태스크가 있으면 executeTask가 호출된다', async () => {
-    agent.findNextTaskFn.mockResolvedValueOnce(MOCK_TASK);
+  it('DB에 Ready 태스크가 있으면 claimTask 후 executeTask가 호출된다', async () => {
+    vi.mocked(store.getReadyTasksForAgent).mockResolvedValueOnce([MOCK_TASK_ROW]);
+    vi.mocked(store.claimTask).mockResolvedValueOnce(true);
     agent.startPolling(50);
 
     await new Promise((r) => setTimeout(r, 80));
     agent.stopPolling();
 
-    expect(agent.executeTaskFn).toHaveBeenCalledWith(MOCK_TASK);
+    expect(store.claimTask).toHaveBeenCalledWith('task-001');
+    expect(agent.executeTaskFn).toHaveBeenCalled();
+    expect(git.moveIssueToColumn).toHaveBeenCalledWith(1, 'In Progress');
+  });
+
+  it('claimTask 실패 시 다음 태스크를 시도한다', async () => {
+    const task1 = { ...MOCK_TASK_ROW, id: 'task-claimed', priority: 1 };
+    const task2 = { ...MOCK_TASK_ROW, id: 'task-available', priority: 2, githubIssueNumber: 2 };
+    vi.mocked(store.getReadyTasksForAgent).mockResolvedValueOnce([task1, task2]);
+    vi.mocked(store.claimTask)
+      .mockResolvedValueOnce(false)  // task1: already claimed
+      .mockResolvedValueOnce(true);  // task2: success
+    agent.startPolling(50);
+
+    await new Promise((r) => setTimeout(r, 80));
+    agent.stopPolling();
+
+    expect(store.claimTask).toHaveBeenCalledTimes(2);
+    expect(agent.executeTaskFn).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'task-available' }),
+    );
+  });
+
+  it('모든 claimTask 실패 시 executeTask가 호출되지 않는다', async () => {
+    vi.mocked(store.getReadyTasksForAgent).mockResolvedValueOnce([MOCK_TASK_ROW]);
+    vi.mocked(store.claimTask).mockResolvedValueOnce(false);
+    agent.startPolling(50);
+
+    await new Promise((r) => setTimeout(r, 80));
+    agent.stopPolling();
+
+    expect(agent.executeTaskFn).not.toHaveBeenCalled();
   });
 
   it('태스크 실행 완료 후 review.request가 발행된다', async () => {
-    agent.findNextTaskFn.mockResolvedValueOnce(MOCK_TASK);
+    vi.mocked(store.getReadyTasksForAgent).mockResolvedValueOnce([MOCK_TASK_ROW]);
     agent.startPolling(50);
 
     await new Promise((r) => setTimeout(r, 80));
@@ -102,7 +185,7 @@ describe('BaseAgent', () => {
   });
 
   it('executeTask 에러 시 status가 error가 된다', async () => {
-    agent.findNextTaskFn.mockResolvedValueOnce(MOCK_TASK);
+    vi.mocked(store.getReadyTasksForAgent).mockResolvedValueOnce([MOCK_TASK_ROW]);
     agent.executeTaskFn.mockRejectedValueOnce(new Error('fail'));
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -123,11 +206,34 @@ describe('BaseAgent', () => {
 
   it('subscribe는 messageBus.subscribe를 호출한다', () => {
     const handler = vi.fn();
-    // protected method를 테스트하기 위해 any 캐스팅
     (agent as unknown as { subscribe: (type: string, handler: unknown) => void }).subscribe(
       'board.move',
       handler,
     );
     expect(bus.subscribe).toHaveBeenCalledWith('board.move', handler);
+  });
+
+  it('Ready 태스크가 없으면 executeTask가 호출되지 않는다', async () => {
+    vi.mocked(store.getReadyTasksForAgent).mockResolvedValue([]);
+    agent.startPolling(50);
+
+    await new Promise((r) => setTimeout(r, 80));
+    agent.stopPolling();
+
+    expect(agent.executeTaskFn).not.toHaveBeenCalled();
+  });
+
+  it('여러 Ready 태스크 중 priority가 높은 것(숫자 낮은 것)을 선택한다', async () => {
+    const lowPriority = { ...MOCK_TASK_ROW, id: 'task-low', priority: 5 };
+    const highPriority = { ...MOCK_TASK_ROW, id: 'task-high', priority: 1, githubIssueNumber: 2 };
+    vi.mocked(store.getReadyTasksForAgent).mockResolvedValueOnce([lowPriority, highPriority]);
+
+    agent.startPolling(50);
+    await new Promise((r) => setTimeout(r, 80));
+    agent.stopPolling();
+
+    expect(agent.executeTaskFn).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'task-high', priority: 1 }),
+    );
   });
 });
