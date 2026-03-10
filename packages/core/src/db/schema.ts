@@ -1,5 +1,5 @@
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
-import { pgTable, text, integer, real, timestamp, jsonb, uuid } from 'drizzle-orm/pg-core';
+import { index, pgTable, text, integer, real, timestamp, jsonb, uuid } from 'drizzle-orm/pg-core';
 
 // 에이전트 등록 및 상태 관리
 export const agents = pgTable('agents', {
@@ -43,7 +43,13 @@ export const tasks = pgTable('tasks', {
   startedAt: timestamp('started_at'),
   completedAt: timestamp('completed_at'),
   reviewNote: text('review_note'),
-});
+}, (table) => [
+  index('idx_tasks_board_column').on(table.boardColumn),
+  index('idx_tasks_assigned_agent').on(table.assignedAgent),
+  index('idx_tasks_epic_id').on(table.epicId),
+  index('idx_tasks_status').on(table.status),
+  index('idx_tasks_github_issue').on(table.githubIssueNumber),
+]);
 
 // 에이전트 간 메시지 로그
 export const messages = pgTable('messages', {
@@ -55,7 +61,10 @@ export const messages = pgTable('messages', {
   traceId: text('trace_id'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   ackedAt: timestamp('acked_at'),
-});
+}, (table) => [
+  index('idx_messages_type').on(table.type),
+  index('idx_messages_trace_id').on(table.traceId),
+]);
 
 // 생성된 산출물 (파일) 추적
 export const artifacts = pgTable('artifacts', {

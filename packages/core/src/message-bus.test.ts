@@ -119,4 +119,46 @@ describe('MessageBus', () => {
     expect(moveHandler).toHaveBeenCalledTimes(1);
     expect(statusHandler).toHaveBeenCalledTimes(1);
   });
+
+  it('stateStore가 주입되면 publish 시 메시지를 DB에 저장한다', async () => {
+    const mockStateStore = { saveMessage: vi.fn().mockResolvedValue(undefined) };
+    const bus = new MessageBus(mockStateStore as any);
+    const msg = createMessage('board.move');
+
+    await bus.publish(msg);
+
+    expect(mockStateStore.saveMessage).toHaveBeenCalledTimes(1);
+    expect(mockStateStore.saveMessage).toHaveBeenCalledWith(msg);
+  });
+
+  it('stateStore 없이 생성해도 publish가 정상 동작한다', async () => {
+    const bus = new MessageBus();
+    const handler = vi.fn();
+    bus.subscribe('test', handler);
+
+    await bus.publish(createMessage('test'));
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('setStateStore로 나중에 stateStore를 주입할 수 있다', async () => {
+    const bus = new MessageBus();
+    const mockStateStore = { saveMessage: vi.fn().mockResolvedValue(undefined) };
+
+    bus.setStateStore(mockStateStore as any);
+    await bus.publish(createMessage('board.move'));
+
+    expect(mockStateStore.saveMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('stateStore.saveMessage 실패해도 handler는 정상 실행된다', async () => {
+    const mockStateStore = { saveMessage: vi.fn().mockRejectedValue(new Error('DB error')) };
+    const bus = new MessageBus(mockStateStore as any);
+    const handler = vi.fn();
+    bus.subscribe('test', handler);
+
+    await bus.publish(createMessage('test'));
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
 });

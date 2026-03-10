@@ -214,6 +214,8 @@ export interface IGitService {
   getIssue(issueNumber: number): Promise<BoardIssue>;
   getIssuesByLabel(label: string): Promise<BoardIssue[]>;
   getEpicIssues(epicId: string): Promise<BoardIssue[]>;
+  // Issue comments
+  addComment(issueNumber: number, body: string): Promise<void>;
   // Board — single query for all items
   getAllProjectItems(): Promise<BoardIssue[]>;
   moveIssueToColumn(issueNumber: number, column: string): Promise<void>;

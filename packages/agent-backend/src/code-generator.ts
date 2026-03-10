@@ -1,7 +1,12 @@
+import { readFile } from 'node:fs/promises';
+import { resolve, sep } from 'node:path';
 import { createLogger, type GeneratedCode, type Task } from '@agent/core';
 import type { BackendTaskType } from './task-router.js';
 
 const log = createLogger('CodeGenerator');
+
+const MAX_FILE_READ_CHARS = 8000;
+const MAX_TOTAL_CHARS = 30000;
 
 /**
  * Claude API 인터페이스. 테스트에서 mock 주입 가능.
@@ -18,11 +23,14 @@ export interface IClaudeClient {
  * 각 task type에 맞는 시스템 프롬프트를 제공한다.
  */
 export class CodeGenerator {
-  constructor(private claude: IClaudeClient) {}
+  constructor(
+    private claude: IClaudeClient,
+    private workDir?: string,
+  ) {}
 
   async generate(task: Task, taskType: BackendTaskType): Promise<GeneratedCode> {
     const systemPrompt = this.buildSystemPrompt(taskType);
-    const userMessage = this.buildUserMessage(task);
+    const userMessage = await this.buildUserMessage(task, taskType);
 
     const { data, usage } = await this.claude.chatJSON<GeneratedCode>(
       systemPrompt,
@@ -93,7 +101,7 @@ Use action "update" for modified files.`,
     return base + (typeSpecific[taskType] ?? '');
   }
 
-  private buildUserMessage(task: Task): string {
+  private async buildUserMessage(task: Task, taskType: BackendTaskType): Promise<string> {
     const lines = [
       `Task: ${task.title}`,
       `Description: ${task.description}`,
@@ -107,6 +115,48 @@ Use action "update" for modified files.`,
       lines.push(`Existing files: ${task.artifacts.join(', ')}`);
     }
 
+    // modify 작업 시 기존 파일 내용을 프롬프트에 포함
+    const isModify = taskType === 'api.modify' || taskType === 'model.modify';
+    if (isModify && this.workDir && task.artifacts.length > 0) {
+      const fileContents = await this.readExistingFiles(task.artifacts);
+      if (fileContents.length > 0) {
+        lines.push('', '### Existing File Contents');
+        for (const fc of fileContents) {
+          lines.push(`\n**${fc.path}**\n\`\`\`\n${fc.content}\n\`\`\``);
+        }
+      }
+    }
+
     return lines.join('\n');
+  }
+
+  private async readExistingFiles(paths: string[]): Promise<Array<{ path: string; content: string }>> {
+    const resolvedWorkDir = resolve(this.workDir!);
+    const results: Array<{ path: string; content: string }> = [];
+    let totalChars = 0;
+
+    for (const filePath of paths) {
+      const absPath = resolve(resolvedWorkDir, filePath);
+
+      // Sandbox: workDir 밖 경로 차단
+      if (!absPath.startsWith(resolvedWorkDir + sep)) continue;
+
+      try {
+        const content = await readFile(absPath, 'utf-8');
+
+        const truncated = content.length > MAX_FILE_READ_CHARS
+          ? content.slice(0, MAX_FILE_READ_CHARS) + '\n... (truncated)'
+          : content;
+
+        totalChars += truncated.length;
+        if (totalChars > MAX_TOTAL_CHARS) break;
+
+        results.push({ path: filePath, content: truncated });
+      } catch {
+        // 파일을 읽을 수 없으면 skip
+      }
+    }
+
+    return results;
   }
 }

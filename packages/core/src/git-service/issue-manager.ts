@@ -64,6 +64,15 @@ export class IssueManager {
     });
   }
 
+  async addComment(issueNumber: number, body: string): Promise<void> {
+    await this.ctx.octokit.rest.issues.createComment({
+      owner: this.ctx.owner,
+      repo: this.ctx.repo,
+      issue_number: issueNumber,
+      body,
+    });
+  }
+
   async getIssue(issueNumber: number): Promise<BoardIssue> {
     const { data: issue } = await this.ctx.octokit.rest.issues.get({
       owner: this.ctx.owner,

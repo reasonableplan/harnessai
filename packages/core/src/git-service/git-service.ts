@@ -62,6 +62,10 @@ export class GitService implements IGitService {
     return this.issueManager.closeIssue(issueNumber);
   }
 
+  async addComment(issueNumber: number, body: string): Promise<void> {
+    return this.issueManager.addComment(issueNumber, body);
+  }
+
   async getIssue(issueNumber: number): Promise<BoardIssue> {
     return this.issueManager.getIssue(issueNumber);
   }

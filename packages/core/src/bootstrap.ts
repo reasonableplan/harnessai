@@ -113,8 +113,8 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
     stateStore = new StateStore(db);
     log.info('Database connected');
 
-    // 3. MessageBus 생성
-    const messageBus = new MessageBus();
+    // 3. MessageBus 생성 (stateStore 연결로 메시지 자동 DB 저장)
+    const messageBus = new MessageBus(stateStore);
     log.info('MessageBus created');
 
     // 4. GitService 생성
