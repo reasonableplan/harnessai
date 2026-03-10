@@ -1,5 +1,7 @@
-import type { GeneratedCode, Task } from '@agent/core';
+import { createLogger, type GeneratedCode, type Task } from '@agent/core';
 import type { BackendTaskType } from './task-router.js';
+
+const log = createLogger('CodeGenerator');
 
 /**
  * Claude API 인터페이스. 테스트에서 mock 주입 가능.
@@ -9,16 +11,6 @@ export interface IClaudeClient {
     data: T;
     usage: { inputTokens: number; outputTokens: number };
   }>;
-}
-
-interface GeneratedCodeResponse {
-  files: Array<{
-    path: string;
-    content: string;
-    action: 'create' | 'update' | 'delete';
-    language: string;
-  }>;
-  summary: string;
 }
 
 /**
@@ -32,21 +24,13 @@ export class CodeGenerator {
     const systemPrompt = this.buildSystemPrompt(taskType);
     const userMessage = this.buildUserMessage(task);
 
-    const { data, usage } = await this.claude.chatJSON<GeneratedCodeResponse>(
+    const { data, usage } = await this.claude.chatJSON<GeneratedCode>(
       systemPrompt,
       userMessage,
     );
-    console.log(`[BackendAgent] Claude usage: ${usage.inputTokens}in/${usage.outputTokens}out`);
+    log.info({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens }, 'Claude usage');
 
-    return {
-      files: data.files.map((f) => ({
-        path: f.path,
-        content: f.content,
-        action: f.action,
-        language: f.language,
-      })),
-      summary: data.summary,
-    };
+    return data;
   }
 
   private buildSystemPrompt(taskType: BackendTaskType): string {
@@ -58,7 +42,7 @@ Generate production-quality code following these conventions:
 - Error handling with typed error classes
 - ESM imports (.js extensions in import paths)
 
-Respond with JSON only:
+IMPORTANT: Respond with valid JSON only. No markdown, no explanation.
 {
   "files": [
     {

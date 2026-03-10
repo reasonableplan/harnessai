@@ -17,7 +17,7 @@ export type BackendTaskType =
  */
 export function detectTaskType(task: Task): BackendTaskType {
   // Labels 기반 (DirectorAgent가 붙이는 type:* labels)
-  const labels = (task as { labels?: string[] }).labels;
+  const labels = task.labels;
   if (labels && labels.length > 0) {
     for (const label of labels) {
       if (label.startsWith('type:')) {

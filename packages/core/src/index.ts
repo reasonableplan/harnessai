@@ -7,6 +7,7 @@ export * from './state-store.js';
 export { GitService, type GitServiceConfig } from './git-service/index.js';
 export * from './board-watcher.js';
 export * from './file-writer.js';
+export { createLogger, type Logger } from './logger.js';
 export * from './system-controller.js';
 export { startCLI, type CLIOptions } from './cli.js';
 export { bootstrap, type SystemContext, type AgentFactory, type BootstrapConfig } from './bootstrap.js';

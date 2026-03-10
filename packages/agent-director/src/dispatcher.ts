@@ -1,4 +1,7 @@
 import type { IStateStore, IGitService, Message } from '@agent/core';
+import { createLogger } from '@agent/core';
+
+const log = createLogger('Dispatcher');
 
 export class Dispatcher {
   constructor(
@@ -53,10 +56,10 @@ export class Dispatcher {
           if (task.githubIssueNumber) {
             await this.gitService.moveIssueToColumn(task.githubIssueNumber, 'Ready');
           }
-          console.log(`[Director] Promoted to Ready: ${task.title} (all deps done)`);
+          log.info({ taskTitle: task.title }, 'Promoted to Ready (all deps done)');
         }
       } catch (error) {
-        console.error(`[Director] Failed to check/promote task ${task.id}:`, error);
+        log.error({ err: error, taskId: task.id }, 'Failed to check/promote task');
       }
     }
   }

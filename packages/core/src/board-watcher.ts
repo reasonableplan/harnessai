@@ -1,4 +1,7 @@
 import type { IGitService, IStateStore, IMessageBus, BoardIssue, Message } from './types/index.js';
+import { createLogger } from './logger.js';
+
+const log = createLogger('BoardWatcher');
 
 const COLUMN_TO_STATUS: Record<string, string> = {
   Backlog: 'backlog',
@@ -29,12 +32,12 @@ export class BoardWatcher {
     if (this.running) return;
     this.running = true;
     this.pollLoop();
-    console.log(`[BoardWatcher] Started (interval: ${this.pollIntervalMs}ms)`);
+    log.info({ intervalMs: this.pollIntervalMs }, 'Started');
   }
 
   stop(): void {
     this.running = false;
-    console.log('[BoardWatcher] Stopped');
+    log.info('Stopped');
   }
 
   private async pollLoop(): Promise<void> {
@@ -42,7 +45,7 @@ export class BoardWatcher {
       try {
         await this.sync();
       } catch (error) {
-        console.error('[BoardWatcher] Sync error:', error);
+        log.error({ err: error }, 'Sync error');
       }
       await new Promise((r) => setTimeout(r, this.pollIntervalMs));
     }
@@ -56,7 +59,7 @@ export class BoardWatcher {
     try {
       await this.sync();
     } catch (error) {
-      console.error('[BoardWatcher] Triggered sync error:', error);
+      log.error({ err: error }, 'Triggered sync error');
     }
   }
 
@@ -86,7 +89,7 @@ export class BoardWatcher {
           await this.syncTaskFromIssue(issue);
         }
       } catch (error) {
-        console.error(`[BoardWatcher] Failed to sync issue #${issue.issueNumber}:`, error);
+        log.error({ err: error, issueNumber: issue.issueNumber }, 'Failed to sync issue');
       }
     }
 
@@ -107,9 +110,7 @@ export class BoardWatcher {
     fromColumn: string,
     toColumn: string,
   ): Promise<void> {
-    console.log(
-      `[BoardWatcher] Issue #${issue.issueNumber} moved: ${fromColumn} → ${toColumn}`,
-    );
+    log.info({ issueNumber: issue.issueNumber, fromColumn, toColumn }, 'Issue moved');
 
     const message: Message = {
       id: crypto.randomUUID(),
@@ -131,7 +132,7 @@ export class BoardWatcher {
   }
 
   private async onIssueRemoved(issueNumber: number, lastColumn: string): Promise<void> {
-    console.log(`[BoardWatcher] Issue #${issueNumber} removed from board (was: ${lastColumn})`);
+    log.info({ issueNumber, lastColumn }, 'Issue removed from board');
 
     await this.messageBus.publish({
       id: crypto.randomUUID(),
@@ -169,6 +170,7 @@ export class BoardWatcher {
           boardColumn: issue.column,
           status: boardStatus,
           assignedAgent: targetAgent,
+          labels: issue.labels,
         });
       }
     } else {
@@ -184,6 +186,7 @@ export class BoardWatcher {
         priority: 3,
         complexity: 'medium',
         dependencies: issue.dependencies.map((d) => `task-gh-${d}`),
+        labels: issue.labels,
         retryCount: 0,
       });
     }

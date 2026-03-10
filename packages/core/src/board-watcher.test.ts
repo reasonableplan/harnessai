@@ -111,6 +111,7 @@ describe('BoardWatcher', () => {
       boardColumn: 'In Progress',
       status: 'in-progress',
       assignedAgent: 'git',
+      labels: ['agent:git'],
     });
   });
 

@@ -6,7 +6,10 @@ import {
   type TaskResult,
   type Message,
   MESSAGE_TYPES,
+  createLogger,
 } from '@agent/core';
+
+const log = createLogger('Director');
 import { ClaudeClient } from './claude-client.js';
 import { EpicPlanner } from './epic-planner.js';
 import { Dispatcher } from './dispatcher.js';
@@ -102,7 +105,7 @@ Rules:
 
     try {
       const { data, usage } = await this.claude.chatJSON<DirectorAction>(systemPrompt, content);
-      console.log(`[Director] Claude usage: ${usage.inputTokens}in/${usage.outputTokens}out`);
+      log.info({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens }, 'Claude usage');
 
       switch (data.action) {
         case 'create_epic':
@@ -116,7 +119,7 @@ Rules:
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      console.error('[Director] Failed to process input:', msg);
+      log.error({ err: msg }, 'Failed to process input');
       return `[Director] Error processing request: ${msg}`;
     }
   }
@@ -150,7 +153,7 @@ Rules:
    * 하지만 Board에서 director에게 직접 할당된 Task가 있을 수 있다 (예: Epic 계획 요청).
    */
   protected async executeTask(task: Task): Promise<TaskResult> {
-    console.log(`[Director] Processing task: ${task.title}`);
+    log.info({ title: task.title }, 'Processing task');
 
     try {
       const response = await this.handleUserInput(task.description || task.title);

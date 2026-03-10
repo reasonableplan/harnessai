@@ -39,7 +39,7 @@ export class GitAgent extends BaseAgent {
 
   protected async executeTask(task: Task): Promise<TaskResult> {
     const taskType = detectTaskType(task);
-    console.log(`[GitAgent] Executing ${taskType} task: ${task.title}`);
+    this.log.info({ taskType, title: task.title }, 'Executing task');
 
     try {
       switch (taskType) {

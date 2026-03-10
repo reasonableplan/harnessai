@@ -1,7 +1,4 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { createLogger } from '@agent/core';
-
-const log = createLogger('ClaudeClient');
 
 export interface ClaudeClientConfig {
   model: string;

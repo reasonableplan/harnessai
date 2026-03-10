@@ -39,6 +39,7 @@ export interface Task {
   complexity: TaskComplexity;
   retryCount: number;
   artifacts: string[];
+  labels?: string[];
 }
 
 // ===== TaskResult =====

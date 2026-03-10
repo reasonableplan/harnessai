@@ -1,4 +1,7 @@
 import type { GitHubContext } from './types.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('GitService');
 
 const REQUIRED_COLUMNS: readonly string[] = [
   'Backlog',
@@ -25,12 +28,12 @@ export class ProjectSetup {
     // 1. Verify GitHub API access + check token scopes
     const response = await this.ctx.octokit.rest.users.getAuthenticated();
     const user = response.data;
-    console.log(`[GitService] Authenticated as ${user.login}`);
+    log.info({ user: user.login }, 'Authenticated');
 
     // Token scope 경고: classic PAT의 경우 x-oauth-scopes 헤더에서 확인 가능
     const scopes = (response.headers as Record<string, string>)['x-oauth-scopes'] ?? '';
     if (scopes && !scopes.includes('project')) {
-      console.warn('[GitService] Warning: token may lack "project" scope — Board operations may fail');
+      log.warn('Token may lack "project" scope — Board operations may fail');
     }
 
     // 2. Find or create Project
@@ -43,13 +46,13 @@ export class ProjectSetup {
       this.projectId = await this.findProjectByTitle('Agent Orchestration Board');
       if (!this.projectId) {
         this.projectId = await this.createProject('Agent Orchestration Board');
-        console.log(`[GitService] Project created`);
+        log.info('Project created');
       }
     }
 
     // 3. Ensure required columns (Status field options)
     await this.ensureColumns();
-    console.log(`[GitService] Board validated with ${this.columnOptions.size} columns`);
+    log.info({ columnCount: this.columnOptions.size }, 'Board validated');
   }
 
   async findProject(number: number): Promise<string | null> {
@@ -204,6 +207,6 @@ export class ProjectSetup {
     for (const opt of updatedOptions) {
       this.columnOptions.set(opt.name, opt.id);
     }
-    console.log(`[GitService] Column created: ${name}`);
+    log.info({ columnName: name }, 'Column created');
   }
 }

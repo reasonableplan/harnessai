@@ -1,4 +1,7 @@
 import type { Task, TaskResult, IGitService } from '@agent/core';
+import { createLogger } from '@agent/core';
+
+const log = createLogger('GitTaskHandlers');
 import type { GitCli } from './git-cli.js';
 import type { WorkspaceManager } from './workspace-manager.js';
 
@@ -42,12 +45,12 @@ export class TaskHandlers {
 
     try {
       await this.gitService.createBranch(branchName);
-      console.log(`[GitAgent] Branch created: ${branchName}`);
+      log.info({ branchName }, 'Branch created');
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       // Branch already exists → treat as success
       if (msg.includes('Reference already exists') || msg.includes('already exists')) {
-        console.log(`[GitAgent] Branch already exists: ${branchName}`);
+        log.info({ branchName }, 'Branch already exists');
         return { success: true, data: { branchName, alreadyExisted: true }, artifacts: [] };
       }
       throw error;
@@ -77,14 +80,14 @@ export class TaskHandlers {
     }
     const { stdout: statusOut } = await this.gitCli.exec(workDir, 'status', '--porcelain');
     if (!statusOut.trim()) {
-      console.log(`[GitAgent] Nothing to commit for: ${task.title}`);
+      log.info({ title: task.title }, 'Nothing to commit');
       return { success: true, data: { committed: false, reason: 'nothing-to-commit' }, artifacts: [] };
     }
 
     await this.gitCli.exec(workDir, 'commit', '-m', message);
     const branchName = `epic/${epicId}`;
     await this.gitCli.exec(workDir, 'push', 'origin', branchName);
-    console.log(`[GitAgent] Committed and pushed: ${message}`);
+    log.info({ message }, 'Committed and pushed');
 
     // After commit, check if all commits for this epic are done → trigger PR
     if (task.epicId) {
@@ -112,13 +115,13 @@ export class TaskHandlers {
         'main',
       );
 
-      console.log(`[GitAgent] PR #${prNumber} created for ${epicId}`);
+      log.info({ prNumber, epicId }, 'PR created');
       return { success: true, data: { prNumber }, artifacts: [] };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       // PR already exists for this branch → treat as non-fatal
       if (msg.includes('A pull request already exists')) {
-        console.log(`[GitAgent] PR already exists for ${branchName}`);
+        log.info({ branchName }, 'PR already exists');
         return { success: true, data: { alreadyExisted: true, branch: branchName }, artifacts: [] };
       }
       throw error;
@@ -144,7 +147,7 @@ export class TaskHandlers {
     );
 
     if (allCodeDone && allCommitsDone && noPRExists) {
-      console.log(`[GitAgent] All commits done for epic ${epicId}, triggering PR`);
+      log.info({ epicId }, 'All commits done, triggering PR');
 
       await this.gitService.createIssue({
         title: `[GIT] Epic ${epicId} PR 생성`,

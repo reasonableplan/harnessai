@@ -1,4 +1,7 @@
 import type { IStateStore, IGitService, Task, TaskResult, Message } from '@agent/core';
+import { createLogger } from '@agent/core';
+
+const log = createLogger('ReviewProcessor');
 import type { IClaudeClient } from './director-agent.js';
 import type { Dispatcher } from './dispatcher.js';
 
@@ -12,7 +15,7 @@ export class ReviewProcessor {
 
   async onReviewRequest(msg: Message): Promise<void> {
     const payload = msg.payload as { taskId: string; result: TaskResult };
-    console.log(`[Director] Review request for task: ${payload.taskId} (success: ${payload.result.success})`);
+    log.info({ taskId: payload.taskId, success: payload.result.success }, 'Review request');
 
     if (payload.result.success) {
       // LLM 기반 리뷰: artifacts가 task description과 일치하는지 검토
@@ -20,7 +23,7 @@ export class ReviewProcessor {
       if (task) {
         const reviewResult = await this.reviewWithClaude(task, payload.result);
         if (reviewResult.approved) {
-          console.log(`[Director] Approved task: ${payload.taskId} — ${reviewResult.reason}`);
+          log.info({ taskId: payload.taskId, reason: reviewResult.reason }, 'Task approved');
           // Done으로 이동 + 후속 의존성 체인 트리거
           await this.stateStore.updateTask(payload.taskId, {
             status: 'done',
@@ -31,7 +34,7 @@ export class ReviewProcessor {
             await this.dispatcher.checkAndPromoteDependents(task.githubIssueNumber);
           }
         } else {
-          console.warn(`[Director] Review rejected task: ${payload.taskId} — ${reviewResult.reason}`);
+          log.warn({ taskId: payload.taskId, reason: reviewResult.reason }, 'Review rejected');
           // 리뷰 실패 → 재시도로 전환
           await this.retryOrFail(task, payload.taskId);
         }
@@ -65,7 +68,7 @@ Data: ${JSON.stringify(result.data ?? {})}`;
       return data;
     } catch (error) {
       // 리뷰 실패 시 자동 승인 (리뷰 불가가 작업을 차단하면 안 됨)
-      console.warn(`[Director] Review Claude call failed, auto-approving: ${error instanceof Error ? error.message : error}`);
+      log.warn({ err: error instanceof Error ? error.message : error }, 'Review Claude call failed, auto-approving');
       return { approved: true, reason: 'auto-approved (review unavailable)' };
     }
   }
@@ -83,7 +86,7 @@ Data: ${JSON.stringify(result.data ?? {})}`;
       if (task.githubIssueNumber) {
         await this.gitService.moveIssueToColumn(task.githubIssueNumber, 'Ready');
       }
-      console.log(`[Director] Retrying task: ${taskId} (attempt ${(task.retryCount ?? 0) + 1}/3)`);
+      log.info({ taskId, attempt: (task.retryCount ?? 0) + 1, maxRetries: 3 }, 'Retrying task');
     } else {
       // 최대 재시도 초과 → Failed로 마킹
       await this.stateStore.updateTask(taskId, {
@@ -93,7 +96,7 @@ Data: ${JSON.stringify(result.data ?? {})}`;
       if (task.githubIssueNumber) {
         await this.gitService.moveIssueToColumn(task.githubIssueNumber, 'Failed');
       }
-      console.error(`[Director] Task failed after max retries: ${taskId}`);
+      log.error({ taskId }, 'Task failed after max retries');
     }
   }
 }

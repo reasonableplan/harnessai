@@ -1,7 +1,7 @@
 import type { IGitService, Task } from '@agent/core';
 import { createLogger } from '@agent/core';
 
-const log = createLogger('CommitRequester');
+const log = createLogger('FrontendCommitReq');
 
 /**
  * 코드 생성 후 Git Agent에게 commit을 요청하는 follow-up issue를 생성한다.

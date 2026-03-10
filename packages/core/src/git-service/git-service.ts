@@ -38,6 +38,7 @@ export class GitService implements IGitService {
     this.setup = new ProjectSetup(ctx);
     this.issueManager = new IssueManager(ctx, this.setup);
     this.boardOps = new BoardOperations(ctx, this.setup, this.issueManager);
+    this.issueManager.setBoardOperations(this.boardOps); // batch query 최적화 연결
     this.gitOps = new GitOperations(ctx);
   }
 
