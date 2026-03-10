@@ -3,6 +3,7 @@ import type { GitHubContext } from './types.js';
 import type { ProjectSetup } from './project-setup.js';
 import type { BoardOperations } from './board-operations.js';
 import { toBoardIssue } from './issue-parser.js';
+import { withRetry } from '../api-retry.js';
 
 export class IssueManager {
   private ctx: GitHubContext;
@@ -27,50 +28,66 @@ export class IssueManager {
       body += `\n\n### Dependencies\n${depLinks}`;
     }
 
-    const { data: issue } = await this.ctx.octokit.rest.issues.create({
-      owner: this.ctx.owner,
-      repo: this.ctx.repo,
-      title: spec.title,
-      body,
-      labels: spec.labels,
-      milestone: spec.milestone,
-    });
+    const { data: issue } = await withRetry(
+      () => this.ctx.octokit.rest.issues.create({
+        owner: this.ctx.owner,
+        repo: this.ctx.repo,
+        title: spec.title,
+        body,
+        labels: spec.labels,
+        milestone: spec.milestone,
+      }),
+      {},
+      'createIssue',
+    );
 
     // Add issue to project board
     if (this.setup.projectId) {
-      await this.addIssueToProject(issue.node_id);
+      await withRetry(() => this.addIssueToProject(issue.node_id), {}, 'addIssueToProject');
     }
 
     return issue.number;
   }
 
   async updateIssue(issueNumber: number, updates: Partial<IssueSpec>): Promise<void> {
-    await this.ctx.octokit.rest.issues.update({
-      owner: this.ctx.owner,
-      repo: this.ctx.repo,
-      issue_number: issueNumber,
-      ...(updates.title && { title: updates.title }),
-      ...(updates.body && { body: updates.body }),
-      ...(updates.labels && { labels: updates.labels }),
-    });
+    await withRetry(
+      () => this.ctx.octokit.rest.issues.update({
+        owner: this.ctx.owner,
+        repo: this.ctx.repo,
+        issue_number: issueNumber,
+        ...(updates.title && { title: updates.title }),
+        ...(updates.body && { body: updates.body }),
+        ...(updates.labels && { labels: updates.labels }),
+      }),
+      {},
+      'updateIssue',
+    );
   }
 
   async closeIssue(issueNumber: number): Promise<void> {
-    await this.ctx.octokit.rest.issues.update({
-      owner: this.ctx.owner,
-      repo: this.ctx.repo,
-      issue_number: issueNumber,
-      state: 'closed',
-    });
+    await withRetry(
+      () => this.ctx.octokit.rest.issues.update({
+        owner: this.ctx.owner,
+        repo: this.ctx.repo,
+        issue_number: issueNumber,
+        state: 'closed',
+      }),
+      {},
+      'closeIssue',
+    );
   }
 
   async addComment(issueNumber: number, body: string): Promise<void> {
-    await this.ctx.octokit.rest.issues.createComment({
-      owner: this.ctx.owner,
-      repo: this.ctx.repo,
-      issue_number: issueNumber,
-      body,
-    });
+    await withRetry(
+      () => this.ctx.octokit.rest.issues.createComment({
+        owner: this.ctx.owner,
+        repo: this.ctx.repo,
+        issue_number: issueNumber,
+        body,
+      }),
+      {},
+      'addComment',
+    );
   }
 
   async getIssue(issueNumber: number): Promise<BoardIssue> {

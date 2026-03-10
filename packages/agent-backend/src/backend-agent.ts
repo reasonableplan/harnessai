@@ -1,6 +1,7 @@
 import {
   BaseAgent,
   FileWriter,
+  FollowUpCreator,
   type AgentDependencies,
   type AgentConfig,
   type Task,
@@ -20,6 +21,7 @@ export interface BackendAgentConfig {
 export class BackendAgent extends BaseAgent {
   private codeGenerator: CodeGenerator;
   private commitRequester: CommitRequester;
+  private followUpCreator: FollowUpCreator;
   private fileWriter: FileWriter;
 
   constructor(deps: AgentDependencies, backendConfig: BackendAgentConfig) {
@@ -40,8 +42,9 @@ export class BackendAgent extends BaseAgent {
       backendConfig.claudeApiKey,
     );
 
-    this.codeGenerator = new CodeGenerator(claude);
+    this.codeGenerator = new CodeGenerator(claude, backendConfig.workDir);
     this.commitRequester = new CommitRequester(deps.gitService);
+    this.followUpCreator = new FollowUpCreator(deps.gitService);
     this.fileWriter = new FileWriter(backendConfig.workDir);
   }
 
@@ -111,7 +114,16 @@ export class BackendAgent extends BaseAgent {
       await this.commitRequester.requestCommit(task, writtenFiles, generated.summary);
     } catch (error) {
       this.log.warn({ err: error instanceof Error ? error.message : error }, 'Failed to create commit request');
-      // commit 요청 실패가 task 자체를 실패시키지는 않음
+    }
+
+    // 6. 도메인 간 후속 이슈 생성 (non-fatal): [FE] API 연동, [DOCS] API 문서
+    try {
+      const followUps = FollowUpCreator.backendFollowUps(task, generated.summary, writtenFiles);
+      if (followUps.length > 0) {
+        await this.followUpCreator.createFollowUps(task, followUps);
+      }
+    } catch (error) {
+      this.log.warn({ err: error instanceof Error ? error.message : error }, 'Failed to create follow-up issues');
     }
 
     return {
