@@ -58,14 +58,19 @@ export class BoardWatcher {
     for (const issue of allItems) {
       currentColumns.set(issue.issueNumber, issue.column);
 
-      // Detect column change
-      const prevColumn = this.previousColumns.get(issue.issueNumber);
-      if (prevColumn && prevColumn !== issue.column) {
-        await this.onColumnChange(issue, prevColumn, issue.column);
-      }
+      try {
+        // Detect column change
+        const prevColumn = this.previousColumns.get(issue.issueNumber);
+        if (prevColumn && prevColumn !== issue.column) {
+          await this.onColumnChange(issue, prevColumn, issue.column);
+        }
 
-      // Sync to DB
-      await this.syncTaskFromIssue(issue);
+        // Sync to DB
+        await this.syncTaskFromIssue(issue);
+      } catch (error) {
+        console.error(`[BoardWatcher] Failed to sync issue #${issue.issueNumber}:`, error);
+        // 개별 issue 실패가 전체 sync를 중단하지 않도록 계속 진행
+      }
     }
 
     this.previousColumns = currentColumns;

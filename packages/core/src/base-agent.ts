@@ -73,8 +73,14 @@ export abstract class BaseAgent {
 
   private async pollLoop(intervalMs: number) {
     while (this.polling) {
-      if (this._status === 'idle') {
+      if (this._status === 'idle' || this._status === 'error') {
         try {
+          // error 상태에서 자동 복구 시도
+          if (this._status === 'error') {
+            console.log(`[${this.id}] Recovering from error state...`);
+            this.setStatus('idle');
+          }
+
           const task = await this.findNextTask();
           if (task) {
             this.setStatus('busy');
