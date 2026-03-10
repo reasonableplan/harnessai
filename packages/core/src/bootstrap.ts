@@ -2,7 +2,7 @@ import { config } from 'dotenv';
 import { createDb, runMigrations, type Database } from './db/index.js';
 import { MessageBus } from './message-bus.js';
 import { StateStore } from './state-store.js';
-import { GitService, type GitServiceConfig } from './git-service.js';
+import { GitService, type GitServiceConfig } from './git-service/index.js';
 import { BoardWatcher } from './board-watcher.js';
 import { SystemController } from './system-controller.js';
 import { startCLI } from './cli.js';

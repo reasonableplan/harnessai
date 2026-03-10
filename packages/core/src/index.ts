@@ -4,7 +4,7 @@ export { createDb, runMigrations, type Database } from './db/index.js';
 export * from './base-agent.js';
 export * from './message-bus.js';
 export * from './state-store.js';
-export { GitService, type GitServiceConfig } from './git-service.js';
+export { GitService, type GitServiceConfig } from './git-service/index.js';
 export * from './board-watcher.js';
 export * from './file-writer.js';
 export * from './system-controller.js';
