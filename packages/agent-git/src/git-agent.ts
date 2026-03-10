@@ -1,5 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import {
   BaseAgent,
   type AgentDependencies,
@@ -8,12 +10,16 @@ import {
   type TaskResult,
 } from '@agent/core';
 
+const execFileAsync = promisify(execFile);
+
 export interface GitAgentConfig {
   workDir: string; // base workspace directory
+  githubToken?: string; // for git push authentication
 }
 
 export class GitAgent extends BaseAgent {
   private workDir: string;
+  private githubToken: string | undefined;
 
   constructor(deps: AgentDependencies, gitAgentConfig: GitAgentConfig) {
     const config: AgentConfig = {
@@ -27,6 +33,7 @@ export class GitAgent extends BaseAgent {
     };
     super(config, deps);
     this.workDir = gitAgentConfig.workDir;
+    this.githubToken = gitAgentConfig.githubToken;
   }
 
   // ========== Task Execution ==========
@@ -74,8 +81,19 @@ export class GitAgent extends BaseAgent {
 
   private async handleBranchTask(task: Task): Promise<TaskResult> {
     const branchName = this.extractBranchName(task);
-    await this.gitService.createBranch(branchName);
-    console.log(`[GitAgent] Branch created: ${branchName}`);
+
+    try {
+      await this.gitService.createBranch(branchName);
+      console.log(`[GitAgent] Branch created: ${branchName}`);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      // Branch already exists → treat as success
+      if (msg.includes('Reference already exists') || msg.includes('already exists')) {
+        console.log(`[GitAgent] Branch already exists: ${branchName}`);
+        return { success: true, data: { branchName, alreadyExisted: true }, artifacts: [] };
+      }
+      throw error;
+    }
 
     return {
       success: true,
@@ -85,10 +103,24 @@ export class GitAgent extends BaseAgent {
   }
 
   // ========== Commit Task ==========
-  // TODO(Phase 2): Integrate git CLI (clone, add, commit, push) via child_process
 
   private async handleCommitTask(task: Task): Promise<TaskResult> {
-    console.log(`[GitAgent] Commit task acknowledged: ${task.title}`);
+    const epicId = task.epicId ?? 'unknown';
+    const workDir = await this.getEpicWorkDir(epicId);
+    const message = task.description || task.title;
+
+    // git add → commit → push
+    await this.git(workDir, 'add', '-A');
+    const { stdout: statusOut } = await this.git(workDir, 'status', '--porcelain');
+    if (!statusOut.trim()) {
+      console.log(`[GitAgent] Nothing to commit for: ${task.title}`);
+      return { success: true, data: { committed: false, reason: 'nothing-to-commit' }, artifacts: [] };
+    }
+
+    await this.git(workDir, 'commit', '-m', message);
+    const branchName = `epic/${epicId}`;
+    await this.git(workDir, 'push', 'origin', branchName);
+    console.log(`[GitAgent] Committed and pushed: ${message}`);
 
     // After commit, check if all commits for this epic are done → trigger PR
     if (task.epicId) {
@@ -97,7 +129,7 @@ export class GitAgent extends BaseAgent {
 
     return {
       success: true,
-      data: { committed: true },
+      data: { committed: true, branch: branchName },
       artifacts: [],
     };
   }
@@ -107,20 +139,26 @@ export class GitAgent extends BaseAgent {
   private async handlePRTask(task: Task): Promise<TaskResult> {
     const epicId = task.epicId ?? 'unknown';
     const branchName = `epic/${epicId}`;
-    const prNumber = await this.gitService.createPR(
-      task.title.replace('[GIT] ', ''),
-      task.description,
-      branchName,
-      'main',
-    );
 
-    console.log(`[GitAgent] PR #${prNumber} created for ${epicId}`);
+    try {
+      const prNumber = await this.gitService.createPR(
+        task.title.replace('[GIT] ', ''),
+        task.description,
+        branchName,
+        'main',
+      );
 
-    return {
-      success: true,
-      data: { prNumber },
-      artifacts: [],
-    };
+      console.log(`[GitAgent] PR #${prNumber} created for ${epicId}`);
+      return { success: true, data: { prNumber }, artifacts: [] };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      // PR already exists for this branch → treat as non-fatal
+      if (msg.includes('A pull request already exists')) {
+        console.log(`[GitAgent] PR already exists for ${branchName}`);
+        return { success: true, data: { alreadyExisted: true, branch: branchName }, artifacts: [] };
+      }
+      throw error;
+    }
   }
 
   // ========== Post-Completion ==========
@@ -191,5 +229,25 @@ export class GitAgent extends BaseAgent {
       await fs.mkdir(epicDir, { recursive: true });
     }
     return epicDir;
+  }
+
+  // ========== Git CLI ==========
+
+  private async git(cwd: string, ...args: string[]): Promise<{ stdout: string; stderr: string }> {
+    const env = { ...process.env };
+
+    // GITHUB_TOKEN 기반 HTTPS 인증 — git push 시 패스워드 프롬프트 방지
+    if (this.githubToken) {
+      env.GIT_ASKPASS = 'echo';
+      env.GIT_TERMINAL_PROMPT = '0';
+      // credential helper 대신 header로 토큰 주입
+      return execFileAsync(
+        'git',
+        ['-c', `http.extraHeader=Authorization: Bearer ${this.githubToken}`, ...args],
+        { cwd, env },
+      );
+    }
+
+    return execFileAsync('git', args, { cwd, env });
   }
 }
