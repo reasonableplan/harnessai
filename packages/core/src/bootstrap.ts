@@ -5,6 +5,7 @@ import { StateStore } from './state-store.js';
 import { GitService, type GitServiceConfig } from './git-service/index.js';
 import { BoardWatcher } from './board-watcher.js';
 import { SystemController } from './system-controller.js';
+import { OrphanCleaner } from './orphan-cleaner.js';
 import { startCLI } from './cli.js';
 import { createLogger } from './logger.js';
 import type { BaseAgent } from './base-agent.js';
@@ -51,14 +52,16 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
   let db: Database | null = null;
   let stateStore: StateStore | null = null;
   let boardWatcher: BoardWatcher | null = null;
+  let orphanCleaner: OrphanCleaner | null = null;
   const startedAgents: BaseAgent[] = [];
   const registeredAgentIds: string[] = [];
 
   async function cleanupInternal() {
-    // 역순 정리: agents → boardWatcher → agent DB status → db
+    // 역순 정리: agents → orphanCleaner → boardWatcher → agent DB status → db
     for (const agent of startedAgents) {
       agent.stopPolling();
     }
+    orphanCleaner?.stop();
     boardWatcher?.stop();
 
     // 등록된 에이전트 상태를 offline으로 변경
@@ -140,6 +143,11 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
       boardWatcher.start();
       log.info('BoardWatcher started');
     }
+
+    // 6.5. OrphanCleaner 생성 — 죽은 에이전트의 클레임 해제
+    orphanCleaner = new OrphanCleaner(db);
+    orphanCleaner.start();
+    log.info('OrphanCleaner started');
 
     // 7. 에이전트 등록
     const agents: BaseAgent[] = [];

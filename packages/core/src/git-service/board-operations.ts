@@ -4,6 +4,7 @@ import type { ProjectSetup } from './project-setup.js';
 import type { IssueManager } from './issue-manager.js';
 import type { ProjectItemsResponse } from './types.js';
 import { parseDependencies, parseGeneratedBy, parseEpicId } from './issue-parser.js';
+import { withRetry } from '../api-retry.js';
 
 export class BoardOperations {
   private ctx: GitHubContext;
@@ -28,11 +29,15 @@ export class BoardOperations {
 
     if (!itemId) {
       // 캐시 미스: 새로 추가된 이슈 등 — REST + GraphQL fallback
-      const { data: issue } = await this.ctx.octokit.rest.issues.get({
-        owner: this.ctx.owner,
-        repo: this.ctx.repo,
-        issue_number: issueNumber,
-      });
+      const { data: issue } = await withRetry(
+        () => this.ctx.octokit.rest.issues.get({
+          owner: this.ctx.owner,
+          repo: this.ctx.repo,
+          issue_number: issueNumber,
+        }),
+        {},
+        'getIssue (board cache miss)',
+      );
 
       itemId = await this.issueManager.getProjectItemId(issue.node_id);
       if (!itemId) {
@@ -43,23 +48,27 @@ export class BoardOperations {
       this.itemIdCache.set(issueNumber, itemId);
     }
 
-    await this.ctx.graphqlWithAuth(
-      `mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
-        updateProjectV2ItemFieldValue(input: {
-          projectId: $projectId
-          itemId: $itemId
-          fieldId: $fieldId
-          value: { singleSelectOptionId: $optionId }
-        }) {
-          projectV2Item { id }
-        }
-      }`,
-      {
-        projectId: this.setup.projectId,
-        itemId,
-        fieldId: this.setup.columnFieldId,
-        optionId,
-      },
+    await withRetry(
+      () => this.ctx.graphqlWithAuth(
+        `mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+          updateProjectV2ItemFieldValue(input: {
+            projectId: $projectId
+            itemId: $itemId
+            fieldId: $fieldId
+            value: { singleSelectOptionId: $optionId }
+          }) {
+            projectV2Item { id }
+          }
+        }`,
+        {
+          projectId: this.setup.projectId,
+          itemId,
+          fieldId: this.setup.columnFieldId,
+          optionId,
+        },
+      ),
+      {},
+      'moveIssueToColumn',
     );
   }
 

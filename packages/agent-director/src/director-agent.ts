@@ -64,6 +64,7 @@ export class DirectorAgent extends BaseAgent {
 
     this.epicPlanner = new EpicPlanner(this.id, this.stateStore, this.gitService, this.messageBus);
     this.dispatcher = new Dispatcher(this.stateStore, this.gitService);
+    this.dispatcher.setClaudeClient(this.claude);
     this.reviewProcessor = new ReviewProcessor(this.stateStore, this.gitService, this.claude, this.dispatcher);
 
     // MessageBus 구독
