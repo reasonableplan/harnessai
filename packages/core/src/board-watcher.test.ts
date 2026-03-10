@@ -168,4 +168,84 @@ describe('BoardWatcher', () => {
     watcher.start(); // no-op
     watcher.stop();
   });
+
+  // ===== Diff-based optimization =====
+
+  it('skips DB sync for unchanged issues on subsequent syncs', async () => {
+    const issue = makeIssue({ issueNumber: 10, column: 'Ready' });
+    vi.mocked(gitService.getAllProjectItems).mockResolvedValue([issue]);
+
+    // First sync: new issue → should create task
+    await watcher.sync();
+    expect(stateStore.createTask).toHaveBeenCalledTimes(1);
+
+    // Second sync: same column → should NOT call getTask or createTask again
+    vi.mocked(stateStore.createTask).mockClear();
+    vi.mocked(stateStore.getTask).mockClear();
+    await watcher.sync();
+    expect(stateStore.getTask).not.toHaveBeenCalled();
+    expect(stateStore.createTask).not.toHaveBeenCalled();
+  });
+
+  it('syncs DB when issue column changes', async () => {
+    const issueReady = makeIssue({ issueNumber: 10, column: 'Ready' });
+    vi.mocked(gitService.getAllProjectItems).mockResolvedValueOnce([issueReady]);
+    await watcher.sync();
+
+    // Column changed → should sync
+    const issueInProgress = makeIssue({ issueNumber: 10, column: 'In Progress' });
+    vi.mocked(gitService.getAllProjectItems).mockResolvedValueOnce([issueInProgress]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(stateStore.getTask).mockResolvedValueOnce({ id: 'task-gh-10', status: 'ready' } as any);
+    await watcher.sync();
+
+    expect(stateStore.getTask).toHaveBeenCalledWith('task-gh-10');
+    expect(stateStore.updateTask).toHaveBeenCalled();
+  });
+
+  // ===== Deleted issue handling =====
+
+  it('publishes board.remove when issue disappears from board', async () => {
+    const issue = makeIssue({ issueNumber: 20, column: 'In Progress' });
+    vi.mocked(gitService.getAllProjectItems).mockResolvedValueOnce([issue]);
+    await watcher.sync();
+
+    // Second sync: issue gone
+    vi.mocked(gitService.getAllProjectItems).mockResolvedValueOnce([]);
+    await watcher.sync();
+
+    expect(messageBus.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'board.remove',
+        payload: { issueNumber: 20, lastColumn: 'In Progress' },
+      }),
+    );
+  });
+
+  it('does not publish board.remove on first sync (no previous state)', async () => {
+    vi.mocked(gitService.getAllProjectItems).mockResolvedValueOnce([]);
+    await watcher.sync();
+    expect(messageBus.publish).not.toHaveBeenCalled();
+  });
+
+  // ===== Webhook triggerSync =====
+
+  it('triggerSync calls sync immediately', async () => {
+    const issue = makeIssue({ issueNumber: 30, column: 'Backlog' });
+    vi.mocked(gitService.getAllProjectItems).mockResolvedValueOnce([issue]);
+
+    await watcher.triggerSync();
+
+    expect(gitService.getAllProjectItems).toHaveBeenCalledTimes(1);
+    expect(stateStore.createTask).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'task-gh-30' }),
+    );
+  });
+
+  it('triggerSync handles errors without throwing', async () => {
+    vi.mocked(gitService.getAllProjectItems).mockRejectedValueOnce(new Error('API down'));
+
+    // Should not throw
+    await expect(watcher.triggerSync()).resolves.toBeUndefined();
+  });
 });

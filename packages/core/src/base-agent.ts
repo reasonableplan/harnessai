@@ -18,6 +18,10 @@ export interface AgentDependencies {
 
 export type AgentStatus = 'idle' | 'busy' | 'paused' | 'error';
 
+const DEFAULT_TASK_TIMEOUT_MS = 5 * 60 * 1000; // 5분
+const MAX_BACKOFF_MS = 60_000; // 최대 1분
+const HEARTBEAT_INTERVAL_CYCLES = 3; // 3 poll cycle마다 heartbeat
+
 export abstract class BaseAgent {
   readonly id: string;
   readonly domain: string;
@@ -25,6 +29,7 @@ export abstract class BaseAgent {
 
   private polling = false;
   private _status: AgentStatus = 'idle';
+  private consecutiveErrors = 0;
 
   protected messageBus: IMessageBus;
   protected stateStore: IStateStore;
@@ -43,9 +48,9 @@ export abstract class BaseAgent {
     return this._status;
   }
 
-  protected setStatus(status: AgentStatus) {
+  protected async setStatus(status: AgentStatus): Promise<void> {
     this._status = status;
-    this.messageBus.publish({
+    await this.messageBus.publish({
       id: crypto.randomUUID(),
       type: MESSAGE_TYPES.AGENT_STATUS,
       from: this.id,
@@ -71,30 +76,78 @@ export abstract class BaseAgent {
     this.polling = false;
   }
 
+  /**
+   * 에이전트를 일시정지한다. 폴링 중지 + 상태를 paused로 변경.
+   */
+  async pause(): Promise<void> {
+    this.stopPolling();
+    await this.setStatus('paused');
+  }
+
+  /**
+   * 에이전트를 재개한다. 상태를 idle로 변경 + 폴링 시작.
+   */
+  async resume(intervalMs = 10_000): Promise<void> {
+    await this.setStatus('idle');
+    this.startPolling(intervalMs);
+  }
+
   private async pollLoop(intervalMs: number) {
+    let cycleCount = 0;
+
     while (this.polling) {
+      // 하트비트: N cycle마다 DB에 생존 신호
+      if (++cycleCount % HEARTBEAT_INTERVAL_CYCLES === 0) {
+        try {
+          await this.stateStore.updateHeartbeat(this.id);
+        } catch (err) {
+          console.error(`[${this.id}] Heartbeat failed:`, err);
+        }
+      }
+
       if (this._status === 'idle' || this._status === 'error') {
         try {
           // error 상태에서 자동 복구 시도
           if (this._status === 'error') {
             console.log(`[${this.id}] Recovering from error state...`);
-            this.setStatus('idle');
+            await this.setStatus('idle');
           }
 
           const task = await this.findNextTask();
           if (task) {
-            this.setStatus('busy');
-            const result = await this.executeTask(task);
+            await this.setStatus('busy');
+            const result = await this.executeTaskWithTimeout(task);
             await this.onTaskComplete(task, result);
-            this.setStatus('idle');
+            await this.setStatus('idle');
+            this.consecutiveErrors = 0; // 성공 시 리셋
           }
         } catch (error) {
-          this.setStatus('error');
-          console.error(`[${this.id}] Polling error:`, error);
+          this.consecutiveErrors++;
+          await this.setStatus('error');
+          console.error(`[${this.id}] Polling error (${this.consecutiveErrors}x):`, error);
         }
       }
-      await new Promise((r) => setTimeout(r, intervalMs));
+
+      // 지수 백오프: 연속 에러 시 대기 시간 증가
+      const backoff = this.consecutiveErrors > 0
+        ? Math.min(intervalMs * Math.pow(2, this.consecutiveErrors - 1), MAX_BACKOFF_MS)
+        : intervalMs;
+      await new Promise((r) => setTimeout(r, backoff));
     }
+  }
+
+  /**
+   * executeTask에 타임아웃을 적용한다. 무한 hang 방지.
+   */
+  private async executeTaskWithTimeout(task: Task): Promise<TaskResult> {
+    const timeoutMs = this.config.taskTimeoutMs ?? DEFAULT_TASK_TIMEOUT_MS;
+
+    return Promise.race([
+      this.executeTask(task),
+      new Promise<TaskResult>((_, reject) =>
+        setTimeout(() => reject(new Error(`Task "${task.title}" timed out after ${timeoutMs}ms`)), timeoutMs),
+      ),
+    ]);
   }
 
   /**
@@ -159,10 +212,22 @@ export abstract class BaseAgent {
   protected abstract executeTask(task: Task): Promise<TaskResult>;
 
   /**
-   * 태스크 완료 후 처리. 기본 구현은 review.request를 발행한다.
-   * 서브클래스에서 오버라이드 가능하다.
+   * 태스크 완료 후 처리. 기본 구현은 DB 상태 갱신 + review.request 발행.
+   * 서브클래스에서 오버라이드 가능하다 (super.onTaskComplete 호출 권장).
    */
   protected async onTaskComplete(task: Task, result: TaskResult): Promise<void> {
+    const newStatus = result.success ? 'review' : 'failed';
+    const newColumn = result.success ? 'Review' : 'Failed';
+
+    await this.stateStore.updateTask(task.id, {
+      status: newStatus,
+      boardColumn: newColumn,
+    });
+
+    if (task.githubIssueNumber) {
+      await this.gitService.moveIssueToColumn(task.githubIssueNumber, newColumn);
+    }
+
     await this.messageBus.publish({
       id: crypto.randomUUID(),
       type: MESSAGE_TYPES.REVIEW_REQUEST,

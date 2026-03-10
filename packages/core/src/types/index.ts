@@ -70,6 +70,7 @@ export interface Message<T = unknown> {
 /** Well-known message types. Agents can define additional types as needed. */
 export const MESSAGE_TYPES = {
   BOARD_MOVE: 'board.move',
+  BOARD_REMOVE: 'board.remove',
   REVIEW_REQUEST: 'review.request',
   EPIC_PROGRESS: 'epic.progress',
   AGENT_STATUS: 'agent.status',
@@ -139,6 +140,7 @@ export interface AgentConfig {
   maxTokens: number;
   temperature: number;
   tokenBudget: number;
+  taskTimeoutMs?: number;
 }
 
 // ===== ApiSpec =====

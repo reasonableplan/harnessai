@@ -49,7 +49,20 @@ export class BoardWatcher {
   }
 
   /**
+   * Webhook 등 외부에서 즉시 동기화를 트리거할 수 있는 public 메서드.
+   * pollLoop과 독립적으로 호출 가능.
+   */
+  async triggerSync(): Promise<void> {
+    try {
+      await this.sync();
+    } catch (error) {
+      console.error('[BoardWatcher] Triggered sync error:', error);
+    }
+  }
+
+  /**
    * Single GraphQL call → detect changes → sync DB.
+   * Diff-based: 변경된 이슈와 새 이슈만 DB 접근하여 대규모 프로젝트 대응.
    */
   async sync(): Promise<void> {
     const allItems = await this.gitService.getAllProjectItems();
@@ -58,18 +71,31 @@ export class BoardWatcher {
     for (const issue of allItems) {
       currentColumns.set(issue.issueNumber, issue.column);
 
+      const prevColumn = this.previousColumns.get(issue.issueNumber);
+      const isNew = prevColumn === undefined;
+      const isChanged = prevColumn !== undefined && prevColumn !== issue.column;
+
       try {
         // Detect column change
-        const prevColumn = this.previousColumns.get(issue.issueNumber);
-        if (prevColumn && prevColumn !== issue.column) {
+        if (isChanged) {
           await this.onColumnChange(issue, prevColumn, issue.column);
         }
 
-        // Sync to DB
-        await this.syncTaskFromIssue(issue);
+        // Diff-based: 새 이슈이거나 컬럼이 변경된 경우에만 DB 동기화
+        if (isNew || isChanged) {
+          await this.syncTaskFromIssue(issue);
+        }
       } catch (error) {
         console.error(`[BoardWatcher] Failed to sync issue #${issue.issueNumber}:`, error);
-        // 개별 issue 실패가 전체 sync를 중단하지 않도록 계속 진행
+      }
+    }
+
+    // 삭제된 이슈 감지: previousColumns에는 있지만 currentColumns에는 없는 이슈
+    if (this.previousColumns.size > 0) {
+      for (const [issueNumber, column] of this.previousColumns) {
+        if (!currentColumns.has(issueNumber)) {
+          await this.onIssueRemoved(issueNumber, column);
+        }
       }
     }
 
@@ -104,6 +130,20 @@ export class BoardWatcher {
     await this.messageBus.publish(message);
   }
 
+  private async onIssueRemoved(issueNumber: number, lastColumn: string): Promise<void> {
+    console.log(`[BoardWatcher] Issue #${issueNumber} removed from board (was: ${lastColumn})`);
+
+    await this.messageBus.publish({
+      id: crypto.randomUUID(),
+      type: 'board.remove',
+      from: 'board-watcher',
+      to: null,
+      payload: { issueNumber, lastColumn },
+      traceId: crypto.randomUUID(),
+      timestamp: new Date(),
+    });
+  }
+
   private async syncTaskFromIssue(issue: BoardIssue): Promise<void> {
     const taskId = `task-gh-${issue.issueNumber}`;
     const existing = await this.stateStore.getTask(taskId);
@@ -113,11 +153,24 @@ export class BoardWatcher {
     const targetAgent = agentLabel?.replace('agent:', '') ?? null;
 
     if (existing) {
-      await this.stateStore.updateTask(taskId, {
-        boardColumn: issue.column,
-        status: COLUMN_TO_STATUS[issue.column] ?? 'backlog',
-        assignedAgent: targetAgent,
-      });
+      // Agent가 claimTask로 'in-progress'로 바꾼 상태를 Board가 아직 반영하지 않았을 때
+      // Board 기준 'Ready'로 되돌리는 것을 방지 — DB가 더 최신이면 스킵
+      const dbStatus = existing.status as string;
+      const boardStatus = COLUMN_TO_STATUS[issue.column] ?? 'backlog';
+      const STATUS_PRIORITY: Record<string, number> = {
+        backlog: 0, ready: 1, 'in-progress': 2, review: 3, failed: 3, done: 4,
+      };
+      const dbPriority = STATUS_PRIORITY[dbStatus] ?? 0;
+      const boardPriority = STATUS_PRIORITY[boardStatus] ?? 0;
+
+      // Board가 DB보다 앞선(더 진행된) 상태이거나 같은 경우에만 업데이트
+      if (boardPriority >= dbPriority) {
+        await this.stateStore.updateTask(taskId, {
+          boardColumn: issue.column,
+          status: boardStatus,
+          assignedAgent: targetAgent,
+        });
+      }
     } else {
       await this.stateStore.createTask({
         id: taskId,

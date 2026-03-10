@@ -11,6 +11,8 @@ function createMockAgent(id: string, domain: string): BaseAgent {
     config: { id, domain, level: 2, claudeModel: '', maxTokens: 0, temperature: 0, tokenBudget: 0 },
     startPolling: vi.fn(),
     stopPolling: vi.fn(),
+    pause: vi.fn(),
+    resume: vi.fn(),
   } as unknown as BaseAgent;
 }
 
@@ -69,7 +71,7 @@ describe('SystemController', () => {
     const result = await controller.handleSystemCommand(makeInput('pause'));
     expect(result).toContain('2 agents paused');
     for (const agent of agents) {
-      expect(agent.stopPolling).toHaveBeenCalled();
+      expect(agent.pause).toHaveBeenCalled();
     }
     expect(stateStore.updateAgentStatus).toHaveBeenCalledWith('git', 'paused');
     expect(stateStore.updateAgentStatus).toHaveBeenCalledWith('backend', 'paused');
@@ -79,7 +81,7 @@ describe('SystemController', () => {
     const result = await controller.handleSystemCommand(makeInput('resume'));
     expect(result).toContain('2 agents resumed');
     for (const agent of agents) {
-      expect(agent.startPolling).toHaveBeenCalled();
+      expect(agent.resume).toHaveBeenCalled();
     }
     expect(stateStore.updateAgentStatus).toHaveBeenCalledWith('git', 'idle');
     expect(stateStore.updateAgentStatus).toHaveBeenCalledWith('backend', 'idle');

@@ -38,7 +38,7 @@ export class SystemController {
   private async handlePause(): Promise<string> {
     let paused = 0;
     for (const agent of this.agents) {
-      agent.stopPolling();
+      await agent.pause();
       await this.stateStore.updateAgentStatus(agent.id, 'paused');
       paused++;
     }
@@ -48,7 +48,7 @@ export class SystemController {
   private async handleResume(): Promise<string> {
     let resumed = 0;
     for (const agent of this.agents) {
-      agent.startPolling();
+      await agent.resume();
       await this.stateStore.updateAgentStatus(agent.id, 'idle');
       resumed++;
     }
