@@ -189,8 +189,8 @@ describe('BackendAgent', () => {
     expect(stateStore.saveArtifact).toHaveBeenCalledWith(
       expect.objectContaining({
         taskId: 'task-1',
-        type: 'code',
-        path: 'src/routes/users.ts',
+        filePath: 'src/routes/users.ts',
+        createdBy: 'backend',
       }),
     );
 
@@ -204,12 +204,17 @@ describe('BackendAgent', () => {
     );
   });
 
-  it('skips commit request when no epicId', async () => {
+  it('creates commit request even without epicId', async () => {
     const task = makeTask({ epicId: null });
     const result = await callExecuteTask(agent, task);
 
     expect(result.success).toBe(true);
-    expect(gitService.createIssue).not.toHaveBeenCalled();
+    expect(gitService.createIssue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: expect.stringContaining('[GIT] Commit:'),
+        labels: expect.arrayContaining(['agent:git', 'type:commit']),
+      }),
+    );
   });
 
   // ===== Analyze Task =====

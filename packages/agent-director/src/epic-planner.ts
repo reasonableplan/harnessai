@@ -1,5 +1,7 @@
 import type { IStateStore, IGitService, IMessageBus } from '@agent/core';
-import { MESSAGE_TYPES } from '@agent/core';
+import { MESSAGE_TYPES, createLogger } from '@agent/core';
+
+const log = createLogger('EpicPlanner');
 import type { CreateEpicAction } from './action-types.js';
 
 export class EpicPlanner {
@@ -12,7 +14,7 @@ export class EpicPlanner {
 
   async createEpic(action: CreateEpicAction): Promise<string> {
     const taskCount = action.tasks.length;
-    console.log(`[Director] Planning epic: "${action.title}" with ${taskCount} tasks`);
+    log.info({ title: action.title, taskCount }, 'Planning epic');
 
     // Epic을 DB에 저장
     const epicId = crypto.randomUUID();
@@ -32,7 +34,7 @@ export class EpicPlanner {
       // 의존성 검증: 아직 생성되지 않은 task id 참조 감지
       for (const depId of taskSpec.dependencies) {
         if (!idToIssue.has(depId)) {
-          console.warn(`[Director] Task "${taskSpec.title}" references unknown dependency "${depId}" — skipped`);
+          log.warn({ taskTitle: taskSpec.title, depId }, 'Unknown dependency reference — skipped');
         }
       }
 
@@ -77,7 +79,7 @@ export class EpicPlanner {
         retryCount: 0,
       });
 
-      console.log(`[Director] Created issue #${issueNumber}: ${taskSpec.title} → ${taskSpec.agent}`);
+      log.info({ issueNumber, title: taskSpec.title, agent: taskSpec.agent }, 'Created issue');
     }
 
     // 의존성 없는 Task를 Ready로 이동

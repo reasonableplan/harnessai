@@ -6,9 +6,12 @@ import { GitService, type GitServiceConfig } from './git-service/index.js';
 import { BoardWatcher } from './board-watcher.js';
 import { SystemController } from './system-controller.js';
 import { startCLI } from './cli.js';
+import { createLogger } from './logger.js';
 import type { BaseAgent } from './base-agent.js';
 import type { AgentDependencies } from './base-agent.js';
 import type { UserInput } from './types/index.js';
+
+const log = createLogger('Bootstrap');
 
 export interface SystemContext {
   db: Database;
@@ -64,7 +67,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
         try {
           await stateStore.updateAgentStatus(agentId, 'offline');
         } catch (err) {
-          console.error(`[BOOT] Failed to set agent '${agentId}' offline:`, err);
+          log.error({ err, agentId }, 'Failed to set agent offline');
         }
       }
     }
@@ -75,7 +78,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await (db as any).$client?.end?.();
       } catch (err) {
-        console.error('[BOOT] Failed to close DB pool:', err);
+        log.error({ err }, 'Failed to close DB pool');
       }
     }
   }
@@ -87,7 +90,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
       cleanupInternal(),
       new Promise<void>((resolve) =>
         setTimeout(() => {
-          console.error('[BOOT] Cleanup timed out, forcing exit');
+          log.error('Cleanup timed out, forcing exit');
           resolve();
         }, CLEANUP_TIMEOUT_MS),
       ),
@@ -97,7 +100,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
   try {
     // 1. 환경 변수 로드
     config();
-    console.log('[BOOT] Configuration loaded');
+    log.info('Configuration loaded');
 
     // 2. PostgreSQL 초기화
     const databaseUrl = process.env.DATABASE_URL;
@@ -105,14 +108,14 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
     db = createDb(databaseUrl);
     if (!cfg.skipMigration) {
       await runMigrations(db, './drizzle');
-      console.log('[BOOT] Database migrations applied');
+      log.info('Database migrations applied');
     }
     stateStore = new StateStore(db);
-    console.log('[BOOT] Database connected');
+    log.info('Database connected');
 
     // 3. MessageBus 생성
     const messageBus = new MessageBus();
-    console.log('[BOOT] MessageBus created');
+    log.info('MessageBus created');
 
     // 4. GitService 생성
     const gitConfig: GitServiceConfig = {
@@ -125,7 +128,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
 
     if (!cfg.skipGitValidation) {
       await gitService.validateConnection();
-      console.log('[BOOT] GitService connected');
+      log.info('GitService connected');
     }
 
     // 5. 공유 의존성
@@ -135,7 +138,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
     boardWatcher = new BoardWatcher(gitService, stateStore, messageBus);
     if (!cfg.skipBoardWatcher) {
       boardWatcher.start();
-      console.log('[BOOT] BoardWatcher started');
+      log.info('BoardWatcher started');
     }
 
     // 7. 에이전트 등록
@@ -150,7 +153,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
       });
       registeredAgentIds.push(agent.id);
       agents.push(agent);
-      console.log(`[BOOT] Agent registered: ${id}`);
+      log.info({ agentId: id }, 'Agent registered');
     }
 
     // 8. SystemController
@@ -161,14 +164,14 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
       agent.startPolling();
       startedAgents.push(agent);
     }
-    console.log(`[BOOT] ${agents.length} agents polling`);
+    log.info({ agentCount: agents.length }, 'Agents polling');
 
     // 10. CLI
     if (!cfg.skipCLI) {
       const director = agents.find((a) => a.id === 'director');
 
       if (!director) {
-        console.warn('[BOOT] ⚠ Director agent not found. CLI will only accept system commands.');
+        log.warn('Director agent not found — CLI will only accept system commands');
       }
 
       startCLI({
@@ -186,7 +189,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
               })
           : null,
       });
-      console.log('[BOOT] CLI ready');
+      log.info('CLI ready');
     }
 
     // OS 시그널 핸들링 — Ctrl+C / kill 시 자동 정리
@@ -194,14 +197,14 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
     const signalHandler = async () => {
       if (shuttingDown) return; // 중복 호출 방지
       shuttingDown = true;
-      console.log('\n[BOOT] Signal received, shutting down...');
+      log.info('Signal received, shutting down...');
       await cleanup();
       process.exit(0);
     };
     process.on('SIGINT', signalHandler);
     process.on('SIGTERM', signalHandler);
 
-    console.log('[BOOT] System ready.');
+    log.info('System ready');
 
     return {
       db,
@@ -220,7 +223,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
       },
     };
   } catch (error) {
-    console.error('[BOOT] Startup failed, cleaning up...');
+    log.error('Startup failed, cleaning up...');
     await cleanup();
     throw error;
   }

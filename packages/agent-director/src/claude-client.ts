@@ -1,4 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { createLogger } from '@agent/core';
+
+const log = createLogger('ClaudeClient');
 
 export interface ClaudeResponse {
   content: string;
@@ -120,7 +123,7 @@ export class ClaudeClient {
 
         if (attempt < maxRetries) {
           const delay = BASE_DELAY_MS * Math.pow(2, attempt);
-          console.warn(`[ClaudeClient] Retry ${attempt + 1}/${maxRetries} after ${delay}ms: ${lastError.message}`);
+          log.warn({ attempt: attempt + 1, maxRetries, delayMs: delay, err: lastError.message }, 'Retrying');
           await new Promise((r) => setTimeout(r, delay));
         }
       }

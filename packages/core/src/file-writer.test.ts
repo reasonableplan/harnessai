@@ -117,7 +117,7 @@ describe('FileWriter', () => {
     expect(written).toHaveLength(3);
   });
 
-  it('creates empty file when content is empty string', async () => {
+  it('rejects empty file content with validation error', async () => {
     const generated: GeneratedCode = {
       files: [
         { path: 'empty.ts', content: '', action: 'create', language: 'typescript' },
@@ -125,11 +125,7 @@ describe('FileWriter', () => {
       summary: 'test',
     };
 
-    const written = await writer.writeFiles(generated);
-
-    expect(written).toEqual(['empty.ts']);
-    const content = await fs.readFile(path.join(tmpDir, 'empty.ts'), 'utf-8');
-    expect(content).toBe('');
+    await expect(writer.writeFiles(generated)).rejects.toThrow('Empty file content: empty.ts');
   });
 
   it('handles paths with spaces and Korean characters', async () => {

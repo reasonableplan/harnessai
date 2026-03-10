@@ -9,23 +9,23 @@ import {
 import { ClaudeClient } from './claude-client.js';
 import { CodeGenerator, type IClaudeClient } from './code-generator.js';
 import { CommitRequester } from './commit-requester.js';
-import { detectTaskType, type BackendTaskType } from './task-router.js';
+import { detectTaskType, type FrontendTaskType } from './task-router.js';
 
-export interface BackendAgentConfig {
+export interface FrontendAgentConfig {
   workDir: string;
   claudeApiKey?: string;
   claudeClient?: IClaudeClient;
 }
 
-export class BackendAgent extends BaseAgent {
+export class FrontendAgent extends BaseAgent {
   private codeGenerator: CodeGenerator;
   private commitRequester: CommitRequester;
   private fileWriter: FileWriter;
 
-  constructor(deps: AgentDependencies, backendConfig: BackendAgentConfig) {
+  constructor(deps: AgentDependencies, frontendConfig: FrontendAgentConfig) {
     const config: AgentConfig = {
-      id: 'backend',
-      domain: 'backend',
+      id: 'frontend',
+      domain: 'frontend',
       level: 2,
       claudeModel: 'claude-sonnet-4-20250514',
       maxTokens: 16384,
@@ -35,14 +35,14 @@ export class BackendAgent extends BaseAgent {
     };
     super(config, deps);
 
-    const claude = backendConfig.claudeClient ?? new ClaudeClient(
+    const claude = frontendConfig.claudeClient ?? new ClaudeClient(
       { model: config.claudeModel, maxTokens: config.maxTokens, temperature: config.temperature },
-      backendConfig.claudeApiKey,
+      frontendConfig.claudeApiKey,
     );
 
-    this.codeGenerator = new CodeGenerator(claude);
+    this.codeGenerator = new CodeGenerator(claude, frontendConfig.workDir);
     this.commitRequester = new CommitRequester(deps.gitService);
-    this.fileWriter = new FileWriter(backendConfig.workDir);
+    this.fileWriter = new FileWriter(frontendConfig.workDir);
   }
 
   protected async executeTask(task: Task): Promise<TaskResult> {
@@ -52,7 +52,7 @@ export class BackendAgent extends BaseAgent {
     if (taskType === 'unknown') {
       return {
         success: false,
-        error: { message: `Unknown backend task type for: ${task.title}` },
+        error: { message: `Unknown frontend task type for: ${task.title}` },
         artifacts: [],
       };
     }
@@ -70,7 +70,7 @@ export class BackendAgent extends BaseAgent {
     }
   }
 
-  private async handleCodeTask(task: Task, taskType: BackendTaskType): Promise<TaskResult> {
+  private async handleCodeTask(task: Task, taskType: FrontendTaskType): Promise<TaskResult> {
     // 1. Claude로 코드 생성
     const generated = await this.codeGenerator.generate(task, taskType);
     this.log.info({ fileCount: generated.files.length, summary: generated.summary }, 'Code generated');

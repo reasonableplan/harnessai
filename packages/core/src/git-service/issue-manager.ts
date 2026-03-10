@@ -1,15 +1,22 @@
 import type { IssueSpec, BoardIssue } from '../types/index.js';
 import type { GitHubContext } from './types.js';
 import type { ProjectSetup } from './project-setup.js';
+import type { BoardOperations } from './board-operations.js';
 import { toBoardIssue } from './issue-parser.js';
 
 export class IssueManager {
   private ctx: GitHubContext;
   private setup: ProjectSetup;
+  private boardOps: BoardOperations | null = null;
 
   constructor(ctx: GitHubContext, setup: ProjectSetup) {
     this.ctx = ctx;
     this.setup = setup;
+  }
+
+  /** BoardOperations 참조 설정 (순환 의존 방지용 lazy init) */
+  setBoardOperations(boardOps: BoardOperations): void {
+    this.boardOps = boardOps;
   }
 
   async createIssue(spec: IssueSpec): Promise<number> {
@@ -69,6 +76,14 @@ export class IssueManager {
   }
 
   async getIssuesByLabel(label: string): Promise<BoardIssue[]> {
+    // 최적화: BoardOperations 캐시가 있으면 단일 GraphQL 호출(getAllProjectItems)로 일괄 필터링
+    // O(n) 개별 getIssueColumn 호출을 제거 → O(1) 배치 처리
+    if (this.boardOps) {
+      const allItems = await this.boardOps.getAllProjectItems();
+      return allItems.filter((item) => item.labels.includes(label));
+    }
+
+    // Fallback: BoardOperations 미연결 시 기존 방식
     const { data: issues } = await this.ctx.octokit.rest.issues.listForRepo({
       owner: this.ctx.owner,
       repo: this.ctx.repo,

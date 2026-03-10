@@ -7,42 +7,43 @@ import {
   type TaskResult,
 } from '@agent/core';
 import { ClaudeClient } from './claude-client.js';
-import { CodeGenerator, type IClaudeClient } from './code-generator.js';
+import { DocGenerator, type IClaudeClient } from './doc-generator.js';
 import { CommitRequester } from './commit-requester.js';
-import { detectTaskType, type BackendTaskType } from './task-router.js';
+import { detectTaskType, type DocsTaskType } from './task-router.js';
 
-export interface BackendAgentConfig {
+export interface DocsAgentConfig {
   workDir: string;
   claudeApiKey?: string;
   claudeClient?: IClaudeClient;
+  claudeModel?: string;
 }
 
-export class BackendAgent extends BaseAgent {
-  private codeGenerator: CodeGenerator;
+export class DocsAgent extends BaseAgent {
+  private docGenerator: DocGenerator;
   private commitRequester: CommitRequester;
   private fileWriter: FileWriter;
 
-  constructor(deps: AgentDependencies, backendConfig: BackendAgentConfig) {
+  constructor(deps: AgentDependencies, docsConfig: DocsAgentConfig) {
     const config: AgentConfig = {
-      id: 'backend',
-      domain: 'backend',
+      id: 'docs',
+      domain: 'docs',
       level: 2,
-      claudeModel: 'claude-sonnet-4-20250514',
+      claudeModel: docsConfig.claudeModel ?? 'claude-sonnet-4-20250514',
       maxTokens: 16384,
-      temperature: 0.2,
+      temperature: 0.3,
       tokenBudget: 100_000,
-      taskTimeoutMs: 10 * 60 * 1000, // 10분 (코드 생성은 시간이 걸림)
+      taskTimeoutMs: 10 * 60 * 1000,
     };
     super(config, deps);
 
-    const claude = backendConfig.claudeClient ?? new ClaudeClient(
+    const claude = docsConfig.claudeClient ?? new ClaudeClient(
       { model: config.claudeModel, maxTokens: config.maxTokens, temperature: config.temperature },
-      backendConfig.claudeApiKey,
+      docsConfig.claudeApiKey,
     );
 
-    this.codeGenerator = new CodeGenerator(claude);
+    this.docGenerator = new DocGenerator(claude, docsConfig.workDir);
     this.commitRequester = new CommitRequester(deps.gitService);
-    this.fileWriter = new FileWriter(backendConfig.workDir);
+    this.fileWriter = new FileWriter(docsConfig.workDir);
   }
 
   protected async executeTask(task: Task): Promise<TaskResult> {
@@ -52,13 +53,13 @@ export class BackendAgent extends BaseAgent {
     if (taskType === 'unknown') {
       return {
         success: false,
-        error: { message: `Unknown backend task type for: ${task.title}` },
+        error: { message: `Unknown docs task type for: ${task.title}` },
         artifacts: [],
       };
     }
 
     try {
-      return await this.handleCodeTask(task, taskType);
+      return await this.handleDocTask(task, taskType);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.log.error({ err: message }, 'Task failed');
@@ -70,10 +71,10 @@ export class BackendAgent extends BaseAgent {
     }
   }
 
-  private async handleCodeTask(task: Task, taskType: BackendTaskType): Promise<TaskResult> {
-    // 1. Claude로 코드 생성
-    const generated = await this.codeGenerator.generate(task, taskType);
-    this.log.info({ fileCount: generated.files.length, summary: generated.summary }, 'Code generated');
+  private async handleDocTask(task: Task, taskType: DocsTaskType): Promise<TaskResult> {
+    // 1. Claude로 문서 생성
+    const generated = await this.docGenerator.generate(task, taskType);
+    this.log.info({ fileCount: generated.files.length, summary: generated.summary }, 'Docs generated');
 
     // 2. analyze 타입은 파일 생성 없이 결과만 반환
     if (taskType === 'analyze') {
@@ -88,7 +89,7 @@ export class BackendAgent extends BaseAgent {
     if (generated.files.length === 0) {
       return {
         success: false,
-        error: { message: 'Code generation produced no files' },
+        error: { message: 'Document generation produced no files' },
         artifacts: [],
       };
     }
@@ -111,7 +112,6 @@ export class BackendAgent extends BaseAgent {
       await this.commitRequester.requestCommit(task, writtenFiles, generated.summary);
     } catch (error) {
       this.log.warn({ err: error instanceof Error ? error.message : error }, 'Failed to create commit request');
-      // commit 요청 실패가 task 자체를 실패시키지는 않음
     }
 
     return {

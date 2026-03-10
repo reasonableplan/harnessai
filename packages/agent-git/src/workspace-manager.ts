@@ -1,6 +1,9 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { createLogger } from '@agent/core';
 import type { GitCli } from './git-cli.js';
+
+const log = createLogger('WorkspaceManager');
 
 export class WorkspaceManager {
   constructor(
@@ -33,9 +36,9 @@ export class WorkspaceManager {
     const epicDir = path.resolve(this.workDir, epicId);
     try {
       await fs.rm(epicDir, { recursive: true, force: true });
-      console.log(`[GitAgent] Cleaned up workspace: ${epicDir}`);
+      log.info({ epicDir }, 'Cleaned up workspace');
     } catch (error) {
-      console.error(`[GitAgent] Failed to cleanup workspace ${epicDir}:`, error);
+      log.error({ err: error, epicDir }, 'Failed to cleanup workspace');
     }
   }
 }

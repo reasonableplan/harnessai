@@ -9,6 +9,7 @@ import type {
   TaskRow,
 } from './types/index.js';
 import { MESSAGE_TYPES } from './types/index.js';
+import { createLogger, type Logger } from './logger.js';
 
 export interface AgentDependencies {
   messageBus: IMessageBus;
@@ -34,6 +35,7 @@ export abstract class BaseAgent {
   protected messageBus: IMessageBus;
   protected stateStore: IStateStore;
   protected gitService: IGitService;
+  protected log: Logger;
 
   constructor(config: AgentConfig, deps: AgentDependencies) {
     this.id = config.id;
@@ -42,6 +44,7 @@ export abstract class BaseAgent {
     this.messageBus = deps.messageBus;
     this.stateStore = deps.stateStore;
     this.gitService = deps.gitService;
+    this.log = createLogger(config.id);
   }
 
   get status(): AgentStatus {
@@ -101,7 +104,7 @@ export abstract class BaseAgent {
         try {
           await this.stateStore.updateHeartbeat(this.id);
         } catch (err) {
-          console.error(`[${this.id}] Heartbeat failed:`, err);
+          this.log.error({ err }, 'Heartbeat failed');
         }
       }
 
@@ -109,7 +112,7 @@ export abstract class BaseAgent {
         try {
           // error 상태에서 자동 복구 시도
           if (this._status === 'error') {
-            console.log(`[${this.id}] Recovering from error state...`);
+            this.log.info('Recovering from error state');
             await this.setStatus('idle');
           }
 
@@ -124,7 +127,7 @@ export abstract class BaseAgent {
         } catch (error) {
           this.consecutiveErrors++;
           await this.setStatus('error');
-          console.error(`[${this.id}] Polling error (${this.consecutiveErrors}x):`, error);
+          this.log.error({ err: error, consecutiveErrors: this.consecutiveErrors }, 'Polling error');
         }
       }
 
@@ -203,6 +206,7 @@ export abstract class BaseAgent {
       complexity: (row.complexity ?? 'medium') as Task['complexity'],
       retryCount: row.retryCount ?? 0,
       artifacts: [],
+      labels: (row.labels as string[]) ?? [],
     };
   }
 

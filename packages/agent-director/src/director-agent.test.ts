@@ -263,7 +263,6 @@ describe('DirectorAgent', () => {
       makeTask({ id: 'task-gh-50', title: 'API endpoint', description: 'Build login API', githubIssueNumber: 50 }),
     );
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await (agent as never as { onReviewRequest: (m: Message) => Promise<void> })
       .onReviewRequest(makeReviewMessage('task-gh-50', true));
 
@@ -272,13 +271,11 @@ describe('DirectorAgent', () => {
       expect.stringContaining('code reviewer'),
       expect.stringContaining('API endpoint'),
     );
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Approved task'));
     // 승인 시 Done으로 이동 + 의존성 체인 트리거
     expect(stateStore.updateTask).toHaveBeenCalledWith('task-gh-50', expect.objectContaining({
       status: 'done', boardColumn: 'Done',
     }));
     expect(gitService.moveIssueToColumn).toHaveBeenCalledWith(50, 'Done');
-    consoleSpy.mockRestore();
   });
 
   it('retries task when Claude review rejects', async () => {
@@ -292,15 +289,12 @@ describe('DirectorAgent', () => {
       makeTask({ id: 'task-gh-50', retryCount: 0, githubIssueNumber: 50 }),
     );
 
-    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await (agent as never as { onReviewRequest: (m: Message) => Promise<void> })
       .onReviewRequest(makeReviewMessage('task-gh-50', true));
 
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Review rejected'));
     expect(stateStore.updateTask).toHaveBeenCalledWith('task-gh-50', expect.objectContaining({
       retryCount: 1, status: 'ready', boardColumn: 'Ready',
     }));
-    consoleSpy.mockRestore();
   });
 
   it('auto-approves when Claude review call fails', async () => {
@@ -313,19 +307,14 @@ describe('DirectorAgent', () => {
       makeTask({ id: 'task-gh-50', githubIssueNumber: 50 }),
     );
 
-    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await (agent as never as { onReviewRequest: (m: Message) => Promise<void> })
       .onReviewRequest(makeReviewMessage('task-gh-50', true));
 
     // 리뷰 실패 시 자동 승인 (작업 차단 방지) → Done으로 이동
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('auto-approving'));
     expect(stateStore.updateTask).toHaveBeenCalledWith('task-gh-50', expect.objectContaining({
       status: 'done', boardColumn: 'Done',
     }));
     expect(gitService.moveIssueToColumn).toHaveBeenCalledWith(50, 'Done');
-    consoleSpy.mockRestore();
-    logSpy.mockRestore();
   });
 
   it('retries failed task when under max retries', async () => {
@@ -343,7 +332,6 @@ describe('DirectorAgent', () => {
   });
 
   it('marks task as failed when max retries exceeded', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.mocked(stateStore.getTask).mockResolvedValueOnce({
       id: 'task-gh-50', retryCount: 3, githubIssueNumber: 50,
     } as never);
@@ -356,8 +344,6 @@ describe('DirectorAgent', () => {
       status: 'failed', boardColumn: 'Failed',
     }));
     expect(gitService.moveIssueToColumn).toHaveBeenCalledWith(50, 'Failed');
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('failed after max retries'));
-    consoleSpy.mockRestore();
   });
 
   // ===== executeTask =====

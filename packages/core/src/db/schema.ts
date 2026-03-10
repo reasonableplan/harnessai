@@ -37,6 +37,7 @@ export const tasks = pgTable('tasks', {
   priority: integer('priority').notNull().default(3),
   complexity: text('complexity').default('medium'),
   dependencies: jsonb('dependencies').default([]),
+  labels: jsonb('labels').default([]),
   retryCount: integer('retry_count').notNull().default(0),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   startedAt: timestamp('started_at'),

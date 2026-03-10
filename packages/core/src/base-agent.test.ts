@@ -184,32 +184,18 @@ describe('BaseAgent', () => {
     expect(reviewMessages.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('executeTask 에러 시 error 로그 후 다음 폴링에서 자동 복구된다', async () => {
+  it('executeTask 에러 시 error 상태 후 다음 폴링에서 자동 복구된다', async () => {
     vi.mocked(store.getReadyTasksForAgent).mockResolvedValueOnce([MOCK_TASK_ROW]);
     agent.executeTaskFn.mockRejectedValueOnce(new Error('fail'));
 
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     agent.startPolling(50);
 
     // 첫 폴링(에러) + 두 번째 폴링(복구)까지 대기
-    await new Promise((r) => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 200));
     agent.stopPolling();
 
-    // 에러가 기록되었는지 확인
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Polling error'),
-      expect.any(Error),
-    );
-    // 복구 로그 확인
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Recovering from error state'),
-    );
     // 자동 복구 후 idle 상태
     expect(agent.status).toBe('idle');
-
-    consoleSpy.mockRestore();
-    logSpy.mockRestore();
   });
 
   it('중복 startPolling은 무시된다', () => {

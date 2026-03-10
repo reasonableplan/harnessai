@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '@agent/core';
 
-const log = createLogger('ClaudeClient');
+const log = createLogger('DocsClaudeClient');
 
 export interface ClaudeClientConfig {
   model: string;
@@ -17,7 +17,7 @@ interface ClaudeResponse {
 
 const DEFAULT_MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
-const JITTER_FACTOR = 0.2; // 0~20% 랜덤 jitter
+const JITTER_FACTOR = 0.2;
 
 export class ClaudeClient {
   private client: Anthropic;
@@ -83,6 +83,7 @@ export class ClaudeClient {
         if (attempt < maxRetries) {
           const jitter = 1 + Math.random() * JITTER_FACTOR;
           const delay = BASE_DELAY_MS * Math.pow(2, attempt) * jitter;
+          log.warn({ attempt: attempt + 1, maxRetries, delayMs: Math.round(delay), err: lastError.message }, 'Retrying');
           await new Promise((r) => setTimeout(r, delay));
         }
       }

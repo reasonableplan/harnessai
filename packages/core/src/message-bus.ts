@@ -1,5 +1,8 @@
 import { EventEmitter } from 'events';
 import type { IMessageBus, Message, MessageHandler } from './types/index.js';
+import { createLogger } from './logger.js';
+
+const log = createLogger('MessageBus');
 
 export class MessageBus implements IMessageBus {
   private emitter = new EventEmitter();
@@ -16,7 +19,7 @@ export class MessageBus implements IMessageBus {
       try {
         await handler(message);
       } catch (error) {
-        console.error(`[MessageBus] Handler error on "${message.type}":`, error);
+        log.error({ err: error, messageType: message.type }, 'Handler error');
       }
     }
 
@@ -25,7 +28,7 @@ export class MessageBus implements IMessageBus {
       try {
         await handler(message);
       } catch (error) {
-        console.error(`[MessageBus] allHandler error:`, error);
+        log.error({ err: error }, 'allHandler error');
       }
     }
   }
