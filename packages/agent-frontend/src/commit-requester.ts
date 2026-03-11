@@ -37,7 +37,7 @@ export class CommitRequester {
         fileList,
         '',
         '### Commit Message',
-        summary,
+        `feat(frontend): ${summary}`,
       ].join('\n'),
       labels: ['agent:git', 'type:commit', ...(task.epicId ? [`epic:${task.epicId}`] : [])],
       dependencies: task.githubIssueNumber ? [task.githubIssueNumber] : [],

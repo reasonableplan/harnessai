@@ -107,7 +107,7 @@ Retry count: ${task.retryCount ?? 0}`;
         );
       }
 
-      // 3. review.feedback 메시지 발행 (워커가 구독 가능)
+      // 3. review.feedback 메시지 발행 (대시보드 실시간 알림 + 감사 로그용, 워커는 DB reviewNote로 피드백 수신)
       if (this.messageBus) {
         await this.messageBus.publish({
           id: crypto.randomUUID(),

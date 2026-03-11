@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, notInArray } from 'drizzle-orm';
 import type { Database } from './db/index.js';
 import { agents, tasks } from './db/schema.js';
 import { createLogger } from './logger.js';
@@ -49,11 +49,13 @@ export class OrphanCleaner {
     const now = new Date();
     const cutoff = new Date(now.getTime() - this.heartbeatTimeoutMs);
 
-    // 1. 하트비트가 만료된 에이전트 찾기
-    const allAgents = await this.db.select().from(agents);
-    const staleAgentIds = allAgents
+    // 1. 하트비트가 만료된 에이전트 찾기 — offline/paused를 DB 레벨에서 필터
+    const activeAgents = await this.db
+      .select()
+      .from(agents)
+      .where(notInArray(agents.status, ['offline', 'paused']));
+    const staleAgentIds = activeAgents
       .filter((a) => {
-        if (a.status === 'offline' || a.status === 'paused') return false;
         if (!a.lastHeartbeat) return true; // 한 번도 하트비트 안 보낸 에이전트
         return a.lastHeartbeat < cutoff;
       })

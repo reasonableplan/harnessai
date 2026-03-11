@@ -57,17 +57,36 @@ export class ClaudeClient {
     const firstBrace = text.indexOf('{');
     const firstBracket = text.indexOf('[');
 
-    if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
-      const arrayMatch = text.match(/\[[\s\S]*\]/);
-      if (arrayMatch) return arrayMatch[0];
-    }
+    const startIdx = (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace))
+      ? firstBracket
+      : firstBrace;
 
-    if (firstBrace !== -1) {
-      const objectMatch = text.match(/\{[\s\S]*\}/);
-      if (objectMatch) return objectMatch[0];
+    if (startIdx !== -1) {
+      const extracted = ClaudeClient.extractBalancedJSON(text, startIdx);
+      if (extracted) return extracted;
     }
 
     return text.trim();
+  }
+
+  private static extractBalancedJSON(text: string, start: number): string | null {
+    const open = text[start];
+    const close = open === '{' ? '}' : ']';
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (escape) { escape = false; continue; }
+      if (ch === '\\' && inString) { escape = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === open) depth++;
+      else if (ch === close) { depth--; if (depth === 0) return text.slice(start, i + 1); }
+    }
+
+    return null;
   }
 
   private async withRetry<T>(fn: () => Promise<T>): Promise<T> {
@@ -83,6 +102,7 @@ export class ClaudeClient {
         if (attempt < maxRetries) {
           const jitter = 1 + Math.random() * JITTER_FACTOR;
           const delay = BASE_DELAY_MS * Math.pow(2, attempt) * jitter;
+          log.warn({ attempt: attempt + 1, maxRetries, delayMs: Math.round(delay), err: lastError.message }, 'Retrying');
           await new Promise((r) => setTimeout(r, delay));
         }
       }
@@ -97,6 +117,7 @@ export class ClaudeClient {
     if (msg.includes('timeout') || msg.includes('timed out')) return true;
     if (msg.includes('network') || msg.includes('econnreset') || msg.includes('socket')) return true;
     if (msg.includes('500') || msg.includes('502') || msg.includes('503') || msg.includes('529')) return true;
-    return false;
+    if (msg.includes('401') || msg.includes('403') || msg.includes('invalid')) return false;
+    return true; // unknown errors → retry (Director와 동일)
   }
 }

@@ -61,6 +61,7 @@ function createMockGitService(): IGitService {
     getEpicIssues: vi.fn(),
     getAllProjectItems: vi.fn().mockResolvedValue([]),
     moveIssueToColumn: vi.fn(),
+    addComment: vi.fn(),
     createBranch: vi.fn(),
     createPR: vi.fn(),
   };

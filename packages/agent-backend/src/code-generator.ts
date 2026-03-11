@@ -137,7 +137,8 @@ Use action "update" for modified files.`,
   }
 
   private async readExistingFiles(paths: string[]): Promise<Array<{ path: string; content: string }>> {
-    const resolvedWorkDir = resolve(this.workDir!);
+    if (!this.workDir) return [];
+    const resolvedWorkDir = resolve(this.workDir);
     const results: Array<{ path: string; content: string }> = [];
     let totalChars = 0;
 

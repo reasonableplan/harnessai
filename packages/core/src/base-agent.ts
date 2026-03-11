@@ -198,7 +198,7 @@ export abstract class BaseAgent {
       title: row.title,
       description: row.description ?? '',
       assignedAgent: row.assignedAgent,
-      status: 'in-progress',
+      status: (row.status as Task['status']) ?? 'in-progress',
       githubIssueNumber: row.githubIssueNumber,
       boardColumn: 'In Progress',
       dependencies: (row.dependencies as string[]) ?? [],
