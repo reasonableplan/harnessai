@@ -51,6 +51,7 @@ function createMockGitService(): IGitService {
     getEpicIssues: vi.fn().mockResolvedValue([]),
     getAllProjectItems: vi.fn(),
     moveIssueToColumn: vi.fn(),
+    addComment: vi.fn(),
     createBranch: vi.fn(),
     createPR: vi.fn().mockResolvedValue(42),
   };
@@ -163,18 +164,24 @@ describe('GitAgent', () => {
     expect(result.error?.message).toContain('Unknown git task type');
   });
 
-  // ===== onTaskComplete =====
+  // ===== onTaskComplete (BaseAgent 기본: Review 컬럼 → review.request) =====
 
-  it('moves issue to Done on success', async () => {
+  it('moves issue to Review on success (Director review 대기)', async () => {
     const task = makeTask({ githubIssueNumber: 10 });
     const result = { success: true, artifacts: [] };
 
     await (agent as any).onTaskComplete(task, result);
 
-    expect(gitService.moveIssueToColumn).toHaveBeenCalledWith(10, 'Done');
+    expect(gitService.moveIssueToColumn).toHaveBeenCalledWith(10, 'Review');
     expect(stateStore.updateTask).toHaveBeenCalledWith('task-1', expect.objectContaining({
-      status: 'done',
-      boardColumn: 'Done',
+      status: 'review',
+      boardColumn: 'Review',
+    }));
+    // review.request 메시지 발행 확인
+    expect(deps.messageBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'review.request',
+      from: 'git',
+      payload: expect.objectContaining({ taskId: 'task-1' }),
     }));
   });
 

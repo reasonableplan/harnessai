@@ -113,6 +113,27 @@ importers:
         specifier: ^0.31.9
         version: 0.31.9
 
+  packages/main:
+    dependencies:
+      '@agent/backend':
+        specifier: workspace:*
+        version: link:../agent-backend
+      '@agent/core':
+        specifier: workspace:*
+        version: link:../core
+      '@agent/director':
+        specifier: workspace:*
+        version: link:../agent-director
+      '@agent/docs':
+        specifier: workspace:*
+        version: link:../agent-docs
+      '@agent/frontend':
+        specifier: workspace:*
+        version: link:../agent-frontend
+      '@agent/git':
+        specifier: workspace:*
+        version: link:../agent-git
+
 packages:
 
   '@anthropic-ai/sdk@0.39.0':

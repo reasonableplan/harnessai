@@ -40,6 +40,7 @@ export interface Task {
   retryCount: number;
   artifacts: string[];
   labels?: string[];
+  reviewNote?: string | null;
 }
 
 // ===== TaskResult =====
@@ -73,6 +74,7 @@ export const MESSAGE_TYPES = {
   BOARD_MOVE: 'board.move',
   BOARD_REMOVE: 'board.remove',
   REVIEW_REQUEST: 'review.request',
+  REVIEW_FEEDBACK: 'review.feedback',
   EPIC_PROGRESS: 'epic.progress',
   AGENT_STATUS: 'agent.status',
   USER_INPUT: 'user.input',

@@ -3,7 +3,6 @@ import {
   type AgentDependencies,
   type AgentConfig,
   type Task,
-  type TaskResult,
 } from '@agent/core';
 import { GitCli } from './git-cli.js';
 import { WorkspaceManager } from './workspace-manager.js';
@@ -67,35 +66,8 @@ export class GitAgent extends BaseAgent {
   }
 
   // ========== Post-Completion ==========
-
-  protected override async onTaskComplete(
-    task: Task,
-    result: TaskResult,
-  ): Promise<void> {
-    // GitAgent은 Done/Failed로 직접 이동 (BaseAgent 기본은 Review/Failed)
-    const column = result.success ? 'Done' : 'Failed';
-    const status = result.success ? 'done' : 'failed';
-
-    await this.stateStore.updateTask(task.id, {
-      status,
-      boardColumn: column,
-    });
-
-    if (task.githubIssueNumber) {
-      await this.gitService.moveIssueToColumn(task.githubIssueNumber, column);
-    }
-
-    // review.request 발행 (BaseAgent.onTaskComplete의 DB/Board 중복 방지를 위해 직접 발행)
-    await this.messageBus.publish({
-      id: crypto.randomUUID(),
-      type: 'review.request',
-      from: this.id,
-      to: null,
-      payload: { taskId: task.id, result },
-      traceId: crypto.randomUUID(),
-      timestamp: new Date(),
-    });
-  }
+  // BaseAgent 기본 onTaskComplete 사용: Review 컬럼 → review.request 발행
+  // Director가 모든 에이전트의 결과를 검토한다.
 
   // ========== Delegated Methods (public API + test compatibility) ==========
 

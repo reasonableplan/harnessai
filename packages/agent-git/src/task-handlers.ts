@@ -41,6 +41,10 @@ export class TaskHandlers {
   // ========== Branch Task ==========
 
   async handleBranchTask(task: Task): Promise<TaskResult> {
+    if (task.reviewNote) {
+      log.info({ reviewNote: task.reviewNote, attempt: task.retryCount + 1 }, 'Retrying with Director feedback');
+    }
+
     const branchName = this.extractBranchName(task);
 
     try {
@@ -66,6 +70,10 @@ export class TaskHandlers {
   // ========== Commit Task ==========
 
   async handleCommitTask(task: Task): Promise<TaskResult> {
+    if (task.reviewNote) {
+      log.info({ reviewNote: task.reviewNote, attempt: task.retryCount + 1 }, 'Retrying with Director feedback');
+    }
+
     const epicId = task.epicId ?? 'unknown';
     const workDir = await this.workspaceManager.getEpicWorkDir(epicId);
     const message = task.description || task.title;
@@ -104,13 +112,22 @@ export class TaskHandlers {
   // ========== PR Task ==========
 
   async handlePRTask(task: Task): Promise<TaskResult> {
+    if (task.reviewNote) {
+      log.info({ reviewNote: task.reviewNote, attempt: task.retryCount + 1 }, 'Retrying with Director feedback');
+    }
+
     const epicId = task.epicId ?? 'unknown';
     const branchName = `epic/${epicId}`;
+
+    // Director 피드백이 있으면 PR 설명에 반영
+    const description = task.reviewNote
+      ? `${task.description}\n\n---\n_Revised based on Director feedback: ${task.reviewNote}_`
+      : task.description;
 
     try {
       const prNumber = await this.gitService.createPR(
         task.title.replace('[GIT] ', ''),
-        task.description,
+        description,
         branchName,
         'main',
       );

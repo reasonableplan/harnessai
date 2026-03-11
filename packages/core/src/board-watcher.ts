@@ -19,6 +19,7 @@ const COLUMN_TO_STATUS: Record<string, string> = {
  */
 export class BoardWatcher {
   private running = false;
+  private syncing = false; // 동시 sync 방지 lock
   private previousColumns: Map<number, string> = new Map(); // issueNumber → column
 
   constructor(
@@ -56,6 +57,10 @@ export class BoardWatcher {
    * pollLoop과 독립적으로 호출 가능.
    */
   async triggerSync(): Promise<void> {
+    if (this.syncing) {
+      log.debug('Sync already in progress, skipping triggered sync');
+      return;
+    }
     try {
       await this.sync();
     } catch (error) {
@@ -66,8 +71,19 @@ export class BoardWatcher {
   /**
    * Single GraphQL call → detect changes → sync DB.
    * Diff-based: 변경된 이슈와 새 이슈만 DB 접근하여 대규모 프로젝트 대응.
+   * syncing lock으로 동시 실행을 방지한다.
    */
   async sync(): Promise<void> {
+    if (this.syncing) return;
+    this.syncing = true;
+    try {
+      await this.syncInternal();
+    } finally {
+      this.syncing = false;
+    }
+  }
+
+  private async syncInternal(): Promise<void> {
     const allItems = await this.gitService.getAllProjectItems();
     const currentColumns = new Map<number, string>();
 

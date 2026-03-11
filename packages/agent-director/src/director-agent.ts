@@ -65,11 +65,17 @@ export class DirectorAgent extends BaseAgent {
     this.epicPlanner = new EpicPlanner(this.id, this.stateStore, this.gitService, this.messageBus);
     this.dispatcher = new Dispatcher(this.stateStore, this.gitService);
     this.dispatcher.setClaudeClient(this.claude);
-    this.reviewProcessor = new ReviewProcessor(this.stateStore, this.gitService, this.claude, this.dispatcher);
+    this.reviewProcessor = new ReviewProcessor(this.stateStore, this.gitService, this.claude, this.dispatcher, this.messageBus);
 
-    // MessageBus 구독
-    this.subscribe(MESSAGE_TYPES.REVIEW_REQUEST, (msg) => this.onReviewRequest(msg));
-    this.subscribe(MESSAGE_TYPES.BOARD_MOVE, (msg) => this.onBoardMove(msg));
+    // MessageBus 구독 — 비동기 에러 격리
+    this.subscribe(MESSAGE_TYPES.REVIEW_REQUEST, async (msg) => {
+      try { await this.onReviewRequest(msg); }
+      catch (err) { log.error({ err, msgId: msg.id }, 'onReviewRequest failed'); }
+    });
+    this.subscribe(MESSAGE_TYPES.BOARD_MOVE, async (msg) => {
+      try { await this.onBoardMove(msg); }
+      catch (err) { log.error({ err, msgId: msg.id }, 'onBoardMove failed'); }
+    });
   }
 
   // ========== User Input Handler ==========

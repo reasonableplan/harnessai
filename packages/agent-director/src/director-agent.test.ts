@@ -54,6 +54,7 @@ function createMockGitService(): IGitService {
     getEpicIssues: vi.fn().mockResolvedValue([]),
     getAllProjectItems: vi.fn(),
     moveIssueToColumn: vi.fn(),
+    addComment: vi.fn(),
     createBranch: vi.fn(),
     createPR: vi.fn(),
   };
@@ -271,14 +272,15 @@ describe('DirectorAgent', () => {
       expect.stringContaining('code reviewer'),
       expect.stringContaining('API endpoint'),
     );
-    // 승인 시 Done으로 이동 + 의존성 체인 트리거
+    // 승인 시 Done으로 이동 + reviewNote 클리어 + 의존성 체인 트리거
     expect(stateStore.updateTask).toHaveBeenCalledWith('task-gh-50', expect.objectContaining({
-      status: 'done', boardColumn: 'Done',
+      status: 'done', boardColumn: 'Done', reviewNote: null,
     }));
     expect(gitService.moveIssueToColumn).toHaveBeenCalledWith(50, 'Done');
+    expect(gitService.addComment).toHaveBeenCalledWith(50, expect.stringContaining('Approved'));
   });
 
-  it('retries task when Claude review rejects', async () => {
+  it('retries task when Claude review rejects — saves reviewNote and adds comment', async () => {
     const reviewClaude = {
       chatJSON: vi.fn()
         .mockResolvedValue({ data: { approved: false, reason: 'Missing tests' }, usage: { inputTokens: 50, outputTokens: 20 } }),
@@ -292,8 +294,30 @@ describe('DirectorAgent', () => {
     await (agent as never as { onReviewRequest: (m: Message) => Promise<void> })
       .onReviewRequest(makeReviewMessage('task-gh-50', true));
 
+    // reviewNote가 DB에 저장되어야 함
     expect(stateStore.updateTask).toHaveBeenCalledWith('task-gh-50', expect.objectContaining({
-      retryCount: 1, status: 'ready', boardColumn: 'Ready',
+      retryCount: 1, status: 'ready', boardColumn: 'Ready', reviewNote: 'Missing tests',
+    }));
+
+    // GitHub Issue에 피드백 코멘트 작성
+    expect(gitService.addComment).toHaveBeenCalledWith(
+      50,
+      expect.stringContaining('Revision Requested'),
+    );
+    expect(gitService.addComment).toHaveBeenCalledWith(
+      50,
+      expect.stringContaining('Missing tests'),
+    );
+
+    // review.feedback 메시지 발행
+    expect(messageBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'review.feedback',
+      to: 'director', // makeTask default assignedAgent
+      payload: expect.objectContaining({
+        taskId: 'task-gh-50',
+        feedback: 'Missing tests',
+        retryCount: 1,
+      }),
     }));
   });
 
@@ -317,7 +341,7 @@ describe('DirectorAgent', () => {
     expect(gitService.moveIssueToColumn).toHaveBeenCalledWith(50, 'Done');
   });
 
-  it('retries failed task when under max retries', async () => {
+  it('retries failed task when under max retries — saves error as reviewNote', async () => {
     vi.mocked(stateStore.getTask).mockResolvedValueOnce({
       id: 'task-gh-50', retryCount: 1, githubIssueNumber: 50,
     } as never);
@@ -326,12 +350,13 @@ describe('DirectorAgent', () => {
       .onReviewRequest(makeReviewMessage('task-gh-50', false));
 
     expect(stateStore.updateTask).toHaveBeenCalledWith('task-gh-50', expect.objectContaining({
-      retryCount: 2, status: 'ready', boardColumn: 'Ready',
+      retryCount: 2, status: 'ready', boardColumn: 'Ready', reviewNote: 'oops',
     }));
     expect(gitService.moveIssueToColumn).toHaveBeenCalledWith(50, 'Ready');
+    expect(gitService.addComment).toHaveBeenCalledWith(50, expect.stringContaining('oops'));
   });
 
-  it('marks task as failed when max retries exceeded', async () => {
+  it('marks task as failed when max retries exceeded — includes final feedback', async () => {
     vi.mocked(stateStore.getTask).mockResolvedValueOnce({
       id: 'task-gh-50', retryCount: 3, githubIssueNumber: 50,
     } as never);
@@ -339,11 +364,13 @@ describe('DirectorAgent', () => {
     await (agent as never as { onReviewRequest: (m: Message) => Promise<void> })
       .onReviewRequest(makeReviewMessage('task-gh-50', false));
 
-    // 최대 재시도 초과 시 Failed로 마킹
+    // 최대 재시도 초과 시 Failed로 마킹 + 최종 피드백 저장
     expect(stateStore.updateTask).toHaveBeenCalledWith('task-gh-50', expect.objectContaining({
       status: 'failed', boardColumn: 'Failed',
+      reviewNote: expect.stringContaining('oops'),
     }));
     expect(gitService.moveIssueToColumn).toHaveBeenCalledWith(50, 'Failed');
+    expect(gitService.addComment).toHaveBeenCalledWith(50, expect.stringContaining('max retries exceeded'));
   });
 
   // ===== executeTask =====

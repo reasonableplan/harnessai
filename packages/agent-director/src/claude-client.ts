@@ -83,24 +83,45 @@ export class ClaudeClient {
       return codeBlockMatch[1].trim();
     }
 
-    // 2. 첫 번째 JSON 구조 감지 (배열이 먼저 나오면 배열, 객체가 먼저 나오면 객체)
+    // 2. 첫 번째 JSON 구조를 bracket 매칭으로 추출 (탐욕적 정규식 회피)
     const firstBrace = text.indexOf('{');
     const firstBracket = text.indexOf('[');
 
-    if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
-      // 배열이 먼저 → [ ... ] 추출
-      const arrayMatch = text.match(/\[[\s\S]*\]/);
-      if (arrayMatch) return arrayMatch[0];
+    const startIdx = (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace))
+      ? firstBracket
+      : firstBrace;
+
+    if (startIdx !== -1) {
+      const extracted = ClaudeClient.extractBalancedJSON(text, startIdx);
+      if (extracted) return extracted;
     }
 
-    if (firstBrace !== -1) {
-      // 객체 → { ... } 추출
-      const objectMatch = text.match(/\{[\s\S]*\}/);
-      if (objectMatch) return objectMatch[0];
-    }
-
-    // 4. 그대로 반환 (JSON.parse가 에러를 던질 것)
+    // 3. 그대로 반환 (JSON.parse가 에러를 던질 것)
     return text.trim();
+  }
+
+  /**
+   * 시작 위치에서 bracket 매칭으로 JSON 범위를 정확히 추출한다.
+   * 문자열 내부의 중괄호를 무시한다.
+   */
+  private static extractBalancedJSON(text: string, start: number): string | null {
+    const open = text[start];
+    const close = open === '{' ? '}' : ']';
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (escape) { escape = false; continue; }
+      if (ch === '\\' && inString) { escape = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === open) depth++;
+      else if (ch === close) { depth--; if (depth === 0) return text.slice(start, i + 1); }
+    }
+
+    return null; // 매칭 실패
   }
 
   /**

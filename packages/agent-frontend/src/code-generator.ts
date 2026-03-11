@@ -120,6 +120,12 @@ Use action "update" for modified files.`,
       `Description: ${task.description}`,
     ];
 
+    if (task.reviewNote) {
+      lines.push('', '⚠️ PREVIOUS REVIEW FEEDBACK (address these issues):',
+        task.reviewNote,
+        `Attempt: ${task.retryCount + 1}/3`);
+    }
+
     if (task.epicId) {
       lines.push(`Epic ID: ${task.epicId}`);
     }

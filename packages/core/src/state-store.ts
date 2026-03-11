@@ -84,8 +84,9 @@ export class StateStore implements IStateStore {
       })
       .where(and(eq(tasks.id, taskId), eq(tasks.boardColumn, 'Ready')));
 
-    // Drizzle pg returns { rowCount } for update operations
-    return (result as unknown as { rowCount: number }).rowCount > 0;
+    // Drizzle pg driver returns QueryResult with rowCount
+    const rowCount = (result as { rowCount?: number }).rowCount ?? 0;
+    return rowCount > 0;
   }
 
   // ===== Epic =====
