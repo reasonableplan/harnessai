@@ -22,6 +22,11 @@ export default function App() {
   // Demo mode: simulate agent activity when there is no real server
   const startDemo = useCallback(() => {
     const domains = ['director', 'git', 'frontend', 'backend', 'docs'] as const;
+    // Extra agents to demo dynamic slot assignment
+    const extraAgents = [
+      { id: 'frontend-2', domain: 'frontend' },
+      { id: 'backend-2', domain: 'backend' },
+    ];
     const statuses = ['idle', 'working', 'thinking', 'searching', 'delivering', 'reviewing'] as const;
     const bubbles: Array<{ content: string; type: 'task' | 'thinking' | 'info' }> = [
       { content: 'Code fix!', type: 'task' },
@@ -38,8 +43,22 @@ export default function App() {
       { content: 'Refactoring', type: 'task' },
     ];
 
+    // Spawn extra agents after a short delay
+    let extraSpawned = false;
+
     const interval = setInterval(() => {
-      const domain = domains[Math.floor(Math.random() * domains.length)];
+      // Spawn extra agents once after a few ticks
+      if (!extraSpawned) {
+        extraSpawned = true;
+        for (const extra of extraAgents) {
+          updateAgent(extra.id, { domain: extra.domain, status: 'idle' });
+        }
+      }
+
+      // Pick a random agent (base + extra)
+      const allIds = [...domains, ...extraAgents.map((e) => e.id)];
+      const agentId = allIds[Math.floor(Math.random() * allIds.length)];
+      const domain = extraAgents.find((e) => e.id === agentId)?.domain ?? agentId;
       const status = statuses[Math.floor(Math.random() * statuses.length)];
 
       const showBubble = Math.random() > 0.35;
@@ -47,7 +66,8 @@ export default function App() {
         ? bubbles[Math.floor(Math.random() * bubbles.length)]
         : null;
 
-      updateAgent(domain, {
+      updateAgent(agentId, {
+        domain,
         status,
         bubble,
         currentTask: status === 'working' ? `task-${Math.floor(Math.random() * 100)}` : null,
@@ -57,15 +77,15 @@ export default function App() {
       if (status === 'working' || status === 'thinking' || status === 'reviewing') {
         const input = 500 + Math.floor(Math.random() * 2000);
         const output = 200 + Math.floor(Math.random() * 1500);
-        updateTokenUsage(domain, input, output);
+        updateTokenUsage(agentId, input, output);
       }
 
       if (showBubble && bubble) {
         addMessage({
           id: `demo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           type: 'agent.status',
-          from: domain,
-          content: `${domain} is ${status}: ${bubble.content}`,
+          from: agentId,
+          content: `${agentId} is ${status}: ${bubble.content}`,
           timestamp: new Date().toISOString(),
         });
       }

@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useOfficeStore } from '@/stores/office-store';
 import { CANVAS_W, CANVAS_H, RENDER_SCALE, getAgentPixelPosition } from '@/engine/sprite-config';
+// Position lookup now uses agent.slot instead of agent.domain
 
 // Spring state mirror (same logic as OfficeCanvas for position sync)
 interface PosState {
@@ -59,7 +60,7 @@ export default function CharacterOverlay() {
     // Always init positions for new agents (so they're ready when bubbles appear)
     for (const agent of Object.values(agents)) {
       if (!positionsRef.current.has(agent.id)) {
-        const pos = getAgentPixelPosition(agent.domain, agent.status);
+        const pos = getAgentPixelPosition(agent.slot, agent.status);
         positionsRef.current.set(agent.id, { x: pos.x, y: pos.y, vx: 0, vy: 0 });
       }
     }
@@ -78,7 +79,7 @@ export default function CharacterOverlay() {
         if (!agent.bubble) continue; // only track agents with bubbles
         const s = positionsRef.current.get(agent.id);
         if (!s) continue;
-        const target = getAgentPixelPosition(agent.domain, agent.status);
+        const target = getAgentPixelPosition(agent.slot, agent.status);
         springStep(s, target.x, target.y, dt);
         newPositions.set(agent.id, { x: s.x * RENDER_SCALE, y: s.y * RENDER_SCALE });
       }

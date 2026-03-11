@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { DESK_SLOTS } from '@/engine/sprite-config';
 
 export interface AgentState {
   id: string;
@@ -6,6 +7,7 @@ export interface AgentState {
   currentTask: string | null;
   bubble: { content: string; type: 'task' | 'thinking' | 'info' | 'error' } | null;
   domain: string;
+  slot: number;
 }
 
 export interface TaskState {
@@ -80,42 +82,21 @@ export interface OfficeStore {
 }
 
 const DEFAULT_AGENTS: Record<string, AgentState> = {
-  director: {
-    id: 'director',
-    status: 'idle',
-    currentTask: null,
-    bubble: null,
-    domain: 'director',
-  },
-  git: {
-    id: 'git',
-    status: 'idle',
-    currentTask: null,
-    bubble: null,
-    domain: 'git',
-  },
-  frontend: {
-    id: 'frontend',
-    status: 'idle',
-    currentTask: null,
-    bubble: null,
-    domain: 'frontend',
-  },
-  backend: {
-    id: 'backend',
-    status: 'idle',
-    currentTask: null,
-    bubble: null,
-    domain: 'backend',
-  },
-  docs: {
-    id: 'docs',
-    status: 'idle',
-    currentTask: null,
-    bubble: null,
-    domain: 'docs',
-  },
+  director: { id: 'director', status: 'idle', currentTask: null, bubble: null, domain: 'director', slot: 0 },
+  git:      { id: 'git',      status: 'idle', currentTask: null, bubble: null, domain: 'git',      slot: 1 },
+  frontend: { id: 'frontend', status: 'idle', currentTask: null, bubble: null, domain: 'frontend', slot: 2 },
+  backend:  { id: 'backend',  status: 'idle', currentTask: null, bubble: null, domain: 'backend',  slot: 3 },
+  docs:     { id: 'docs',     status: 'idle', currentTask: null, bubble: null, domain: 'docs',     slot: 4 },
 };
+
+/** Find the next unoccupied desk slot */
+function findNextSlot(agents: Record<string, AgentState>): number {
+  const used = new Set(Object.values(agents).map((a) => a.slot));
+  for (let i = 0; i < DESK_SLOTS.length; i++) {
+    if (!used.has(i)) return i;
+  }
+  return DESK_SLOTS.length - 1; // overflow: share last slot
+}
 
 const DEFAULT_TOKEN_USAGE: Record<string, TokenUsageState> = {
   director: { inputTokens: 0, outputTokens: 0, totalTokens: 0, callCount: 0 },
@@ -139,21 +120,57 @@ export const useOfficeStore = create<OfficeStore>((set) => ({
   tokenBudget: 10_000_000,
 
   setInitialState: (data) =>
-    set((state) => ({
-      agents: data.agents ?? state.agents,
-      tasks: data.tasks ?? state.tasks,
-      epics: data.epics ?? state.epics,
-      tokenUsage: data.tokenUsage ?? state.tokenUsage,
-      tokenBudget: data.tokenBudget ?? state.tokenBudget,
-    })),
+    set((state) => {
+      let agents = data.agents ?? state.agents;
+      // Auto-assign slots to agents that don't have one
+      const usedSlots = new Set<number>();
+      for (const a of Object.values(agents)) {
+        if (a.slot != null) usedSlots.add(a.slot);
+      }
+      let nextSlot = 0;
+      const assigned: Record<string, AgentState> = {};
+      for (const [key, agent] of Object.entries(agents)) {
+        if (agent.slot != null) {
+          assigned[key] = agent;
+        } else {
+          while (usedSlots.has(nextSlot) && nextSlot < DESK_SLOTS.length) nextSlot++;
+          assigned[key] = { ...agent, slot: nextSlot };
+          usedSlots.add(nextSlot);
+          nextSlot++;
+        }
+      }
+      return {
+        agents: assigned,
+        tasks: data.tasks ?? state.tasks,
+        epics: data.epics ?? state.epics,
+        tokenUsage: data.tokenUsage ?? state.tokenUsage,
+        tokenBudget: data.tokenBudget ?? state.tokenBudget,
+      };
+    }),
 
   updateAgent: (id, updates) =>
-    set((state) => ({
-      agents: {
-        ...state.agents,
-        [id]: { ...state.agents[id], ...updates },
-      },
-    })),
+    set((state) => {
+      const existing = state.agents[id];
+      if (existing) {
+        return { agents: { ...state.agents, [id]: { ...existing, ...updates } } };
+      }
+      // New agent — auto-assign a desk slot
+      const slot = findNextSlot(state.agents);
+      return {
+        agents: {
+          ...state.agents,
+          [id]: {
+            id,
+            status: 'idle',
+            currentTask: null,
+            bubble: null,
+            domain: (updates as Partial<AgentState>).domain ?? id,
+            slot,
+            ...updates,
+          },
+        },
+      };
+    }),
 
   updateTask: (id, updates) =>
     set((state) => ({

@@ -15,9 +15,9 @@ export const LOGICAL_H = MAP_ROWS * TILE_SIZE; // 512
 export const CANVAS_W = LOGICAL_W * RENDER_SCALE; // 1536
 export const CANVAS_H = LOGICAL_H * RENDER_SCALE; // 1024
 
-// Character sprite size (LPC standard proportions)
-export const CHAR_W = 24;
-export const CHAR_H = 32;
+// Character sprite size (RPG Maker proportions — 3-head tall)
+export const CHAR_W = 32;
+export const CHAR_H = 48;
 
 // Wall rows (rows 0-4 are wall, 5-15 are floor)
 export const WALL_ROWS = 5;
@@ -71,49 +71,70 @@ export const DOMAIN_LABELS: Record<string, string> = {
   docs: 'DOC',
 };
 
-// ---- Positions (in pixel coords on the 768x512 canvas) ----
-export const DESK_POSITIONS: Record<string, { x: number; y: number }> = {
-  director: { x: 384, y: 192 },  // center-top, the boss desk
-  git:      { x: 96,  y: 272 },
-  frontend: { x: 256, y: 320 },
-  backend:  { x: 512, y: 272 },
-  docs:     { x: 640, y: 320 },
-};
+// ---- Desk slot system (dynamic agent support) ----
+export interface DeskSlot {
+  desk: { x: number; y: number };
+  idle: { x: number; y: number };
+}
 
-export const SOFA_POSITIONS: Record<string, { x: number; y: number }> = {
-  director: { x: 608, y: 432 },
-  git:      { x: 576, y: 440 },
-  frontend: { x: 640, y: 432 },
-  backend:  { x: 672, y: 440 },
-  docs:     { x: 704, y: 432 },
-};
+export const DESK_SLOTS: DeskSlot[] = [
+  // Slot 0: Director (center-top boss desk)
+  { desk: { x: 384, y: 192 }, idle: { x: 608, y: 432 } },
+  // Slot 1: Git (left)
+  { desk: { x: 96,  y: 272 }, idle: { x: 576, y: 440 } },
+  // Slot 2: Frontend (center-left)
+  { desk: { x: 256, y: 320 }, idle: { x: 640, y: 432 } },
+  // Slot 3: Backend (center-right)
+  { desk: { x: 512, y: 272 }, idle: { x: 672, y: 440 } },
+  // Slot 4: Docs (right)
+  { desk: { x: 640, y: 320 }, idle: { x: 704, y: 432 } },
+  // Slot 5: Extra desk (center-lower)
+  { desk: { x: 432, y: 352 }, idle: { x: 592, y: 448 } },
+  // Slot 6: Extra desk (left-lower)
+  { desk: { x: 208, y: 416 }, idle: { x: 624, y: 448 } },
+  // Slot 7: Extra desk (right-lower)
+  { desk: { x: 560, y: 384 }, idle: { x: 656, y: 448 } },
+];
 
 export const BOOKSHELF_POS = { x: 704, y: 280 };
 
 export function getAgentPixelPosition(
-  domain: string,
+  slotIndex: number,
   status: string,
 ): { x: number; y: number } {
-  const desk = DESK_POSITIONS[domain] ?? { x: 384, y: 288 };
+  const slot = DESK_SLOTS[slotIndex] ?? DESK_SLOTS[0];
   switch (status) {
     case 'working':
     case 'thinking':
     case 'error':
     case 'waiting':
-      return desk;
+      return slot.desk;
     case 'idle':
-      return SOFA_POSITIONS[domain] ?? { x: 640, y: 432 };
+      return slot.idle;
     case 'searching':
-      return BOOKSHELF_POS;
-    case 'delivering':
-      return { x: (desk.x + 384) / 2, y: (desk.y + 256) / 2 };
+      return { x: BOOKSHELF_POS.x - (slotIndex % 3) * 20, y: BOOKSHELF_POS.y + Math.floor(slotIndex / 3) * 20 };
+    case 'delivering': {
+      const dir = DESK_SLOTS[0].desk;
+      return { x: (slot.desk.x + dir.x) / 2, y: (slot.desk.y + dir.y) / 2 };
+    }
     case 'reviewing': {
-      const dir = DESK_POSITIONS.director;
-      return { x: dir.x + 40, y: dir.y + 16 };
+      const dir = DESK_SLOTS[0].desk;
+      // Stagger reviewing agents so they don't overlap
+      const offset = slotIndex * 24;
+      return { x: dir.x + 40 + (offset % 72), y: dir.y + 16 + Math.floor(offset / 72) * 20 };
     }
     default:
-      return desk;
+      return slot.desk;
   }
+}
+
+/** Get display label for an agent (e.g., "FE", "FE2") */
+export function getAgentLabel(id: string, domain: string): string {
+  const base = DOMAIN_LABELS[domain] ?? domain.slice(0, 3).toUpperCase();
+  if (id === domain) return base;
+  const match = id.match(/(\d+)$/);
+  if (match) return `${base}${match[1]}`;
+  return id.slice(0, 4).toUpperCase();
 }
 
 // ---- Furniture tile placements (tile coords) ----
@@ -136,6 +157,10 @@ export const FURNITURE: FurniturePlacement[] = [
   { type: 'desk', col: 15, row: 8, w: 3, h: 2 },
   // Docs desk (right)
   { type: 'desk', col: 19, row: 9, w: 3, h: 2 },
+  // Extra desks for dynamic agents (slots 5-7)
+  { type: 'desk', col: 12, row: 10, w: 3, h: 2 },
+  { type: 'desk', col: 5, row: 12, w: 3, h: 2 },
+  { type: 'desk', col: 16, row: 11, w: 3, h: 2 },
   // Sofa (bottom-right)
   { type: 'sofa', col: 18, row: 13, w: 4, h: 2 },
   // Bookshelf (right wall area)
@@ -154,8 +179,15 @@ export const FURNITURE: FurniturePlacement[] = [
   { type: 'window', col: 3, row: 1, w: 4, h: 3 },
   { type: 'window', col: 9, row: 1, w: 4, h: 3 },
   // Wall posters
-  { type: 'poster-ship', col: 7, row: 2, w: 1, h: 2 },
-  { type: 'poster-code', col: 14, row: 2, w: 1, h: 2 },
+  { type: 'poster-indie', col: 7, row: 1, w: 2, h: 2 },
+  { type: 'poster-jam', col: 13, row: 1, w: 2, h: 2 },
   // Water cooler
   { type: 'cooler', col: 23, row: 12, w: 1, h: 2 },
+  // Arcade machine (left of director area)
+  { type: 'arcade', col: 8, row: 5, w: 2, h: 3 },
+  // Fridge + microwave (left wall area)
+  { type: 'fridge', col: 0, row: 8, w: 1, h: 3 },
+  // Extra plants
+  { type: 'plant', col: 23, row: 5, w: 1, h: 2 },
+  { type: 'plant-small', col: 6, row: 5, w: 1, h: 1 },
 ];
