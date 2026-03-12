@@ -7,3 +7,5 @@ workspace/
 drizzle/
 docs/
 .claude/
+.omc/
+*.zip
