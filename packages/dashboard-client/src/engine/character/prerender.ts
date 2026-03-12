@@ -76,8 +76,8 @@ function renderPixelMap(
   armFrame: number,
   isBlinking: boolean,
 ): void {
-  ctx.scale(RENDER_SCALE, RENDER_SCALE);
   ctx.save();
+  ctx.scale(RENDER_SCALE, RENDER_SCALE);
   // Center 32×48 pixel map horizontally, align bottom with padding
   const offsetX = (CHAR_W + PADDING - PIXMAP_W) / 2;
   const offsetY = PADDING / 2 + (CHAR_H - PIXMAP_H);

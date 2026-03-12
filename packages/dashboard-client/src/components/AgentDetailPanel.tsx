@@ -64,11 +64,14 @@ export default function AgentDetailPanel() {
     const fetchStats = () => {
       const baseUrl = import.meta.env.VITE_API_URL ?? '';
       fetch(`${baseUrl}/api/agents/${selectedAgent}/stats`)
-        .then((r) => r.json())
+        .then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.json();
+        })
         .then((data) => {
           if (!cancelled && data.stats) setStats(data.stats);
         })
-        .catch(() => {});
+        .catch(() => { /* stats polling failure is non-critical */ });
     };
     fetchStats();
     const interval = setInterval(fetchStats, 30_000);
@@ -89,7 +92,7 @@ export default function AgentDetailPanel() {
     : STATUS_LABELS.idle;
 
   const agentTokens = agent ? tokenUsage[agent.id] : null;
-  const totalUsed = Object.values(tokenUsage).reduce((sum, t) => sum + t.totalTokens, 0);
+  const totalUsed = agent ? Object.values(tokenUsage).reduce((sum, t) => sum + t.totalTokens, 0) : 0;
   const agentPercent =
     agentTokens && totalUsed > 0 ? (agentTokens.totalTokens / totalUsed) * 100 : 0;
   const budgetPercent =

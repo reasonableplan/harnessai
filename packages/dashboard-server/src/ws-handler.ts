@@ -8,6 +8,12 @@ import { EventMapper } from './event-mapper.js';
 const log = createLogger('WSHandler');
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
+const MAX_USER_INPUT_LENGTH = 2000;
+
+/** Strip HTML tags to prevent XSS in broadcast messages */
+function sanitizeText(text: string): string {
+  return text.replace(/<[^>]*>/g, '').trim();
+}
 
 interface ExtendedWebSocket extends WebSocket {
   isAlive: boolean;
@@ -80,6 +86,7 @@ export class WSHandler {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+    this.eventMapper.dispose();
     for (const client of this.clients) {
       client.close(1001, 'Server shutting down');
     }
@@ -205,6 +212,9 @@ export class WSHandler {
   }
 
   private async handleUserInput(payload: { text: string }): Promise<void> {
+    const safeText = sanitizeText(payload.text).slice(0, MAX_USER_INPUT_LENGTH);
+    if (!safeText) return;
+
     await this.deps.messageBus.publish({
       id: crypto.randomUUID(),
       type: MESSAGE_TYPES.USER_INPUT,
@@ -212,7 +222,7 @@ export class WSHandler {
       to: 'director',
       payload: {
         source: 'dashboard' as const,
-        content: payload.text,
+        content: safeText,
         timestamp: new Date(),
       },
       traceId: crypto.randomUUID(),
@@ -224,7 +234,7 @@ export class WSHandler {
       payload: {
         type: 'info',
         title: 'Command Sent',
-        message: `"${payload.text}" sent to Director`,
+        message: `Command sent to Director`,
       },
     });
   }
@@ -291,7 +301,7 @@ export class WSHandler {
       payload: {
         type: 'info',
         title: 'Task Retried',
-        message: `"${task.title}" moved back to Ready for retry`,
+        message: `Task moved back to Ready for retry`,
       },
     });
   }
@@ -354,7 +364,7 @@ function isValidCommand(raw: unknown): boolean {
 
   switch (obj.type) {
     case 'user-input':
-      return typeof payload.text === 'string' && payload.text.length > 0;
+      return typeof payload.text === 'string' && payload.text.length > 0 && payload.text.length <= MAX_USER_INPUT_LENGTH;
     case 'agent-pause':
     case 'agent-resume':
       return typeof payload.agentId === 'string';

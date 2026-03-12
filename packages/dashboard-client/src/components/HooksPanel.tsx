@@ -10,12 +10,15 @@ export default function HooksPanel() {
   useEffect(() => {
     const baseUrl = import.meta.env.VITE_API_URL ?? '';
     fetch(`${baseUrl}/api/hooks`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((data) => {
         if (data.hooks) setHooks(data.hooks);
       })
       .catch(() => {
-        // silently fail
+        // silently fail — hooks are optional
       });
   }, [setHooks]);
 

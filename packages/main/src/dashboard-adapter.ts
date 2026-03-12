@@ -21,6 +21,12 @@ export function createDashboardStateStore(stateStore: IStateStore): DashboardSta
     getAllTasks: () => stateStore.getAllTasks(),
     getAllEpics: () => stateStore.getAllEpics(),
     getRecentMessages: (limit) => stateStore.getRecentMessages(limit),
+    getAgentStats: (agentId) => stateStore.getAgentStats(agentId),
+    getTaskHistory: (taskId) => stateStore.getTaskHistory(taskId),
+    getAgentConfig: (agentId) => stateStore.getAgentConfig(agentId),
+    upsertAgentConfig: (agentId, config) => stateStore.upsertAgentConfig(agentId, config),
+    getAllHooks: () => stateStore.getAllHooks(),
+    toggleHook: (id, enabled) => stateStore.toggleHook(id, enabled),
   };
 }
 

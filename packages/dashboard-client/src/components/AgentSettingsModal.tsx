@@ -36,11 +36,17 @@ export default function AgentSettingsModal() {
 
   useEffect(() => {
     if (!agentId) return;
+    setForm(DEFAULTS); // Reset immediately to prevent stale form from previous agent
 
+    let cancelled = false;
     const baseUrl = import.meta.env.VITE_API_URL ?? '';
     fetch(`${baseUrl}/api/agents/${agentId}/config`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((data) => {
+        if (cancelled) return;
         if (data.config) {
           setForm({
             claudeModel: data.config.claudeModel ?? DEFAULTS.claudeModel,
@@ -53,8 +59,9 @@ export default function AgentSettingsModal() {
         }
       })
       .catch(() => {
-        setForm(DEFAULTS);
+        if (!cancelled) setForm(DEFAULTS);
       });
+    return () => { cancelled = true; };
   }, [agentId]);
 
   const handleSave = async () => {
@@ -75,6 +82,13 @@ export default function AgentSettingsModal() {
           message: `${agentId} configuration updated`,
         });
         closeModal();
+      } else {
+        addToast({
+          id: `toast-config-err-${Date.now()}`,
+          type: 'error',
+          title: 'Save Failed',
+          message: `Server returned ${res.status}`,
+        });
       }
     } catch {
       addToast({

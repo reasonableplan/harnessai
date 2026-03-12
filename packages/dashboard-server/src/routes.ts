@@ -204,11 +204,46 @@ export function createRoutes(deps: RouteDependencies): Router {
       const agentId = req.params.id as string;
       const updates = req.body as Record<string, unknown>;
 
-      // Validate fields
+      // Validate fields — whitelist keys, then validate types and ranges
       const allowed = ['claudeModel', 'maxTokens', 'temperature', 'tokenBudget', 'taskTimeoutMs', 'pollIntervalMs'];
       const filtered: Record<string, unknown> = {};
       for (const key of allowed) {
         if (updates[key] !== undefined) filtered[key] = updates[key];
+      }
+
+      // Type and range validation
+      const validationErrors: string[] = [];
+      if (filtered.claudeModel !== undefined && typeof filtered.claudeModel !== 'string') {
+        validationErrors.push('claudeModel must be a string');
+      }
+      if (filtered.maxTokens !== undefined) {
+        if (typeof filtered.maxTokens !== 'number' || filtered.maxTokens < 1 || filtered.maxTokens > 200_000) {
+          validationErrors.push('maxTokens must be a number between 1 and 200000');
+        }
+      }
+      if (filtered.temperature !== undefined) {
+        if (typeof filtered.temperature !== 'number' || filtered.temperature < 0 || filtered.temperature > 2) {
+          validationErrors.push('temperature must be a number between 0 and 2');
+        }
+      }
+      if (filtered.tokenBudget !== undefined) {
+        if (typeof filtered.tokenBudget !== 'number' || filtered.tokenBudget < 1000) {
+          validationErrors.push('tokenBudget must be a number >= 1000');
+        }
+      }
+      if (filtered.taskTimeoutMs !== undefined) {
+        if (typeof filtered.taskTimeoutMs !== 'number' || filtered.taskTimeoutMs < 5_000 || filtered.taskTimeoutMs > 3_600_000) {
+          validationErrors.push('taskTimeoutMs must be between 5000 and 3600000');
+        }
+      }
+      if (filtered.pollIntervalMs !== undefined) {
+        if (typeof filtered.pollIntervalMs !== 'number' || filtered.pollIntervalMs < 1_000 || filtered.pollIntervalMs > 300_000) {
+          validationErrors.push('pollIntervalMs must be between 1000 and 300000');
+        }
+      }
+      if (validationErrors.length > 0) {
+        res.status(400).json({ error: 'Validation failed', details: validationErrors });
+        return;
       }
 
       await stateStore.upsertAgentConfig(agentId, filtered);
@@ -259,8 +294,8 @@ export function createRoutes(deps: RouteDependencies): Router {
   router.post('/api/commands', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { text } = req.body as { text?: string };
-      if (!text || typeof text !== 'string') {
-        res.status(400).json({ error: 'Missing required field: text' });
+      if (!text || typeof text !== 'string' || text.length > 2000) {
+        res.status(400).json({ error: 'Missing or invalid field: text (string, max 2000 chars)' });
         return;
       }
 

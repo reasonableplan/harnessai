@@ -139,6 +139,7 @@ export function createDashboardServer(
     },
     close(): Promise<void> {
       return new Promise((resolve, reject) => {
+        clearInterval(rateLimitCleanupTimer);
         wsHandler.close();
         httpServer.close((err) => {
           if (err) {

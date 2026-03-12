@@ -33,6 +33,7 @@ export abstract class BaseAgent {
   private consecutiveErrors = 0;
   private abortController: AbortController | null = null;
   private pollPromise: Promise<void> | null = null;
+  private configHandler: MessageHandler;
 
   protected messageBus: IMessageBus;
   protected stateStore: IStateStore;
@@ -48,15 +49,16 @@ export abstract class BaseAgent {
     this.gitService = deps.gitService;
     this.log = createLogger(config.id);
 
-    // Subscribe to config updates for hot-reload
-    this.messageBus.subscribe(MESSAGE_TYPES.AGENT_CONFIG_UPDATED, (msg) => {
+    // Subscribe to config updates for hot-reload (store ref for unsubscribe)
+    this.configHandler = (msg) => {
       const payload = msg.payload as { agentId: string };
       if (payload.agentId === this.id) {
         this.reloadConfig().catch((err) => {
           this.log.error({ err }, 'Failed to reload config');
         });
       }
-    });
+    };
+    this.messageBus.subscribe(MESSAGE_TYPES.AGENT_CONFIG_UPDATED, this.configHandler);
   }
 
   /**
@@ -73,6 +75,7 @@ export abstract class BaseAgent {
     mutableConfig.temperature = dbConfig.temperature;
     mutableConfig.tokenBudget = dbConfig.tokenBudget;
     mutableConfig.taskTimeoutMs = dbConfig.taskTimeoutMs;
+    mutableConfig.pollIntervalMs = dbConfig.pollIntervalMs;
 
     this.log.info({ config: dbConfig }, 'Config reloaded');
   }
@@ -133,6 +136,7 @@ export abstract class BaseAgent {
    */
   async drain(): Promise<void> {
     this.stopPolling();
+    this.messageBus.unsubscribe(MESSAGE_TYPES.AGENT_CONFIG_UPDATED, this.configHandler);
     if (this.pollPromise) {
       await this.pollPromise;
       this.pollPromise = null;
@@ -155,7 +159,7 @@ export abstract class BaseAgent {
     this.startPolling(intervalMs);
   }
 
-  private async pollLoop(intervalMs: number) {
+  private async pollLoop(initialIntervalMs: number) {
     let cycleCount = 0;
     const signal = this.abortController?.signal;
 
@@ -195,11 +199,14 @@ export abstract class BaseAgent {
         }
       }
 
+      // Read current poll interval dynamically (hot-reload support)
+      const currentIntervalMs = (this.config as unknown as Record<string, unknown>).pollIntervalMs as number | undefined ?? initialIntervalMs;
+
       // 지수 백오프: 연속 에러 시 대기 시간 증가
       const backoff =
         this.consecutiveErrors > 0
-          ? Math.min(intervalMs * Math.pow(2, this.consecutiveErrors - 1), MAX_BACKOFF_MS)
-          : intervalMs;
+          ? Math.min(currentIntervalMs * Math.pow(2, this.consecutiveErrors - 1), MAX_BACKOFF_MS)
+          : currentIntervalMs;
 
       // AbortController signal로 즉시 깨어남 — graceful shutdown 지원
       await abortableSleep(backoff, signal);

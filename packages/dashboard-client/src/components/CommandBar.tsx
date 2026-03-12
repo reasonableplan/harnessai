@@ -127,7 +127,9 @@ export default function CommandBar({ onSend }: CommandBarProps) {
 
   useEffect(() => {
     const handleGlobalKey = (e: KeyboardEvent) => {
-      if (e.key === '/' && document.activeElement !== inputRef.current) {
+      // Only intercept '/' when no input/textarea/select is focused
+      const tag = (document.activeElement as HTMLElement)?.tagName;
+      if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
         e.preventDefault();
         inputRef.current?.focus();
         setInput('/');

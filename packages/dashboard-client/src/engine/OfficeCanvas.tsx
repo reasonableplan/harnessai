@@ -224,6 +224,7 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
   const agentsRef = useRef<Record<string, AgentState>>({});
   const selectedAgentRef = useRef<string | null>(null);
   const rafRef = useRef<number>(0);
+  const retryTimerRef = useRef<number>(0);
 
   // Subscribe to store
   const agents = useOfficeStore((s) => s.agents);
@@ -274,7 +275,7 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
       const ctx = ctxRef.current;
       if (!ctx || !bgBufferRef.current || !charCacheRef.current) {
         // Retry after a short delay to avoid CPU spike during initialization
-        rafRef.current = window.setTimeout(() => {
+        retryTimerRef.current = window.setTimeout(() => {
           rafRef.current = requestAnimationFrame(loop);
         }, 100) as unknown as number;
         return;
@@ -403,7 +404,7 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
     rafRef.current = requestAnimationFrame(loop);
     return () => {
       cancelAnimationFrame(rafRef.current);
-      clearTimeout(rafRef.current);
+      clearTimeout(retryTimerRef.current);
     };
   }, []);
 

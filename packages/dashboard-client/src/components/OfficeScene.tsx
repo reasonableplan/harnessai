@@ -37,9 +37,10 @@ export default function OfficeScene() {
 
   const handleAgentClick = useCallback(
     (id: string | null) => {
-      selectAgent(selectedAgent === id ? null : id);
+      const current = useOfficeStore.getState().selectedAgent;
+      selectAgent(current === id ? null : id);
     },
-    [selectAgent, selectedAgent],
+    [selectAgent],
   );
 
   return (

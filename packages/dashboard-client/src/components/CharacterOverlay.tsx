@@ -73,15 +73,22 @@ export default function CharacterOverlay() {
       lastTime = time;
 
       const newPositions = new Map<string, { x: number; y: number }>();
+      let changed = false;
       for (const agent of Object.values(agents)) {
         if (!agent.bubble) continue; // only track agents with bubbles
         const s = positionsRef.current.get(agent.id);
         if (!s) continue;
         const target = getAgentPixelPosition(agent.slot, agent.status);
         springStep(s, target.x, target.y, dt);
-        newPositions.set(agent.id, { x: s.x * RENDER_SCALE, y: s.y * RENDER_SCALE });
+        const nx = Math.round(s.x * RENDER_SCALE);
+        const ny = Math.round(s.y * RENDER_SCALE);
+        newPositions.set(agent.id, { x: nx, y: ny });
+        const prev = positions.get(agent.id);
+        if (!prev || prev.x !== nx || prev.y !== ny) changed = true;
       }
-      setPositions(newPositions);
+      if (changed || newPositions.size !== positions.size) {
+        setPositions(newPositions);
+      }
 
       raf = requestAnimationFrame(loop);
     };
