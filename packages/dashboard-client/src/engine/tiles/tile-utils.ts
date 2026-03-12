@@ -1,5 +1,6 @@
 /**
  * Tile rendering utilities: seeded random, circle helper, color palettes
+ * Stardew Valley-inspired warm, cozy palette
  */
 
 import { TILE_SIZE } from '../sprite-config';
@@ -25,17 +26,17 @@ export function fillCircle(ctx: CanvasRenderingContext2D, cx: number, cy: number
   ctx.fill();
 }
 
-/* Color palettes */
-export const FLOOR_COLORS = ['#9E7E56', '#A08558', '#96794E', '#A88D60'];
-export const FLOOR_GRAIN = '#7A6040';
-export const FLOOR_KNOT = '#6A5030';
-export const FLOOR_BORDER = '#6E5538';
+/* Color palettes — Stardew Valley warm wood & stone */
+export const FLOOR_COLORS = ['#C8A66B', '#CCAA70', '#C2A065', '#D2B478'];
+export const FLOOR_GRAIN = '#A08050';
+export const FLOOR_KNOT = '#8A6A3A';
+export const FLOOR_BORDER = '#A08555';
 
-export const WALL_COLORS = ['#B5A08A', '#B0988A', '#B8A490', '#AA9880'];
-export const MORTAR = '#C8BEB0';
-export const BRICK_HI = 'rgba(255,255,255,0.15)';
+export const WALL_COLORS = ['#8B7355', '#836C4E', '#937B5D', '#7B6448'];
+export const MORTAR = '#6B5A42';
+export const BRICK_HI = 'rgba(255,240,200,0.18)';
 export const BRICK_SH = 'rgba(0,0,0,0.12)';
-export const WALL_CAP = '#5A4A3A';
+export const WALL_CAP = '#5A4530';
 export const WAINSCOT_BASE = '#6B5030';
 export const WAINSCOT_HI = '#8A6840';
 export const WAINSCOT_BEVEL_L = '#9A7850';

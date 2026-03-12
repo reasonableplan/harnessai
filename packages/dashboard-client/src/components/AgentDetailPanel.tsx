@@ -25,7 +25,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   thinking: { label: 'THINKING', color: 'text-yellow-400' },
   searching: { label: 'SEARCHING', color: 'text-blue-400' },
   delivering: { label: 'DELIVERING', color: 'text-purple-400' },
-  reviewing: { label: 'REVIEWING', color: 'text-cyan-400' },
+  reviewing: { label: 'REVIEWING', color: 'text-amber-400' },
   waiting: { label: 'WAITING', color: 'text-orange-400' },
   error: { label: 'ERROR', color: 'text-red-400' },
 };
@@ -103,10 +103,10 @@ export default function AgentDetailPanel() {
           animate={{ x: 0 }}
           exit={{ x: '100%' }}
           transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-          className="absolute right-0 top-0 bottom-0 w-72 bg-[#16213e] border-l-2 border-[#0f3460] z-30 flex flex-col"
+          className="absolute right-0 top-0 bottom-0 w-72 bg-[#3A2410] border-l-2 border-[#5C3A1A] z-30 flex flex-col"
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-3 py-3 border-b border-[#0f3460]">
+          <div className="flex items-center justify-between px-3 py-3 border-b border-[#5C3A1A]">
             <div className="flex items-center gap-2">
               <div
                 className="w-3 h-3"
@@ -125,7 +125,7 @@ export default function AgentDetailPanel() {
           </div>
 
           {/* Status */}
-          <div className="px-3 py-2 border-b border-[#0f3460]/50">
+          <div className="px-3 py-2 border-b border-[#5C3A1A]/50">
             <div className="flex items-center justify-between">
               <span className="font-pixel text-[6px] text-gray-500">STATUS</span>
               <span className={`font-pixel text-[7px] ${statusInfo.color}`}>
@@ -135,7 +135,7 @@ export default function AgentDetailPanel() {
             {agent.currentTask && (
               <div className="mt-2">
                 <span className="font-pixel text-[6px] text-gray-500">CURRENT TASK</span>
-                <div className="mt-1 px-2 py-1 bg-[#1a1a3e] border border-[#0f3460]">
+                <div className="mt-1 px-2 py-1 bg-[#2D1B0E] border border-[#5C3A1A]">
                   <span className="font-pixel text-[6px] text-gray-300">{agent.currentTask}</span>
                 </div>
               </div>
@@ -143,7 +143,7 @@ export default function AgentDetailPanel() {
             {agent.bubble && (
               <div className="mt-2">
                 <span className="font-pixel text-[6px] text-gray-500">BUBBLE</span>
-                <div className="mt-1 px-2 py-1 bg-[#1a1a3e] border border-[#0f3460]">
+                <div className="mt-1 px-2 py-1 bg-[#2D1B0E] border border-[#5C3A1A]">
                   <span className="font-pixel text-[6px] text-gray-300">
                     {agent.bubble.content}
                   </span>
@@ -154,7 +154,7 @@ export default function AgentDetailPanel() {
 
           {/* Token Usage */}
           {agentTokens && (
-            <div className="px-3 py-2 border-b border-[#0f3460]/50">
+            <div className="px-3 py-2 border-b border-[#5C3A1A]/50">
               <span className="font-pixel text-[6px] text-gray-500">TOKEN USAGE</span>
               <div className="mt-1.5 space-y-1">
                 {/* Total bar */}
@@ -167,7 +167,7 @@ export default function AgentDetailPanel() {
                     {formatTokens(agentTokens.totalTokens)}
                   </span>
                 </div>
-                <div className="w-full h-2 bg-gray-800 overflow-hidden">
+                <div className="w-full h-2 bg-[#3A2410] overflow-hidden">
                   <div
                     className="h-full transition-all duration-300"
                     style={{
@@ -219,7 +219,7 @@ export default function AgentDetailPanel() {
 
           {/* Agent Stats */}
           {stats && (
-            <div className="px-3 py-2 border-b border-[#0f3460]/50">
+            <div className="px-3 py-2 border-b border-[#5C3A1A]/50">
               <span className="font-pixel text-[6px] text-gray-500">PERFORMANCE</span>
               <div className="mt-1 space-y-1">
                 <div className="flex items-center justify-between">
@@ -228,7 +228,7 @@ export default function AgentDetailPanel() {
                     {(stats.completionRate * 100).toFixed(1)}%
                   </span>
                 </div>
-                <div className="w-full h-1.5 bg-gray-800">
+                <div className="w-full h-1.5 bg-[#3A2410]">
                   <div
                     className="h-full bg-green-500 transition-all duration-300"
                     style={{ width: `${Math.min(stats.completionRate * 100, 100)}%` }}
@@ -259,7 +259,7 @@ export default function AgentDetailPanel() {
           )}
 
           {/* Tasks */}
-          <div className="px-3 py-2 border-b border-[#0f3460]/50">
+          <div className="px-3 py-2 border-b border-[#5C3A1A]/50">
             <span className="font-pixel text-[6px] text-gray-500">
               ASSIGNED TASKS ({agentTasks.length})
             </span>
@@ -279,7 +279,7 @@ export default function AgentDetailPanel() {
                           ? 'bg-purple-600'
                           : 'bg-gray-600';
                 return (
-                  <div key={task.id} className="flex items-center gap-1 px-1 py-0.5 bg-[#1a1a3e]">
+                  <div key={task.id} className="flex items-center gap-1 px-1 py-0.5 bg-[#2D1B0E]">
                     <div className={`w-1.5 h-1.5 ${colColor} flex-shrink-0`} />
                     <span className="font-pixel text-[5px] text-gray-300 truncate">
                       {task.title || task.id}
@@ -298,7 +298,7 @@ export default function AgentDetailPanel() {
                 <span className="font-pixel text-[5px] text-gray-600">No recent activity</span>
               )}
               {agentMessages.map((msg) => (
-                <div key={msg.id} className="px-1 py-0.5 border-b border-gray-800/30">
+                <div key={msg.id} className="px-1 py-0.5 border-b border-[#3A2410]/30">
                   <span className="font-pixel text-[5px] text-gray-300 break-all">
                     {typeof msg.content === 'string'
                       ? msg.content.slice(0, 80)
@@ -310,7 +310,7 @@ export default function AgentDetailPanel() {
           </div>
 
           {/* Controls */}
-          <div className="px-3 py-2 border-t border-[#0f3460] flex gap-2">
+          <div className="px-3 py-2 border-t border-[#5C3A1A] flex gap-2">
             <button className="pixel-btn text-[6px] flex-1">FOCUS</button>
             <button className="pixel-btn text-[6px] flex-1">RESTART</button>
             <button

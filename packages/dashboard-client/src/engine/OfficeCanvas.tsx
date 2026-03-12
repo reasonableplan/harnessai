@@ -6,7 +6,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import { useOfficeStore, type AgentState } from '@/stores/office-store';
 import { createBackgroundBuffer } from './tile-renderer';
-import { prerenderCharacters } from './character-renderer';
+import { prerenderCharacters, prerenderCharactersAsync } from './character-renderer';
 import {
   CANVAS_W,
   CANVAS_H,
@@ -129,9 +129,13 @@ function drawNameBadge(
   const bx = x - badgeW / 2;
   const by = y;
 
-  // Background
-  ctx.fillStyle = 'rgba(0,0,0,0.75)';
+  // Background (warm wood)
+  ctx.fillStyle = 'rgba(45,27,14,0.85)';
   ctx.fillRect(bx, by, badgeW, badgeH);
+  // Border
+  ctx.strokeStyle = 'rgba(140,100,50,0.6)';
+  ctx.lineWidth = S;
+  ctx.strokeRect(bx, by, badgeW, badgeH);
   // Accent top line
   ctx.fillStyle = accent;
   ctx.fillRect(bx, by, badgeW, 2 * S);
@@ -157,7 +161,7 @@ function drawStatusIndicator(
   if (status === 'error') {
     const alpha = 0.5 + 0.5 * Math.sin(time * 0.008);
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = '#FF3333';
+    ctx.fillStyle = '#CC3333';
     ctx.beginPath();
     ctx.arc(x + 10 * S, y - 4 * S, 5 * S, 0, Math.PI * 2);
     ctx.fill();
@@ -170,9 +174,9 @@ function drawStatusIndicator(
   } else if (status === 'working') {
     const alpha = 0.5 + 0.5 * Math.sin(time * 0.005);
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = 'rgba(104,160,99,0.6)';
+    ctx.fillStyle = 'rgba(90,140,80,0.6)';
     ctx.fillRect(x - 8 * S, y - 12 * S, 16 * S, 7 * S);
-    ctx.fillStyle = '#68A063';
+    ctx.fillStyle = '#7CC46A';
     ctx.font = `${4 * S}px monospace`;
     ctx.textAlign = 'center';
     ctx.fillText('</>', x, y - 7 * S);
@@ -183,7 +187,7 @@ function drawStatusIndicator(
       const dotY = y - 14 * S + Math.sin(time * 0.006 + i * 1.2) * 2 * S;
       const alpha = 0.4 + 0.6 * Math.abs(Math.sin(time * 0.004 + i * 0.8));
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = '#CCCCCC';
+      ctx.fillStyle = '#E8D8B0';
       ctx.beginPath();
       ctx.arc(x - 4 * S + i * 5 * S, dotY, 2 * S, 0, Math.PI * 2);
       ctx.fill();
@@ -196,7 +200,7 @@ function drawStatusIndicator(
 function drawSelectionHighlight(ctx: CanvasRenderingContext2D, x: number, y: number, time: number) {
   const S = RENDER_SCALE;
   const alpha = 0.4 + 0.3 * Math.sin(time * 0.004);
-  ctx.strokeStyle = '#FFD700';
+  ctx.strokeStyle = '#D4A840';
   ctx.lineWidth = 2 * S;
   ctx.globalAlpha = alpha;
   ctx.setLineDash([4 * S, 3 * S]);
@@ -233,7 +237,14 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
   useEffect(() => {
     ctxRef.current = canvasRef.current?.getContext('2d') ?? null;
     bgBufferRef.current = createBackgroundBuffer();
-    charCacheRef.current = prerenderCharacters();
+
+    // Try async image-based sprites first, fallback to pixel-map
+    charCacheRef.current = prerenderCharacters(); // sync fallback immediately
+    prerenderCharactersAsync().then((cache) => {
+      if (cache.size > 0) {
+        charCacheRef.current = cache; // upgrade to image sprites when ready
+      }
+    });
 
     // Init anim states for all agents
     for (const agent of Object.values(agents)) {
@@ -371,11 +382,10 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
           const frame = frames[Math.min(frameIdx, frames.length - 1)];
           // Draw centered at (cx, cy) — character bottom at cy
           // Cached canvas is (CHAR_W+16)*SCALE wide, (CHAR_H+16)*SCALE tall
-          // Character drawn at translate(8,12) inside the cache
           ctx.drawImage(
             frame,
             cx - ((CHAR_W + 16) * RENDER_SCALE) / 2,
-            cy - (CHAR_H + 12) * RENDER_SCALE,
+            cy - (CHAR_H + 8) * RENDER_SCALE,
           );
         }
 

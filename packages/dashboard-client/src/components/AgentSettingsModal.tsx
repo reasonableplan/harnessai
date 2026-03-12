@@ -102,12 +102,12 @@ export default function AgentSettingsModal() {
             initial={{ scale: 0.9 }}
             animate={{ scale: 1 }}
             exit={{ scale: 0.9 }}
-            className="bg-[#16213e] border-2 border-[#0f3460] w-80 max-h-[80vh] overflow-y-auto"
+            className="bg-[#3A2410] border-2 border-[#5C3A1A] w-80 max-h-[80vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-[#0f3460]">
-              <span className="font-pixel text-[8px] text-cyan-300">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-[#5C3A1A]">
+              <span className="font-pixel text-[8px] text-amber-300">
                 SETTINGS: {agentId.toUpperCase()}
               </span>
               <button
@@ -126,7 +126,7 @@ export default function AgentSettingsModal() {
                 <select
                   value={form.claudeModel}
                   onChange={(e) => setForm({ ...form, claudeModel: e.target.value })}
-                  className="w-full bg-[#1a1a3e] border border-[#0f3460] text-gray-200 font-pixel text-[6px] px-2 py-1"
+                  className="w-full bg-[#2D1B0E] border border-[#5C3A1A] text-gray-200 font-pixel text-[6px] px-2 py-1"
                 >
                   {MODELS.map((m) => (
                     <option key={m} value={m}>{m}</option>
@@ -141,7 +141,7 @@ export default function AgentSettingsModal() {
                   type="number"
                   value={form.maxTokens}
                   onChange={(e) => setForm({ ...form, maxTokens: Number(e.target.value) })}
-                  className="w-full bg-[#1a1a3e] border border-[#0f3460] text-gray-200 font-pixel text-[6px] px-2 py-1"
+                  className="w-full bg-[#2D1B0E] border border-[#5C3A1A] text-gray-200 font-pixel text-[6px] px-2 py-1"
                 />
               </div>
 
@@ -168,7 +168,7 @@ export default function AgentSettingsModal() {
                   type="number"
                   value={form.tokenBudget}
                   onChange={(e) => setForm({ ...form, tokenBudget: Number(e.target.value) })}
-                  className="w-full bg-[#1a1a3e] border border-[#0f3460] text-gray-200 font-pixel text-[6px] px-2 py-1"
+                  className="w-full bg-[#2D1B0E] border border-[#5C3A1A] text-gray-200 font-pixel text-[6px] px-2 py-1"
                 />
               </div>
 
@@ -181,7 +181,7 @@ export default function AgentSettingsModal() {
                   type="number"
                   value={form.taskTimeoutMs}
                   onChange={(e) => setForm({ ...form, taskTimeoutMs: Number(e.target.value) })}
-                  className="w-full bg-[#1a1a3e] border border-[#0f3460] text-gray-200 font-pixel text-[6px] px-2 py-1"
+                  className="w-full bg-[#2D1B0E] border border-[#5C3A1A] text-gray-200 font-pixel text-[6px] px-2 py-1"
                 />
               </div>
 
@@ -194,13 +194,13 @@ export default function AgentSettingsModal() {
                   type="number"
                   value={form.pollIntervalMs}
                   onChange={(e) => setForm({ ...form, pollIntervalMs: Number(e.target.value) })}
-                  className="w-full bg-[#1a1a3e] border border-[#0f3460] text-gray-200 font-pixel text-[6px] px-2 py-1"
+                  className="w-full bg-[#2D1B0E] border border-[#5C3A1A] text-gray-200 font-pixel text-[6px] px-2 py-1"
                 />
               </div>
             </div>
 
             {/* Footer */}
-            <div className="px-3 py-2 border-t border-[#0f3460] flex gap-2">
+            <div className="px-3 py-2 border-t border-[#5C3A1A] flex gap-2">
               <button
                 onClick={closeModal}
                 className="pixel-btn text-[6px] flex-1"
@@ -210,7 +210,7 @@ export default function AgentSettingsModal() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="pixel-btn text-[6px] flex-1 !bg-cyan-700 hover:!bg-cyan-600"
+                className="pixel-btn text-[6px] flex-1 !bg-amber-700 hover:!bg-amber-600"
               >
                 {saving ? 'SAVING...' : 'SAVE'}
               </button>

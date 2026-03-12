@@ -67,8 +67,8 @@ export default function StatsPanel() {
   }, []);
 
   return (
-    <div className="h-full overflow-y-auto bg-[#16213e] p-2 space-y-3">
-      <span className="font-pixel text-[7px] text-cyan-300">SYSTEM STATS</span>
+    <div className="h-full overflow-y-auto bg-[#3A2410] p-2 space-y-3">
+      <span className="font-pixel text-[7px] text-amber-300">SYSTEM STATS</span>
 
       {loading && !summary && (
         <span className="font-pixel text-[6px] text-gray-500">Loading...</span>
@@ -77,7 +77,7 @@ export default function StatsPanel() {
       {summary && (
         <>
           {/* Overall */}
-          <div className="bg-[#1a1a3e] p-2 border border-[#0f3460]">
+          <div className="bg-[#2D1B0E] p-2 border border-[#5C3A1A]">
             <span className="font-pixel text-[6px] text-gray-400">OVERVIEW</span>
             <div className="mt-1 grid grid-cols-3 gap-1">
               <div className="text-center">
@@ -100,7 +100,7 @@ export default function StatsPanel() {
                   {(summary.completionRate * 100).toFixed(1)}%
                 </span>
               </div>
-              <div className="w-full h-2 bg-gray-800 mt-0.5">
+              <div className="w-full h-2 bg-[#3A2410] mt-0.5">
                 <div
                   className="h-full bg-green-500 transition-all duration-300"
                   style={{ width: `${Math.min(summary.completionRate * 100, 100)}%` }}
@@ -116,7 +116,7 @@ export default function StatsPanel() {
               {summary.agentStats.map((stat) => {
                 const color = DOMAIN_COLORS[agents[stat.agentId]?.domain ?? stat.agentId] ?? '#888';
                 return (
-                  <div key={stat.agentId} className="bg-[#1a1a3e] p-1.5 border border-[#0f3460]">
+                  <div key={stat.agentId} className="bg-[#2D1B0E] p-1.5 border border-[#5C3A1A]">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1">
                         <div className="w-2 h-2" style={{ backgroundColor: color }} />
@@ -126,7 +126,7 @@ export default function StatsPanel() {
                         {stat.completedTasks}/{stat.totalTasks}
                       </span>
                     </div>
-                    <div className="w-full h-1.5 bg-gray-800 mt-1">
+                    <div className="w-full h-1.5 bg-[#3A2410] mt-1">
                       <div
                         className="h-full transition-all duration-300"
                         style={{
