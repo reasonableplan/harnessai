@@ -52,7 +52,6 @@ export interface BootstrapConfig {
 export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
   // 이미 시작된 리소스 추적 (에러 시 cleanup용)
   let dbConn: DbConnection | null = null;
-  let db: Database | null = null;
   let stateStore: StateStore | null = null;
   let boardWatcher: BoardWatcher | null = null;
   let orphanCleaner: OrphanCleaner | null = null;
@@ -119,7 +118,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
 
     // 2. PostgreSQL 초기화
     dbConn = createDb(appConfig.database.url);
-    db = dbConn.db;
+    const db = dbConn.db;
     if (!cfg.skipMigration) {
       await runMigrations(db, './drizzle');
       log.info('Database migrations applied');

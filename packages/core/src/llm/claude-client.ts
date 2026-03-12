@@ -107,7 +107,7 @@ export class ClaudeClient implements IClaudeClient {
       data = JSON.parse(jsonStr) as T;
     } catch (err) {
       const preview = jsonStr.length > 200 ? jsonStr.slice(0, 200) + '...' : jsonStr;
-      throw new Error(`Failed to parse Claude JSON response: ${(err as Error).message}\nResponse preview: ${preview}`);
+      throw new Error(`Failed to parse Claude JSON response: ${(err as Error).message}\nResponse preview: ${preview}`, { cause: err });
     }
     return { data, usage: response.usage };
   }

@@ -13,6 +13,16 @@ const COLUMN_TO_STATUS: Record<string, string> = {
   Done: 'done',
 };
 
+/** Priority ordering for status comparison — higher number = more progressed. */
+const STATUS_PRIORITY: Record<string, number> = {
+  backlog: 0,
+  ready: 1,
+  'in-progress': 2,
+  failed: 3,
+  review: 4,
+  done: 5,
+};
+
 /**
  * BoardWatcher is the single source of Board → DB synchronization.
  * One GraphQL call per cycle fetches all project items.
@@ -128,14 +138,14 @@ export class BoardWatcher {
       const isChanged = prevColumn !== undefined && prevColumn !== issue.column;
 
       try {
-        // Detect column change
-        if (isChanged) {
-          await this.onColumnChange(issue, prevColumn, issue.column);
-        }
-
         // Diff-based: 새 이슈이거나 컬럼이 변경된 경우에만 DB 동기화
         if (isNew || isChanged) {
           await this.syncTaskFromIssue(issue);
+        }
+
+        // Detect column change — DB 동기화 성공 후에만 메시지 발행 (일관성 보장)
+        if (isChanged) {
+          await this.onColumnChange(issue, prevColumn, issue.column);
         }
 
         // 성공한 경우에만 currentColumns에 등록 (실패 시 다음 사이클에서 재시도)
@@ -221,14 +231,6 @@ export class BoardWatcher {
       if (!COLUMN_TO_STATUS[issue.column]) {
         log.warn({ column: issue.column, issueNumber: issue.issueNumber }, 'Unknown board column, falling back to backlog');
       }
-      const STATUS_PRIORITY: Record<string, number> = {
-        backlog: 0,
-        ready: 1,
-        'in-progress': 2,
-        failed: 3,
-        review: 4,
-        done: 5,
-      };
       const dbPriority = STATUS_PRIORITY[dbStatus] ?? 0;
       const boardPriority = STATUS_PRIORITY[boardStatus] ?? 0;
 

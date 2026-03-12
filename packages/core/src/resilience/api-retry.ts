@@ -38,8 +38,9 @@ export async function withRetry<T>(
     }
   }
 
-  // TypeScript: unreachable but satisfies return type
-  throw new Error('Unreachable');
+  // TypeScript: this point is logically unreachable because the loop always
+  // returns on success or throws on final failure, but the compiler needs it.
+  throw (undefined as never);
 }
 
 function isRetryable(error: unknown): boolean {

@@ -241,11 +241,9 @@ describe('E2E Pipeline — Dashboard Adapter Integration', () => {
 
 describe('E2E Pipeline — Message Flow', () => {
   let bus: ReturnType<typeof createMockMessageBus>;
-  let store: IStateStore;
 
   beforeEach(() => {
     bus = createMockMessageBus();
-    store = createMockStateStore();
   });
 
   it('board.move event flows from BoardWatcher through MessageBus to subscribers', async () => {

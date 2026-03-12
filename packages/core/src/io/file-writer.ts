@@ -32,7 +32,9 @@ export class FileWriter {
       }
 
       if (file.action === 'delete') {
-        await fs.unlink(absolutePath).catch(() => {});
+        await fs.unlink(absolutePath).catch((err: NodeJS.ErrnoException) => {
+          if (err.code !== 'ENOENT') throw err;
+        });
       } else {
         // Syntax validation: 기본 구조 검증 (완전한 파싱은 아님)
         FileWriter.validateSyntax(file);

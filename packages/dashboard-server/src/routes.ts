@@ -160,7 +160,7 @@ export function createRoutes(deps: RouteDependencies): Router {
   // Error handling middleware
   router.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     log.error({ err }, 'Route error');
-    res.status(500).json({ error: 'Internal server error', message: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   });
 
   return router;

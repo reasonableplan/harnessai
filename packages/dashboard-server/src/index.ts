@@ -1,7 +1,6 @@
 import { createServer, type Server } from 'http';
 import { existsSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { resolve } from 'path';
 import express from 'express';
 import cors from 'cors';
 import { createLogger } from '@agent/core';
@@ -49,7 +48,10 @@ export function createDashboardServer(
   const app = express();
 
   // Middleware
-  const allowedOrigins = opts.corsOrigins ?? ['http://localhost:3000', 'http://localhost:5173'];
+  const defaultOrigins = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim())
+    : ['http://localhost:3000', 'http://localhost:5173'];
+  const allowedOrigins = opts.corsOrigins ?? defaultOrigins;
   app.use(
     cors({
       origin: allowedOrigins,
@@ -59,10 +61,19 @@ export function createDashboardServer(
   );
   app.use(express.json({ limit: '64kb' }));
 
-  // Simple in-memory rate limiter (100 req/min per IP)
+  // Simple in-memory rate limiter (100 req/min per IP) with periodic cleanup
   const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
   const RATE_LIMIT_WINDOW_MS = 60_000;
   const RATE_LIMIT_MAX = 100;
+  const RATE_LIMIT_CLEANUP_INTERVAL_MS = 5 * 60_000; // 5분마다 만료 엔트리 정리
+
+  const rateLimitCleanupTimer = setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of rateLimitMap) {
+      if (now > entry.resetAt) rateLimitMap.delete(ip);
+    }
+  }, RATE_LIMIT_CLEANUP_INTERVAL_MS);
+  rateLimitCleanupTimer.unref(); // 프로세스 종료 차단 방지
 
   app.use('/api', (req, res, next) => {
     const ip = req.ip ?? 'unknown';

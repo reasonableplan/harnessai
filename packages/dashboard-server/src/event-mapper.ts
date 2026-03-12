@@ -16,8 +16,26 @@ interface CachedTask {
  */
 export class EventMapper {
   private taskCache = new Map<string, CachedTask>();
+  private cleanupTimer: ReturnType<typeof setInterval>;
 
-  constructor(private stateStore: DashboardStateStore) {}
+  constructor(private stateStore: DashboardStateStore) {
+    // Periodically remove expired cache entries to prevent unbounded growth
+    this.cleanupTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [key, entry] of this.taskCache) {
+        if (now - entry.cachedAt >= TASK_CACHE_TTL_MS) {
+          this.taskCache.delete(key);
+        }
+      }
+    }, 30_000); // every 30 seconds
+    this.cleanupTimer.unref();
+  }
+
+  /** Release resources (cleanup timer). Call on server shutdown. */
+  dispose(): void {
+    clearInterval(this.cleanupTimer);
+    this.taskCache.clear();
+  }
 
   private async getTaskCached(taskId: string): Promise<TaskRow | null> {
     const now = Date.now();

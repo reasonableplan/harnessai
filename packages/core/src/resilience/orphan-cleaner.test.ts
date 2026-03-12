@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { OrphanCleaner } from './orphan-cleaner.js';
 import type { IStateStore, AgentRow, TaskRow } from '../types/index.js';
 

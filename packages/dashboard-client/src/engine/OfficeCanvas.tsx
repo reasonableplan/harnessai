@@ -103,7 +103,7 @@ function hitTest(
       logicalX >= cx - padX &&
       logicalX <= cx + padX &&
       logicalY >= cy - padY &&
-      logicalY <= cy + 8
+      logicalY <= cy + 16
     ) {
       return id;
     }
@@ -262,7 +262,10 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
 
       const ctx = ctxRef.current;
       if (!ctx || !bgBufferRef.current || !charCacheRef.current) {
-        rafRef.current = requestAnimationFrame(loop);
+        // Retry after a short delay to avoid CPU spike during initialization
+        rafRef.current = window.setTimeout(() => {
+          rafRef.current = requestAnimationFrame(loop);
+        }, 100) as unknown as number;
         return;
       }
 
@@ -388,7 +391,10 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
     };
 
     rafRef.current = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(rafRef.current);
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      clearTimeout(rafRef.current);
+    };
   }, []);
 
   // ---- Click handler ----

@@ -6,6 +6,8 @@ interface DashboardEvent {
   payload: Record<string, unknown>;
 }
 
+const MAX_RECONNECT_ATTEMPTS = 20;
+
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -97,6 +99,16 @@ export function useWebSocket() {
 
   const scheduleReconnect = useCallback(() => {
     const attempt = reconnectAttemptRef.current;
+    if (attempt >= MAX_RECONNECT_ATTEMPTS) {
+      useOfficeStore.getState().addToast({
+        id: `toast-max-reconnect-${Date.now()}`,
+        type: 'error',
+        title: 'Connection Lost',
+        message: `Failed to reconnect after ${MAX_RECONNECT_ATTEMPTS} attempts. Please refresh the page.`,
+      });
+      return;
+    }
+
     const delay = Math.min(1000 * Math.pow(2, attempt), 30000);
     reconnectAttemptRef.current = attempt + 1;
 

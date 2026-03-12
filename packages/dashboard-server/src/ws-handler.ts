@@ -57,7 +57,8 @@ export class WSHandler {
       if (client.readyState === WebSocket.OPEN) {
         try {
           client.send(data);
-        } catch {
+        } catch (err) {
+          log.warn({ err }, 'Failed to send to client, removing');
           this.clients.delete(client);
         }
       }

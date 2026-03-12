@@ -26,6 +26,7 @@ function createMockStateStore(): DashboardStateStore {
   };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for future test expansion
 function createMockMessageBus(): DashboardMessageBus {
   return {
     publish: vi.fn(),
