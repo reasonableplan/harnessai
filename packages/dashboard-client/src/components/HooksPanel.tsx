@@ -52,7 +52,7 @@ export default function HooksPanel() {
         {hooksList.map((hook) => (
           <div
             key={hook.id}
-            className="flex items-center justify-between bg-[#1a1a3e] p-1.5 border border-[#0f3460]"
+            className="flex items-center justify-between bg-[#2D1B0E] p-1.5 border border-[#5C3A1A]"
           >
             <div className="flex-1 min-w-0">
               <div className="font-pixel text-[6px] text-gray-200 truncate">{hook.name}</div>

@@ -36,21 +36,21 @@ export default function TokenUsagePanel() {
   const budgetColor = usedPercent > 90 ? '#FF4444' : usedPercent > 70 ? '#FFAA33' : '#44DD66';
 
   return (
-    <div className="flex flex-col h-full bg-[#16213e] border-l-2 border-[#0f3460]">
+    <div className="flex flex-col h-full bg-[#3A2410] border-l-2 border-[#5C3A1A]">
       {/* Header */}
-      <div className="px-3 py-2 border-b border-[#0f3460]">
-        <span className="font-pixel text-[8px] text-cyan-300 pixel-text-shadow">TOKEN USAGE</span>
+      <div className="px-3 py-2 border-b border-[#5C3A1A]">
+        <span className="font-pixel text-[8px] text-amber-300 pixel-text-shadow">TOKEN USAGE</span>
       </div>
 
       {/* Total Budget Bar */}
-      <div className="px-3 py-3 border-b border-[#0f3460]/50">
+      <div className="px-3 py-3 border-b border-[#5C3A1A]/50">
         <div className="flex items-center justify-between mb-1">
           <span className="font-pixel text-[6px] text-gray-400">BUDGET</span>
           <span className="font-pixel text-[6px]" style={{ color: budgetColor }}>
             {usedPercent.toFixed(1)}% USED
           </span>
         </div>
-        <div className="w-full h-3 bg-gray-800 pixel-border-light overflow-hidden">
+        <div className="w-full h-3 bg-[#3A2410] pixel-border-light overflow-hidden">
           <div
             className="h-full transition-all duration-500"
             style={{
@@ -86,7 +86,7 @@ export default function TokenUsagePanel() {
       </div>
 
       {/* I/O Summary */}
-      <div className="px-3 py-2 border-b border-[#0f3460]/50">
+      <div className="px-3 py-2 border-b border-[#5C3A1A]/50">
         <div className="flex items-center gap-3">
           <div>
             <span className="font-pixel text-[5px] text-blue-400">IN: </span>
@@ -112,7 +112,7 @@ export default function TokenUsagePanel() {
             const budgetShare = tokenBudget > 0 ? (usage.totalTokens / tokenBudget) * 100 : 0;
 
             return (
-              <div key={agentId} className="bg-[#1a1a3e] p-2 border border-[#0f3460]/30">
+              <div key={agentId} className="bg-[#2D1B0E] p-2 border border-[#5C3A1A]/30">
                 {/* Agent header */}
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-1.5">
@@ -125,7 +125,7 @@ export default function TokenUsagePanel() {
                 </div>
 
                 {/* Usage bar (relative to total) */}
-                <div className="w-full h-2 bg-gray-800 overflow-hidden mb-1">
+                <div className="w-full h-2 bg-[#3A2410] overflow-hidden mb-1">
                   <div
                     className="h-full transition-all duration-300"
                     style={{
@@ -159,7 +159,7 @@ export default function TokenUsagePanel() {
       </div>
 
       {/* Legend */}
-      <div className="px-3 py-2 border-t border-[#0f3460]">
+      <div className="px-3 py-2 border-t border-[#5C3A1A]">
         <div className="flex flex-wrap gap-2">
           {Object.entries(DOMAIN_COLORS).map(([id, color]) => (
             <div key={id} className="flex items-center gap-1">

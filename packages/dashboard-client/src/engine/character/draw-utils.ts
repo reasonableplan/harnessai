@@ -1,5 +1,5 @@
 /**
- * Color utility helpers and walk cycle functions for character rendering
+ * Color utility helpers, walk cycle, and outline helpers for Stardew-style character rendering
  */
 
 /** Lighten a hex color by a factor (0-1) */
@@ -24,7 +24,7 @@ export function darken(hex: string, factor: number): string {
   return `#${dr.toString(16).padStart(2, '0')}${dg.toString(16).padStart(2, '0')}${db.toString(16).padStart(2, '0')}`;
 }
 
-/** Draw a single pixel */
+/** Draw a single filled rectangle (pixel block) */
 export function px(ctx: CanvasRenderingContext2D, x: number, y: number, w = 1, h = 1) {
   ctx.fillRect(x, y, w, h);
 }
@@ -42,20 +42,20 @@ export function cpx(
   ctx.fillRect(x, y, w, h);
 }
 
-/** Draw a rounded rectangle (pixel art style - cut corners) */
-export function roundedRect(
+/** Draw outlined rectangle (Stardew style — dark border + fill) */
+export function outlinedRect(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   w: number,
   h: number,
-  color: string,
-  cornerSize = 1,
+  fill: string,
+  outline: string,
 ) {
-  ctx.fillStyle = color;
-  // Main body
-  ctx.fillRect(x + cornerSize, y, w - cornerSize * 2, h);
-  ctx.fillRect(x, y + cornerSize, w, h - cornerSize * 2);
+  ctx.fillStyle = outline;
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = fill;
+  ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
 }
 
 // ---- Walk cycle offsets ----

@@ -19,6 +19,7 @@ import {
   drawSofa,
   drawBookshelf,
   drawWhiteboard,
+  drawFireplace,
   drawCoffeeMachine,
   drawPlant,
   drawPlantSmall,
@@ -27,7 +28,6 @@ import {
   drawWindow,
   drawPoster,
   drawCooler,
-  drawArcade,
   drawFridge,
 } from './draw-furniture';
 import { drawFloorCables } from './draw-cables';
@@ -51,6 +51,9 @@ function drawFurnitureItem(ctx: CanvasRenderingContext2D, f: FurniturePlacement)
       break;
     case 'whiteboard':
       drawWhiteboard(ctx, x, y, w, h);
+      break;
+    case 'fireplace':
+      drawFireplace(ctx, x, y, w, h);
       break;
     case 'coffee':
       drawCoffeeMachine(ctx, x, y);
@@ -78,9 +81,6 @@ function drawFurnitureItem(ctx: CanvasRenderingContext2D, f: FurniturePlacement)
       break;
     case 'cooler':
       drawCooler(ctx, x, y);
-      break;
-    case 'arcade':
-      drawArcade(ctx, x, y, w, h);
       break;
     case 'fridge':
       drawFridge(ctx, x, y, w, h);
@@ -127,7 +127,7 @@ export function renderFurnitureBehind(ctx: CanvasRenderingContext2D): void {
         'plant-small',
         'cabinet',
         'cooler',
-        'arcade',
+        'fireplace',
         'fridge',
       ].includes(f.type)
     ) {

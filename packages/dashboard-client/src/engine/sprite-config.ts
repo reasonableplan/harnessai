@@ -1,5 +1,5 @@
 /**
- * LPC-style sprite configuration
+ * Stardew Valley-inspired sprite configuration
  * All position/color/animation constants for the Canvas-based office scene
  */
 
@@ -15,14 +15,14 @@ export const LOGICAL_H = MAP_ROWS * TILE_SIZE; // 512
 export const CANVAS_W = LOGICAL_W * RENDER_SCALE; // 1536
 export const CANVAS_H = LOGICAL_H * RENDER_SCALE; // 1024
 
-// Character sprite size (RPG Maker proportions — 3-head tall)
+// Character sprite size: 2x of Modern Interiors 16×32 frame
 export const CHAR_W = 32;
-export const CHAR_H = 48;
+export const CHAR_H = 64;
 
 // Wall rows (rows 0-4 are wall, 5-15 are floor)
 export const WALL_ROWS = 5;
 
-// ---- Agent colors (matching original theme) ----
+// ---- Agent colors (Stardew Valley-inspired warm palette) ----
 export interface AgentColors {
   body: string;
   bodyDark: string;
@@ -37,58 +37,58 @@ export interface AgentColors {
 
 export const AGENT_COLORS: Record<string, AgentColors> = {
   director: {
-    body: '#2C2C54',
-    bodyDark: '#1A1A3E',
-    accent: '#FFD700',
-    hair: '#4A3728',
-    skin: '#FFCC99',
-    skinShadow: '#E5B080',
-    pants: '#1A1A3E',
-    shoes: '#333344',
+    body: '#4A3068',     // Royal purple vest
+    bodyDark: '#362050',
+    accent: '#FFD700',   // Gold star
+    hair: '#5C3A1A',     // Warm brown
+    skin: '#FFD5B8',
+    skinShadow: '#E8B898',
+    pants: '#2A2040',
+    shoes: '#4A3A2A',
     hairStyle: 'short',
   },
   git: {
-    body: '#CC3322',
-    bodyDark: '#AA2211',
-    accent: '#FF7854',
-    hair: '#1A1A1A',
-    skin: '#8B6848',
-    skinShadow: '#7A5838',
-    pants: '#333344',
-    shoes: '#222233',
+    body: '#C04020',     // Warm barn red
+    bodyDark: '#A03018',
+    accent: '#FF8C55',   // Sunset orange
+    hair: '#1C1C1C',
+    skin: '#D4A574',
+    skinShadow: '#B8885C',
+    pants: '#5A4030',
+    shoes: '#3A2A1A',
     hairStyle: 'spiky',
   },
   frontend: {
-    body: '#20232A',
-    bodyDark: '#15181E',
-    accent: '#61DAFB',
-    hair: '#8B4513',
-    skin: '#FFD5B8',
-    skinShadow: '#E8BCA0',
-    pants: '#2A3A4A',
-    shoes: '#444455',
+    body: '#2A7A8A',     // Ocean teal
+    bodyDark: '#1E5A6A',
+    accent: '#5CE0D0',   // Seafoam
+    hair: '#8B4513',     // Auburn
+    skin: '#FFE0C4',
+    skinShadow: '#E8C4A4',
+    pants: '#3A4A50',
+    shoes: '#4A3A2A',
     hairStyle: 'long',
   },
   backend: {
-    body: '#2E6B2E',
-    bodyDark: '#1E5A1E',
-    accent: '#68A063',
-    hair: '#222222',
-    skin: '#DEB887',
-    skinShadow: '#C8A070',
-    pants: '#333344',
-    shoes: '#333333',
+    body: '#3A7A2E',     // Forest green
+    bodyDark: '#2A5A1E',
+    accent: '#7CC46A',   // Spring green
+    hair: '#2A1A0A',
+    skin: '#E8C8A0',
+    skinShadow: '#CCA880',
+    pants: '#4A4030',
+    shoes: '#3A3020',
     hairStyle: 'curly',
   },
   docs: {
-    body: '#C9A800',
-    bodyDark: '#A08800',
-    accent: '#F7DF1E',
-    hair: '#654321',
-    skin: '#FFE0C0',
-    skinShadow: '#E8C8A8',
-    pants: '#4A4030',
-    shoes: '#554433',
+    body: '#C4880A',     // Harvest gold
+    bodyDark: '#A07008',
+    accent: '#FFD54F',   // Sunflower yellow
+    hair: '#6B4226',     // Chestnut
+    skin: '#FFE4CC',
+    skinShadow: '#E8CAB0',
+    pants: '#5A4830',
+    shoes: '#4A3A28',
     hairStyle: 'ponytail',
   },
 };
@@ -195,7 +195,7 @@ export const FURNITURE: FurniturePlacement[] = [
   { type: 'sofa', col: 18, row: 13, w: 4, h: 2 },
   // Bookshelf (right wall area)
   { type: 'bookshelf', col: 21, row: 5, w: 2, h: 3 },
-  // Whiteboard (on wall)
+  // Whiteboard → Corkboard (on wall)
   { type: 'whiteboard', col: 15, row: 1, w: 4, h: 3 },
   // Coffee machine (bottom-left corner)
   { type: 'coffee', col: 1, row: 13, w: 1, h: 2 },
@@ -208,13 +208,13 @@ export const FURNITURE: FurniturePlacement[] = [
   // Window on wall
   { type: 'window', col: 3, row: 1, w: 4, h: 3 },
   { type: 'window', col: 9, row: 1, w: 4, h: 3 },
-  // Wall posters
+  // Wall decorations
   { type: 'poster-indie', col: 7, row: 1, w: 2, h: 2 },
   { type: 'poster-jam', col: 13, row: 1, w: 2, h: 2 },
   // Water cooler
   { type: 'cooler', col: 23, row: 12, w: 1, h: 2 },
-  // Arcade machine (left of director area)
-  { type: 'arcade', col: 8, row: 5, w: 2, h: 3 },
+  // Fireplace (left of director area — replaces arcade)
+  { type: 'fireplace', col: 8, row: 5, w: 2, h: 3 },
   // Fridge + microwave (left wall area)
   { type: 'fridge', col: 0, row: 8, w: 1, h: 3 },
   // Extra plants

@@ -52,12 +52,12 @@ export default function BoardExpandedView() {
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.9, y: 20 }}
             transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-            className="bg-[#1a1a2e] pixel-border p-4 w-[90vw] max-w-[1100px] h-[80vh] flex flex-col"
+            className="bg-[#2D1B0E] pixel-border p-4 w-[90vw] max-w-[1100px] h-[80vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
             <div className="flex items-center justify-between mb-3">
-              <span className="font-pixel text-[10px] text-cyan-300 pixel-text-shadow">
+              <span className="font-pixel text-[10px] text-amber-300 pixel-text-shadow">
                 KANBAN BOARD
               </span>
               <button onClick={toggleBoard} className="pixel-btn text-[8px]">
@@ -72,7 +72,7 @@ export default function BoardExpandedView() {
                 return (
                   <div
                     key={col.key}
-                    className="flex-1 min-w-[140px] flex flex-col bg-[#16213e] border border-[#0f3460]"
+                    className="flex-1 min-w-[140px] flex flex-col bg-[#3A2410] border border-[#5C3A1A]"
                   >
                     {/* Column header */}
                     <div
@@ -92,7 +92,7 @@ export default function BoardExpandedView() {
                         return (
                           <div
                             key={task.id}
-                            className="bg-[#1a1a3e] border border-[#333] p-1.5 hover:border-gray-500 transition-colors"
+                            className="bg-[#2D1B0E] border border-[#5C3A1A] p-1.5 hover:border-gray-500 transition-colors"
                           >
                             <div className="flex items-start gap-1">
                               <div

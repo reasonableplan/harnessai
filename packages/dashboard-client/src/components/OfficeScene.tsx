@@ -43,7 +43,7 @@ export default function OfficeScene() {
   );
 
   return (
-    <div className="relative w-full h-full flex items-center justify-center bg-[#1a1a2e]">
+    <div className="relative w-full h-full flex items-center justify-center bg-[#2D1B0E]">
       <div
         ref={wrapperRef}
         className="relative"

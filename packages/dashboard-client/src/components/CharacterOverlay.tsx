@@ -38,11 +38,11 @@ function springStep(s: PosState, tx: number, ty: number, dt: number) {
 
 // Bubble type colors
 const BUBBLE_STYLES: Record<string, { bg: string; border: string; text: string }> = {
-  task: { bg: '#FFFFFF', border: '#333333', text: '#222222' },
-  thinking: { bg: '#FFF8DC', border: '#DAA520', text: '#555555' },
-  info: { bg: '#E0F0FF', border: '#4A90D9', text: '#333333' },
-  error: { bg: '#FFE0E0', border: '#CC3333', text: '#AA0000' },
-  warning: { bg: '#FFF3CD', border: '#FFC107', text: '#856404' },
+  task: { bg: '#FFF8EC', border: '#8A6838', text: '#3A2A10' },
+  thinking: { bg: '#FFF8DC', border: '#C4A040', text: '#5A4020' },
+  info: { bg: '#E8F0E0', border: '#5A8A48', text: '#2A4020' },
+  error: { bg: '#FFE4D8', border: '#C04030', text: '#8A2020' },
+  warning: { bg: '#FFF3CD', border: '#C4900A', text: '#6A4A04' },
 };
 
 export default function CharacterOverlay() {

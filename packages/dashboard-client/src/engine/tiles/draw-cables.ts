@@ -1,14 +1,15 @@
 /**
- * Floor cable rendering between desks
+ * Floor detail rendering — vine-like cable paths between desks (Stardew style)
  */
 
-import { T } from './tile-utils';
+import { T, fillCircle } from './tile-utils';
 
 export function drawFloorCables(ctx: CanvasRenderingContext2D) {
   ctx.save();
-  ctx.strokeStyle = '#333';
-  ctx.lineWidth = 2;
-  ctx.globalAlpha = 0.5;
+  // Warm-toned cables that look like worn paths / vines
+  ctx.strokeStyle = '#8A7A5A';
+  ctx.lineWidth = 1.5;
+  ctx.globalAlpha = 0.35;
   ctx.lineCap = 'round';
 
   ctx.beginPath();
@@ -26,12 +27,19 @@ export function drawFloorCables(ctx: CanvasRenderingContext2D) {
   ctx.quadraticCurveTo(11 * T, 5.5 * T, 10 * T, 5 * T);
   ctx.stroke();
 
-  ctx.strokeStyle = '#2A2A2A';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = '#7A6A4A';
+  ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(20 * T, 11 * T);
   ctx.quadraticCurveTo(22 * T, 9 * T, 23 * T, 7 * T);
   ctx.stroke();
+
+  // Small leaf accents along paths
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = '#6A8A4A';
+  fillCircle(ctx, 2.5 * T, 8 * T, 1.5);
+  fillCircle(ctx, 11 * T, 11.2 * T, 1.5);
+  fillCircle(ctx, 21 * T, 10 * T, 1.5);
 
   ctx.restore();
 }

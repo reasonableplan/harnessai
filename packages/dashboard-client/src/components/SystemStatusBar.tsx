@@ -64,7 +64,7 @@ export default function SystemStatusBar() {
     usedPercent > 90 ? 'text-red-400' : usedPercent > 70 ? 'text-yellow-400' : 'text-green-400';
 
   return (
-    <div className="flex items-center gap-4 px-4 py-2 bg-[#16213e] border-b-2 border-[#0f3460] font-pixel text-[8px] select-none">
+    <div className="flex items-center gap-4 px-4 py-2 bg-[#3A2410] border-b-2 border-[#5C3A1A] font-pixel text-[8px] select-none">
       {/* Epic info */}
       <div className="flex items-center gap-2 min-w-0 flex-shrink">
         <span className="text-agent-director">EPIC:</span>
@@ -73,7 +73,7 @@ export default function SystemStatusBar() {
         </span>
         {currentEpic && (
           <div className="flex items-center gap-1">
-            <div className="w-20 h-2 bg-gray-700 pixel-border-light">
+            <div className="w-20 h-2 bg-[#5C3A1A] pixel-border-light">
               <div
                 className="h-full bg-agent-director transition-all duration-500"
                 style={{ width: `${Math.round(currentEpic.progress * 100)}%` }}
@@ -84,7 +84,7 @@ export default function SystemStatusBar() {
         )}
       </div>
 
-      <div className="w-px h-5 bg-gray-600" />
+      <div className="w-px h-5 bg-[#6A4A28]" />
 
       {/* Agent counts */}
       <div className="flex items-center gap-3">
@@ -94,7 +94,7 @@ export default function SystemStatusBar() {
         {errorCount > 0 && <span className="text-red-400">{errorCount} error</span>}
       </div>
 
-      <div className="w-px h-5 bg-gray-600" />
+      <div className="w-px h-5 bg-[#6A4A28]" />
 
       {/* Board summary */}
       <div className="flex items-center gap-2">
@@ -112,7 +112,7 @@ export default function SystemStatusBar() {
         {taskList.length === 0 && <span className="text-gray-500">empty</span>}
       </div>
 
-      <div className="w-px h-5 bg-gray-600" />
+      <div className="w-px h-5 bg-[#6A4A28]" />
 
       {/* Token usage summary */}
       <div className="flex items-center gap-2">
@@ -120,7 +120,7 @@ export default function SystemStatusBar() {
         <span className={tokenColor}>{formatTokens(totalUsed)}</span>
         <span className="text-gray-600">/</span>
         <span className="text-gray-400">{formatTokens(tokenBudget)}</span>
-        <div className="w-16 h-2 bg-gray-700 overflow-hidden">
+        <div className="w-16 h-2 bg-[#5C3A1A] overflow-hidden">
           <div
             className="h-full transition-all duration-500"
             style={{
@@ -139,7 +139,7 @@ export default function SystemStatusBar() {
       {/* Timer */}
       <div className="flex items-center gap-2">
         <span className="text-gray-400">TIME:</span>
-        <span className="text-cyan-300 tabular-nums">{formatTime(elapsedTime)}</span>
+        <span className="text-amber-300 tabular-nums">{formatTime(elapsedTime)}</span>
       </div>
 
       {/* Pause/Resume */}
