@@ -1,5 +1,5 @@
 import type { GitHubContext } from './types.js';
-import { createLogger } from '../logger.js';
+import { createLogger } from '../logging/logger.js';
 
 const log = createLogger('GitService');
 

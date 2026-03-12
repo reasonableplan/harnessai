@@ -77,6 +77,7 @@ export const MESSAGE_TYPES = {
   REVIEW_FEEDBACK: 'review.feedback',
   EPIC_PROGRESS: 'epic.progress',
   AGENT_STATUS: 'agent.status',
+  TOKEN_USAGE: 'token.usage',
   USER_INPUT: 'user.input',
   SYSTEM_COMMAND: 'system.command',
 } as const;
@@ -211,6 +212,9 @@ export interface IStateStore {
   saveMessage(message: Message): Promise<void>;
   // Artifact
   saveArtifact(artifact: ArtifactInsert): Promise<void>;
+  // Transaction
+  /** 여러 DB 작업을 하나의 트랜잭션으로 묶는다. 에러 시 자동 rollback. */
+  transaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T>;
   // Dashboard queries
   getAllAgents(): Promise<AgentRow[]>;
   getAllTasks(): Promise<TaskRow[]>;
@@ -235,7 +239,7 @@ export interface IGitService {
   moveIssueToColumn(issueNumber: number, column: string): Promise<void>;
   // Git operations
   createBranch(branchName: string, baseBranch?: string): Promise<void>;
-  createPR(title: string, body: string, head: string, base?: string): Promise<number>;
+  createPR(title: string, body: string, head: string, base?: string, linkedIssues?: number[]): Promise<number>;
 }
 
 // ===== UserInput =====

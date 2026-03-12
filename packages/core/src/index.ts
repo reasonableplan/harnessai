@@ -1,22 +1,27 @@
 export * from './types/index.js';
+export { loadConfig, type AppConfig } from './config.js';
+export * from './errors.js';
 export * from './db/schema.js';
-export { createDb, runMigrations, type Database } from './db/index.js';
-export * from './base-agent.js';
-export * from './message-bus.js';
-export * from './state-store.js';
+export { createDb, runMigrations, type Database, type DbConnection } from './db/index.js';
+export * from './agent/base-agent.js';
+export * from './messaging/message-bus.js';
+export * from './state/state-store.js';
 export { GitService, type GitServiceConfig } from './git-service/index.js';
-export * from './board-watcher.js';
-export * from './file-writer.js';
-export * from './circuit-breaker.js';
-export * from './api-retry.js';
-export * from './follow-up-creator.js';
-export { OrphanCleaner, type OrphanCleanerConfig } from './orphan-cleaner.js';
-export { createLogger, type Logger } from './logger.js';
-export * from './system-controller.js';
-export { startCLI, type CLIOptions } from './cli.js';
+export * from './board/board-watcher.js';
+export * from './io/file-writer.js';
+export { ClaudeClient, type IClaudeClient, type ClaudeClientConfig, type ClaudeResponse } from './llm/claude-client.js';
+export { CommitRequester } from './llm/commit-requester.js';
+export * from './resilience/circuit-breaker.js';
+export { isValidTransition, assertValidTransition } from './state/task-state-machine.js';
+export * from './resilience/api-retry.js';
+export * from './io/follow-up-creator.js';
+export { OrphanCleaner, type OrphanCleanerConfig } from './resilience/orphan-cleaner.js';
+export { createLogger, type Logger } from './logging/logger.js';
+export * from './agent/system-controller.js';
+export { startCLI, type CLIOptions } from './agent/cli.js';
 export {
   bootstrap,
   type SystemContext,
   type AgentFactory,
   type BootstrapConfig,
-} from './bootstrap.js';
+} from './agent/bootstrap.js';

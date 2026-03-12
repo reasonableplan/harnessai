@@ -5,10 +5,16 @@ import type { GitCli } from './git-cli.js';
 
 const log = createLogger('WorkspaceManager');
 
+export interface WorkspaceConfig {
+  githubOwner: string;
+  githubRepo: string;
+}
+
 export class WorkspaceManager {
   constructor(
     private workDir: string,
     private gitCli: GitCli,
+    private wsConfig: WorkspaceConfig,
   ) {}
 
   async getEpicWorkDir(epicId: string): Promise<string> {
@@ -19,7 +25,7 @@ export class WorkspaceManager {
     } catch {
       // 클론되지 않은 경우: repo를 해당 branch로 clone
       await fs.mkdir(epicDir, { recursive: true });
-      const repoUrl = `https://github.com/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}.git`;
+      const repoUrl = `https://github.com/${this.wsConfig.githubOwner}/${this.wsConfig.githubRepo}.git`;
       const branchName = `epic/${epicId}`;
       try {
         await this.gitCli.exec(this.workDir, 'clone', '--branch', branchName, repoUrl, epicId);

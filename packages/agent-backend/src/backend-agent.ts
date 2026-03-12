@@ -2,14 +2,15 @@ import {
   BaseAgent,
   FileWriter,
   FollowUpCreator,
+  ClaudeClient,
+  CommitRequester,
   type AgentDependencies,
   type AgentConfig,
   type Task,
   type TaskResult,
+  type IClaudeClient,
 } from '@agent/core';
-import { ClaudeClient } from './claude-client.js';
-import { CodeGenerator, type IClaudeClient } from './code-generator.js';
-import { CommitRequester } from './commit-requester.js';
+import { CodeGenerator } from './code-generator.js';
 import { detectTaskType, type BackendTaskType } from './task-router.js';
 
 export interface BackendAgentConfig {
@@ -37,15 +38,18 @@ export class BackendAgent extends BaseAgent {
     };
     super(config, deps);
 
+    if (!backendConfig.claudeClient && !backendConfig.claudeApiKey) {
+      throw new Error('BackendAgent requires either claudeClient or claudeApiKey');
+    }
     const claude =
       backendConfig.claudeClient ??
       new ClaudeClient(
         { model: config.claudeModel, maxTokens: config.maxTokens, temperature: config.temperature },
-        backendConfig.claudeApiKey,
+        backendConfig.claudeApiKey!,
       );
 
     this.codeGenerator = new CodeGenerator(claude, backendConfig.workDir);
-    this.commitRequester = new CommitRequester(deps.gitService);
+    this.commitRequester = new CommitRequester(deps.gitService, 'feat(backend):');
     this.followUpCreator = new FollowUpCreator(deps.gitService);
     this.fileWriter = new FileWriter(backendConfig.workDir);
   }
@@ -78,6 +82,7 @@ export class BackendAgent extends BaseAgent {
   private async handleCodeTask(task: Task, taskType: BackendTaskType): Promise<TaskResult> {
     // 1. Claude로 코드 생성
     const generated = await this.codeGenerator.generate(task, taskType);
+    await this.publishTokenUsage(generated.usage.inputTokens, generated.usage.outputTokens);
     this.log.info(
       { fileCount: generated.files.length, summary: generated.summary },
       'Code generated',

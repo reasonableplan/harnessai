@@ -1,25 +1,14 @@
 import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
-import { createLogger, type GeneratedCode, type Task } from '@agent/core';
+import { createLogger, type IClaudeClient, type GeneratedCode, type Task } from '@agent/core';
 import type { BackendTaskType } from './task-router.js';
+
+export type { IClaudeClient } from '@agent/core';
 
 const log = createLogger('CodeGenerator');
 
 const MAX_FILE_READ_CHARS = 8000;
 const MAX_TOTAL_CHARS = 30000;
-
-/**
- * Claude API 인터페이스. 테스트에서 mock 주입 가능.
- */
-export interface IClaudeClient {
-  chatJSON<T>(
-    systemPrompt: string,
-    userMessage: string,
-  ): Promise<{
-    data: T;
-    usage: { inputTokens: number; outputTokens: number };
-  }>;
-}
 
 /**
  * Claude API를 사용하여 백엔드 코드를 생성하는 엔진.
@@ -31,7 +20,7 @@ export class CodeGenerator {
     private workDir?: string,
   ) {}
 
-  async generate(task: Task, taskType: BackendTaskType): Promise<GeneratedCode> {
+  async generate(task: Task, taskType: BackendTaskType): Promise<GeneratedCode & { usage: { inputTokens: number; outputTokens: number } }> {
     const systemPrompt = this.buildSystemPrompt(taskType);
     const userMessage = await this.buildUserMessage(task, taskType);
 
@@ -42,7 +31,7 @@ export class CodeGenerator {
       throw new Error('Invalid Claude response shape: missing "files" array or "summary" string');
     }
 
-    return data;
+    return { ...data, usage };
   }
 
   private buildSystemPrompt(taskType: BackendTaskType): string {
@@ -158,13 +147,12 @@ Use action "update" for modified files.`,
             ? content.slice(0, MAX_FILE_READ_CHARS) + '\n... (truncated)'
             : content;
 
-        const charCount = Math.min(content.length, MAX_FILE_READ_CHARS);
-        if (totalChars + charCount > MAX_TOTAL_CHARS) break;
-        totalChars += charCount;
+        if (totalChars + truncated.length > MAX_TOTAL_CHARS) break;
+        totalChars += truncated.length;
 
         results.push({ path: filePath, content: truncated });
-      } catch {
-        // 파일을 읽을 수 없으면 skip
+      } catch (err) {
+        log.warn({ path: filePath, err: err instanceof Error ? err.message : err }, 'Failed to read existing file, skipping');
       }
     }
 

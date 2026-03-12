@@ -99,16 +99,32 @@ export default function App() {
     return () => clearInterval(interval);
   }, [updateAgent, addMessage, updateTokenUsage]);
 
+  // Demo mode: only runs when no real server connection within 3 seconds
   useEffect(() => {
     let demoCleanup: (() => void) | null = null;
+    let cancelled = false;
 
     const timeout = setTimeout(() => {
-      demoCleanup = startDemo();
-    }, 2000);
+      // Check if a real server sent an init event (double-check to avoid race)
+      if (!cancelled && !useOfficeStore.getState().connected) {
+        demoCleanup = startDemo();
+      }
+    }, 3000);
+
+    // Watch for connection to cancel demo if server connects after demo started
+    const unsub = useOfficeStore.subscribe((state) => {
+      if (state.connected && demoCleanup) {
+        cancelled = true;
+        demoCleanup();
+        demoCleanup = null;
+      }
+    });
 
     return () => {
+      cancelled = true;
       clearTimeout(timeout);
       demoCleanup?.();
+      unsub();
     };
   }, [startDemo]);
 

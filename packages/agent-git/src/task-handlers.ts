@@ -14,13 +14,11 @@ export type GitTaskType = 'branch' | 'commit' | 'pr' | 'unknown';
  */
 export function detectTaskType(task: Task): GitTaskType {
   // Labels 기반 (DirectorAgent가 붙이는 type:* labels)
-  if (task.githubIssueNumber) {
-    const labels = (task as { labels?: string[] }).labels;
-    if (labels) {
-      if (labels.some((l) => l === 'type:pr')) return 'pr';
-      if (labels.some((l) => l === 'type:branch')) return 'branch';
-      if (labels.some((l) => l === 'type:commit')) return 'commit';
-    }
+  const labels = task.labels;
+  if (labels && labels.length > 0) {
+    if (labels.some((l) => l === 'type:pr')) return 'pr';
+    if (labels.some((l) => l === 'type:branch')) return 'branch';
+    if (labels.some((l) => l === 'type:commit')) return 'commit';
   }
 
   // Title 기반 (fallback)
@@ -133,13 +131,14 @@ export class TaskHandlers {
     const branchName = `epic/${epicId}`;
 
     // Director 피드백이 있으면 PR 설명에 반영
+    const baseDescription = task.description || task.title;
     const description = task.reviewNote
-      ? `${task.description}\n\n---\n_Revised based on Director feedback: ${task.reviewNote}_`
-      : task.description;
+      ? `${baseDescription}\n\n---\n_Revised based on Director feedback: ${task.reviewNote}_`
+      : baseDescription;
 
     try {
       const prNumber = await this.gitService.createPR(
-        task.title.replace('[GIT] ', ''),
+        task.title.replace(/^\[GIT\]\s*/, ''),
         description,
         branchName,
         'main',

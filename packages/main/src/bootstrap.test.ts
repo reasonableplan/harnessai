@@ -1,11 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { AgentDependencies, IMessageBus, IStateStore, IGitService } from '@agent/core';
+import type { AgentDependencies, IMessageBus, IStateStore, IGitService, AppConfig } from '@agent/core';
 import { DirectorAgent } from '@agent/director';
 import { GitAgent } from '@agent/git';
 import { BackendAgent } from '@agent/backend';
 import { FrontendAgent } from '@agent/frontend';
 import { DocsAgent } from '@agent/docs';
 import { createAgentFactories } from './agent-factories.js';
+
+// ===== Mock Config =====
+
+function createMockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
+  return {
+    database: { url: 'postgres://localhost/test' },
+    github: { token: 'ghp_test', owner: 'test-owner', repo: 'test-repo' },
+    claude: { apiKey: 'sk-ant-test' },
+    workspace: { workDir: '/tmp/test-workspace' },
+    dashboard: { port: 3001, corsOrigins: ['http://localhost:3000'] },
+    logging: { level: 'info', isProduction: false },
+    ...overrides,
+  };
+}
 
 // ===== Mock Deps =====
 
@@ -40,6 +54,7 @@ function createMockStateStore(): IStateStore {
     getAllTasks: vi.fn().mockResolvedValue([]),
     getAllEpics: vi.fn().mockResolvedValue([]),
     getRecentMessages: vi.fn().mockResolvedValue([]),
+    transaction: vi.fn().mockImplementation((fn) => fn({})),
   };
 }
 
@@ -72,23 +87,22 @@ function createDeps(): AgentDependencies {
 
 describe('Bootstrap Integration — Agent Factory Wiring', () => {
   let deps: AgentDependencies;
+  let config: AppConfig;
 
   beforeEach(() => {
     deps = createDeps();
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
-    process.env.GIT_WORK_DIR = '/tmp/test-workspace';
-    process.env.GITHUB_TOKEN = 'ghp_test';
+    config = createMockConfig();
   });
 
   // ===== createAgentFactories =====
 
   it('creates all 5 agent factories', () => {
-    const factories = createAgentFactories();
+    const factories = createAgentFactories(config);
     expect(Object.keys(factories)).toEqual(['director', 'git', 'backend', 'frontend', 'docs']);
   });
 
   it('director factory creates DirectorAgent (Level 0)', () => {
-    const factories = createAgentFactories();
+    const factories = createAgentFactories(config);
     const agent = factories.director(deps);
     expect(agent).toBeInstanceOf(DirectorAgent);
     expect(agent.id).toBe('director');
@@ -97,7 +111,7 @@ describe('Bootstrap Integration — Agent Factory Wiring', () => {
   });
 
   it('git factory creates GitAgent (Level 2)', () => {
-    const factories = createAgentFactories();
+    const factories = createAgentFactories(config);
     const agent = factories.git(deps);
     expect(agent).toBeInstanceOf(GitAgent);
     expect(agent.id).toBe('git');
@@ -106,7 +120,7 @@ describe('Bootstrap Integration — Agent Factory Wiring', () => {
   });
 
   it('backend factory creates BackendAgent (Level 2)', () => {
-    const factories = createAgentFactories();
+    const factories = createAgentFactories(config);
     const agent = factories.backend(deps);
     expect(agent).toBeInstanceOf(BackendAgent);
     expect(agent.id).toBe('backend');
@@ -115,7 +129,7 @@ describe('Bootstrap Integration — Agent Factory Wiring', () => {
   });
 
   it('frontend factory creates FrontendAgent (Level 2)', () => {
-    const factories = createAgentFactories();
+    const factories = createAgentFactories(config);
     const agent = factories.frontend(deps);
     expect(agent).toBeInstanceOf(FrontendAgent);
     expect(agent.id).toBe('frontend');
@@ -124,7 +138,7 @@ describe('Bootstrap Integration — Agent Factory Wiring', () => {
   });
 
   it('docs factory creates DocsAgent (Level 2)', () => {
-    const factories = createAgentFactories();
+    const factories = createAgentFactories(config);
     const agent = factories.docs(deps);
     expect(agent).toBeInstanceOf(DocsAgent);
     expect(agent.id).toBe('docs');
@@ -135,7 +149,7 @@ describe('Bootstrap Integration — Agent Factory Wiring', () => {
   // ===== Shared Dependencies =====
 
   it('all agents share the same MessageBus instance', () => {
-    const factories = createAgentFactories();
+    const factories = createAgentFactories(config);
     Object.values(factories).map((f) => f(deps));
 
     // Director subscribes to review.request — verify messageBus.subscribe was called
@@ -146,7 +160,7 @@ describe('Bootstrap Integration — Agent Factory Wiring', () => {
   // ===== Agent Hierarchy =====
 
   it('exactly one Level 0 agent (Director) and four Level 2 workers', () => {
-    const factories = createAgentFactories();
+    const factories = createAgentFactories(config);
     const agents = Object.values(factories).map((f) => f(deps));
 
     const l0 = agents.filter((a) => a.config.level === 0);
@@ -161,11 +175,10 @@ describe('Bootstrap Integration — Agent Factory Wiring', () => {
   // ===== Review Cycle Wiring =====
 
   it('all worker agents use BaseAgent.onTaskComplete (Review → Director)', async () => {
-    const factories = createAgentFactories();
+    const factories = createAgentFactories(config);
     const agents = Object.values(factories).map((f) => f(deps));
 
     // 각 워커 에이전트가 onTaskComplete를 오버라이드하지 않았는지 확인
-    // (GitAgent은 이전에 오버라이드했으나 수정됨)
     const workers = agents.filter((a) => a.id !== 'director');
 
     for (const worker of workers) {
@@ -217,7 +230,7 @@ describe('Bootstrap Integration — Agent Factory Wiring', () => {
   // ===== Polling Lifecycle =====
 
   it('agents start idle and can be polled', () => {
-    const factories = createAgentFactories();
+    const factories = createAgentFactories(config);
     const agents = Object.values(factories).map((f) => f(deps));
 
     for (const agent of agents) {
@@ -226,7 +239,7 @@ describe('Bootstrap Integration — Agent Factory Wiring', () => {
   });
 
   it('agents can start and stop polling', () => {
-    const factories = createAgentFactories();
+    const factories = createAgentFactories(config);
     const agents = Object.values(factories).map((f) => f(deps));
 
     for (const agent of agents) {
@@ -236,13 +249,12 @@ describe('Bootstrap Integration — Agent Factory Wiring', () => {
     }
   });
 
-  // ===== Environment Variable Defaults =====
+  // ===== Config Defaults =====
 
-  it('uses default workDir when GIT_WORK_DIR is not set', () => {
-    delete process.env.GIT_WORK_DIR;
-    const factories = createAgentFactories();
+  it('uses provided workDir from config', () => {
+    const customConfig = createMockConfig({ workspace: { workDir: '/custom/path' } });
+    const factories = createAgentFactories(customConfig);
 
-    // Should not throw — defaults to './workspace'
     const git = factories.git(deps);
     expect(git).toBeInstanceOf(GitAgent);
   });

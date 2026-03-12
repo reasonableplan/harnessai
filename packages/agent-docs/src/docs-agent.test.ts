@@ -37,6 +37,7 @@ function createMockStateStore(): IStateStore {
     getAllTasks: vi.fn().mockResolvedValue([]),
     getAllEpics: vi.fn().mockResolvedValue([]),
     getRecentMessages: vi.fn().mockResolvedValue([]),
+    transaction: vi.fn().mockImplementation((fn) => fn({})),
   };
 }
 
@@ -60,6 +61,10 @@ function createMockGitService(): IGitService {
 
 function createMockClaude(response: unknown): IClaudeClient {
   return {
+    chat: vi.fn().mockResolvedValue({
+      content: JSON.stringify(response),
+      usage: { inputTokens: 250, outputTokens: 300 },
+    }),
     chatJSON: vi.fn().mockResolvedValue({
       data: response,
       usage: { inputTokens: 250, outputTokens: 300 },

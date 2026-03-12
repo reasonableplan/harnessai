@@ -49,7 +49,7 @@ export function createRoutes(deps: RouteDependencies): Router {
   // GET /api/tasks/:id — returns single task
   router.get('/api/tasks/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const id = req.params.id;
       const task = await stateStore.getTask(id);
       if (!task) {
         res.status(404).json({ error: 'Task not found' });
@@ -160,7 +160,7 @@ export function createRoutes(deps: RouteDependencies): Router {
   // Error handling middleware
   router.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     log.error({ err }, 'Route error');
-    res.status(500).json({ error: 'Internal server error', message: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   });
 
   return router;

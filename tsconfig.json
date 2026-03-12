@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@agent/core": ["./packages/core/src/index.ts"],
+      "@agent/director": ["./packages/agent-director/src/index.ts"],
+      "@agent/git": ["./packages/agent-git/src/index.ts"],
+      "@agent/backend": ["./packages/agent-backend/src/index.ts"],
+      "@agent/frontend": ["./packages/agent-frontend/src/index.ts"],
+      "@agent/docs": ["./packages/agent-docs/src/index.ts"],
+      "@agent/dashboard-server": ["./packages/dashboard-server/src/index.ts"],
+      "@agent/main": ["./packages/main/src/index.ts"]
+    }
+  },
+  "include": [
+    "packages/core/src/**/*.ts",
+    "packages/agent-*/src/**/*.ts",
+    "packages/main/src/**/*.ts",
+    "packages/dashboard-server/src/**/*.ts"
+  ],
+  "exclude": ["**/dist", "**/node_modules"]
+}

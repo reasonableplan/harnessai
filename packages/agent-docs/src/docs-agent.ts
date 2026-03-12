@@ -1,14 +1,15 @@
 import {
   BaseAgent,
   FileWriter,
+  ClaudeClient,
+  CommitRequester,
   type AgentDependencies,
   type AgentConfig,
   type Task,
   type TaskResult,
+  type IClaudeClient,
 } from '@agent/core';
-import { ClaudeClient } from './claude-client.js';
-import { DocGenerator, type IClaudeClient } from './doc-generator.js';
-import { CommitRequester } from './commit-requester.js';
+import { DocGenerator } from './doc-generator.js';
 import { detectTaskType, type DocsTaskType } from './task-router.js';
 
 export interface DocsAgentConfig {
@@ -36,15 +37,18 @@ export class DocsAgent extends BaseAgent {
     };
     super(config, deps);
 
+    if (!docsConfig.claudeClient && !docsConfig.claudeApiKey) {
+      throw new Error('DocsAgent requires either claudeClient or claudeApiKey');
+    }
     const claude =
       docsConfig.claudeClient ??
       new ClaudeClient(
         { model: config.claudeModel, maxTokens: config.maxTokens, temperature: config.temperature },
-        docsConfig.claudeApiKey,
+        docsConfig.claudeApiKey!,
       );
 
     this.docGenerator = new DocGenerator(claude, docsConfig.workDir);
-    this.commitRequester = new CommitRequester(deps.gitService);
+    this.commitRequester = new CommitRequester(deps.gitService, 'docs:');
     this.fileWriter = new FileWriter(docsConfig.workDir);
   }
 
@@ -76,6 +80,7 @@ export class DocsAgent extends BaseAgent {
   private async handleDocTask(task: Task, taskType: DocsTaskType): Promise<TaskResult> {
     // 1. Claude로 문서 생성
     const generated = await this.docGenerator.generate(task, taskType);
+    await this.publishTokenUsage(generated.usage.inputTokens, generated.usage.outputTokens);
     this.log.info(
       { fileCount: generated.files.length, summary: generated.summary },
       'Docs generated',

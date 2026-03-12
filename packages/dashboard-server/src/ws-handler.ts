@@ -24,7 +24,7 @@ export class WSHandler {
     this.deps = deps;
     this.eventMapper = new EventMapper(deps.stateStore);
 
-    this.wss = new WebSocketServer({ server });
+    this.wss = new WebSocketServer({ server, maxPayload: 64 * 1024 }); // 64KB limit
 
     this.wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
       this.handleConnection(ws as ExtendedWebSocket, req);
@@ -55,7 +55,12 @@ export class WSHandler {
     const data = JSON.stringify(event);
     for (const client of this.clients) {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(data);
+        try {
+          client.send(data);
+        } catch (err) {
+          log.warn({ err }, 'Failed to send to client, removing');
+          this.clients.delete(client);
+        }
       }
     }
   }
@@ -134,15 +139,30 @@ export class WSHandler {
   }
 
   private async handleMessage(ws: ExtendedWebSocket, data: Buffer): Promise<void> {
-    let command: DashboardCommand;
+    // 페이로드 크기 제한 (64KB)
+    if (data.length > 65_536) {
+      log.warn({ size: data.length }, 'Message too large, dropping');
+      ws.send(JSON.stringify({ error: 'Message too large (max 64KB)' }));
+      return;
+    }
+
+    let raw: unknown;
     try {
-      command = JSON.parse(data.toString()) as DashboardCommand;
+      raw = JSON.parse(data.toString());
     } catch {
       log.warn('Received invalid JSON from client');
       ws.send(JSON.stringify({ error: 'Invalid JSON' }));
       return;
     }
 
+    // 런타임 타입 검증
+    if (!isValidCommand(raw)) {
+      log.warn({ raw }, 'Invalid command shape');
+      ws.send(JSON.stringify({ error: 'Invalid command format' }));
+      return;
+    }
+
+    const command = raw as DashboardCommand;
     log.info({ type: command.type }, 'Received command');
 
     try {
@@ -313,5 +333,39 @@ export class WSHandler {
         client.ping();
       }
     }, HEARTBEAT_INTERVAL_MS);
+  }
+}
+
+// ===== Runtime Command Validation =====
+
+const VALID_COMMAND_TYPES = new Set([
+  'user-input', 'agent-pause', 'agent-resume',
+  'task-move', 'task-retry', 'system-pause', 'system-resume',
+]);
+
+function isValidCommand(raw: unknown): boolean {
+  if (typeof raw !== 'object' || raw === null) return false;
+  const obj = raw as Record<string, unknown>;
+
+  if (typeof obj.type !== 'string' || !VALID_COMMAND_TYPES.has(obj.type)) return false;
+  if (typeof obj.payload !== 'object' || obj.payload === null) return false;
+
+  const payload = obj.payload as Record<string, unknown>;
+
+  switch (obj.type) {
+    case 'user-input':
+      return typeof payload.text === 'string' && payload.text.length > 0;
+    case 'agent-pause':
+    case 'agent-resume':
+      return typeof payload.agentId === 'string';
+    case 'task-move':
+      return typeof payload.taskId === 'string' && typeof payload.toColumn === 'string';
+    case 'task-retry':
+      return typeof payload.taskId === 'string';
+    case 'system-pause':
+    case 'system-resume':
+      return true;
+    default:
+      return false;
   }
 }

@@ -59,6 +59,8 @@ export interface OfficeStore {
   elapsedTime: number;
   tokenUsage: Record<string, TokenUsageState>;
   tokenBudget: number;
+  /** true when a real server has sent an init event */
+  connected: boolean;
 
   setInitialState(data: {
     agents?: Record<string, AgentState>;
@@ -139,6 +141,7 @@ export const useOfficeStore = create<OfficeStore>((set) => ({
   elapsedTime: 0,
   tokenUsage: { ...DEFAULT_TOKEN_USAGE },
   tokenBudget: 10_000_000,
+  connected: false,
 
   setInitialState: (data) =>
     set((state) => {
@@ -161,6 +164,7 @@ export const useOfficeStore = create<OfficeStore>((set) => ({
         }
       }
       return {
+        connected: true,
         agents: assigned,
         tasks: data.tasks ?? state.tasks,
         epics: data.epics ?? state.epics,

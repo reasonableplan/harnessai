@@ -3,7 +3,7 @@ import type { GitHubContext } from './types.js';
 import type { ProjectSetup } from './project-setup.js';
 import type { BoardOperations } from './board-operations.js';
 import { toBoardIssue } from './issue-parser.js';
-import { withRetry } from '../api-retry.js';
+import { withRetry } from '../resilience/api-retry.js';
 
 export class IssueManager {
   private ctx: GitHubContext;

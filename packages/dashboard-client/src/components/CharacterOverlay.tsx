@@ -42,6 +42,7 @@ const BUBBLE_STYLES: Record<string, { bg: string; border: string; text: string }
   thinking: { bg: '#FFF8DC', border: '#DAA520', text: '#555555' },
   info: { bg: '#E0F0FF', border: '#4A90D9', text: '#333333' },
   error: { bg: '#FFE0E0', border: '#CC3333', text: '#AA0000' },
+  warning: { bg: '#FFF3CD', border: '#FFC107', text: '#856404' },
 };
 
 export default function CharacterOverlay() {
@@ -62,7 +63,7 @@ export default function CharacterOverlay() {
       }
     }
 
-    if (!hasBubbles) return;
+    if (!hasBubbles) return undefined;
 
     let lastTime = 0;
     let raf = 0;

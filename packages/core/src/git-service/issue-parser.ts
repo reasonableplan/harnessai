@@ -20,9 +20,16 @@ export function parseEpicId(labels: string[]): string | null {
   return epicLabel?.replace('epic:', '') ?? null;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function toBoardIssue(issue: any, column: string): BoardIssue {
-  const labels = issue.labels?.map((l: { name: string }) => l.name) ?? [];
+export interface GitHubIssueData {
+  number: number;
+  title: string;
+  body?: string | null;
+  labels?: Array<{ name: string }>;
+  assignee?: { login: string } | null;
+}
+
+export function toBoardIssue(issue: GitHubIssueData, column: string): BoardIssue {
+  const labels = issue.labels?.map((l) => l.name) ?? [];
   return {
     issueNumber: issue.number,
     title: issue.title,

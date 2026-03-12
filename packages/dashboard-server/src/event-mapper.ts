@@ -1,13 +1,61 @@
-import type { Message } from '@agent/core';
+import type { Message, TaskRow } from '@agent/core';
 import { MESSAGE_TYPES } from '@agent/core';
 import type { DashboardEvent, DashboardStateStore } from './types.js';
+
+const TASK_CACHE_TTL_MS = 5_000; // 5초 TTL
+
+interface CachedTask {
+  task: TaskRow;
+  cachedAt: number;
+}
 
 /**
  * Maps internal MessageBus events to DashboardEvents for the WebSocket clients.
  * Each mapper function returns zero or more DashboardEvents to broadcast.
+ * Task 조회에 인메모리 TTL 캐시를 적용하여 N+1 DB 조회를 방지한다.
  */
 export class EventMapper {
-  constructor(private stateStore: DashboardStateStore) {}
+  private taskCache = new Map<string, CachedTask>();
+  private cleanupTimer: ReturnType<typeof setInterval>;
+
+  constructor(private stateStore: DashboardStateStore) {
+    // Periodically remove expired cache entries to prevent unbounded growth
+    this.cleanupTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [key, entry] of this.taskCache) {
+        if (now - entry.cachedAt >= TASK_CACHE_TTL_MS) {
+          this.taskCache.delete(key);
+        }
+      }
+    }, 30_000); // every 30 seconds
+    this.cleanupTimer.unref();
+  }
+
+  /** Release resources (cleanup timer). Call on server shutdown. */
+  dispose(): void {
+    clearInterval(this.cleanupTimer);
+    this.taskCache.clear();
+  }
+
+  private async getTaskCached(taskId: string): Promise<TaskRow | null> {
+    const now = Date.now();
+    const cached = this.taskCache.get(taskId);
+    if (cached && now - cached.cachedAt < TASK_CACHE_TTL_MS) {
+      return cached.task;
+    }
+    const task = await this.stateStore.getTask(taskId);
+    if (task) {
+      this.taskCache.set(taskId, { task, cachedAt: now });
+    } else {
+      this.taskCache.delete(taskId);
+    }
+    return task;
+  }
+
+  /** 캐시에서 특정 task를 무효화한다 (task 상태 변경 시 사용). */
+  invalidateTask(taskId: string): void {
+    this.taskCache.delete(taskId);
+  }
 
   /**
    * Convert an internal Message into DashboardEvents to broadcast.
@@ -49,6 +97,10 @@ export class EventMapper {
       case MESSAGE_TYPES.BOARD_REMOVE:
         events.push(...this.mapBoardRemove(message));
         break;
+
+      case MESSAGE_TYPES.TOKEN_USAGE:
+        events.push(...this.mapTokenUsage(message));
+        break;
     }
 
     return events;
@@ -56,24 +108,26 @@ export class EventMapper {
 
   private mapAgentStatus(message: Message): DashboardEvent[] {
     const payload = message.payload as { status: string; taskId?: string };
+    // 클라이언트 렌더링은 'working'을 기대하므로 'busy' → 'working'으로 정규화
+    const normalizedStatus = payload.status === 'busy' ? 'working' : payload.status;
     const events: DashboardEvent[] = [
       {
         type: 'agent.status',
         payload: {
           agentId: message.from,
-          status: payload.status,
+          status: normalizedStatus,
           task: payload.taskId,
         },
       },
     ];
 
     // Generate bubble update for agent activity
-    if (payload.status === 'busy' || payload.status === 'working') {
+    if (normalizedStatus === 'working') {
       events.push({
         type: 'agent.bubble',
         payload: {
           agentId: message.from,
-          bubble: { content: 'Working...', type: 'working' },
+          bubble: { content: 'Working...', type: 'task' },
         },
       });
     } else if (payload.status === 'idle') {
@@ -109,8 +163,9 @@ export class EventMapper {
     const taskId = `task-gh-${payload.issueNumber}`;
     const events: DashboardEvent[] = [];
 
-    // Try to get the full task row for the board update
-    const task = await this.stateStore.getTask(taskId);
+    // Try to get the full task row for the board update (캐시 사용)
+    this.invalidateTask(taskId); // board.move 시 기존 캐시 무효화
+    const task = await this.getTaskCached(taskId);
     if (task) {
       events.push({
         type: 'task.update',
@@ -150,7 +205,7 @@ export class EventMapper {
           type: 'agent.bubble',
           payload: {
             agentId: task.assignedAgent,
-            bubble: { content: payload.title, type: 'working' },
+            bubble: { content: payload.title, type: 'task' },
           },
         });
       } else if (payload.toColumn === 'Done' || payload.toColumn === 'Failed') {
@@ -198,6 +253,20 @@ export class EventMapper {
           epicId: payload.epicId,
           title: payload.title,
           progress: payload.progress,
+        },
+      },
+    ];
+  }
+
+  private mapTokenUsage(message: Message): DashboardEvent[] {
+    const payload = message.payload as { inputTokens: number; outputTokens: number };
+    return [
+      {
+        type: 'token.usage',
+        payload: {
+          agentId: message.from,
+          inputTokens: payload.inputTokens,
+          outputTokens: payload.outputTokens,
         },
       },
     ];

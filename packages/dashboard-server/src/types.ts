@@ -23,6 +23,7 @@ export type DashboardEvent =
       type: 'toast';
       payload: { type: 'success' | 'error' | 'info'; title: string; message: string };
     }
+  | { type: 'token.usage'; payload: { agentId: string; inputTokens: number; outputTokens: number } }
   | { type: 'message'; payload: { id: string; type: string; from: string; content: string; timestamp: string } };
 
 // ===== Server Dependencies =====

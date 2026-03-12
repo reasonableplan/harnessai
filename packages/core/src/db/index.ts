@@ -3,12 +3,24 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import * as schema from './schema.js';
 
-export function createDb(connectionString: string) {
-  const pool = new pg.Pool({ connectionString });
-  return drizzle(pool, { schema });
+export interface DbConnection {
+  db: ReturnType<typeof drizzle<typeof schema>>;
+  pool: pg.Pool;
+  /** Pool을 안전하게 닫는다. Graceful shutdown 시 호출. */
+  close(): Promise<void>;
 }
 
-export type Database = ReturnType<typeof createDb>;
+export function createDb(connectionString: string): DbConnection {
+  const pool = new pg.Pool({ connectionString });
+  const db = drizzle(pool, { schema });
+  return {
+    db,
+    pool,
+    close: () => pool.end(),
+  };
+}
+
+export type Database = DbConnection['db'];
 
 /**
  * drizzle/migrations 폴더의 SQL을 실행하여 DB 스키마를 최신 상태로 만든다.

@@ -1,15 +1,24 @@
-import { bootstrap, createLogger } from '@agent/core';
+import { existsSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { bootstrap, loadConfig, createLogger } from '@agent/core';
 import { createDashboardServer } from '@agent/dashboard-server';
 import { createAgentFactories } from './agent-factories.js';
 import { createDashboardDeps } from './dashboard-adapter.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const log = createLogger('Main');
 
 async function main() {
   log.info('Starting agent orchestration system...');
 
+  // 설정을 한번만 로드하고 모든 하위 모듈에 DI로 전달
+  const appConfig = loadConfig();
+
   const context = await bootstrap({
-    agents: createAgentFactories(),
+    agents: createAgentFactories(appConfig),
+    appConfig,
   });
 
   log.info(
@@ -18,25 +27,34 @@ async function main() {
   );
 
   // Dashboard server 시작
-  const dashboardPort = Number(process.env.DASHBOARD_PORT) || 3001;
   const dashboardDeps = createDashboardDeps(
     context.stateStore,
     context.messageBus,
     context.agents,
   );
-  const dashboard = createDashboardServer(dashboardDeps);
-  await dashboard.listen(dashboardPort);
+  // Auto-detect built dashboard-client for single-port static serving
+  const clientDistPath = resolve(__dirname, '../../dashboard-client/dist');
+  const staticDir = existsSync(clientDistPath) ? clientDistPath : undefined;
 
-  log.info({ port: dashboardPort }, 'Dashboard server started');
-  log.info(`  REST API:   http://localhost:${dashboardPort}/api`);
-  log.info(`  WebSocket:  ws://localhost:${dashboardPort}`);
-  log.info(`  Health:     http://localhost:${dashboardPort}/health`);
+  const dashboard = createDashboardServer(dashboardDeps, {
+    corsOrigins: appConfig.dashboard.corsOrigins,
+    staticDir,
+  });
+  await dashboard.listen(appConfig.dashboard.port);
+
+  log.info({ port: appConfig.dashboard.port }, 'Dashboard server started');
+  log.info(`  REST API:   http://localhost:${appConfig.dashboard.port}/api`);
+  log.info(`  WebSocket:  ws://localhost:${appConfig.dashboard.port}`);
+  log.info(`  Health:     http://localhost:${appConfig.dashboard.port}/health`);
 
   // Graceful shutdown에 dashboard 포함
   const originalShutdown = context.shutdown;
   context.shutdown = async () => {
-    await dashboard.close();
-    await originalShutdown();
+    try {
+      await dashboard.close();
+    } finally {
+      await originalShutdown();
+    }
   };
 }
 

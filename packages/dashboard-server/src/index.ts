@@ -1,4 +1,6 @@
 import { createServer, type Server } from 'http';
+import { existsSync } from 'fs';
+import { resolve } from 'path';
 import express from 'express';
 import cors from 'cors';
 import { createLogger } from '@agent/core';
@@ -14,6 +16,7 @@ export type {
   AgentRegistry,
 } from './types.js';
 export type { DashboardEvent, DashboardCommand } from './types.js';
+export { EventMapper } from './event-mapper.js';
 
 const log = createLogger('DashboardServer');
 
@@ -32,12 +35,64 @@ export interface DashboardServer {
  * Factory function to create a DashboardServer with injected dependencies.
  * Used in production when integrating with the bootstrap system.
  */
-export function createDashboardServer(deps: DashboardDependencies): DashboardServer {
+export interface DashboardServerOptions {
+  corsOrigins?: string[];
+  /** Path to built dashboard-client dist folder. If provided, serves static files + SPA fallback. */
+  staticDir?: string;
+}
+
+export function createDashboardServer(
+  deps: DashboardDependencies,
+  opts: DashboardServerOptions = {},
+): DashboardServer {
   const app = express();
 
   // Middleware
-  app.use(cors());
-  app.use(express.json());
+  const defaultOrigins = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim())
+    : ['http://localhost:3000', 'http://localhost:5173'];
+  const allowedOrigins = opts.corsOrigins ?? defaultOrigins;
+  app.use(
+    cors({
+      origin: allowedOrigins,
+      methods: ['GET', 'POST'],
+      credentials: true,
+    }),
+  );
+  app.use(express.json({ limit: '64kb' }));
+
+  // Simple in-memory rate limiter (100 req/min per IP) with periodic cleanup
+  const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  const RATE_LIMIT_WINDOW_MS = 60_000;
+  const RATE_LIMIT_MAX = 100;
+  const RATE_LIMIT_CLEANUP_INTERVAL_MS = 5 * 60_000; // 5분마다 만료 엔트리 정리
+
+  const rateLimitCleanupTimer = setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of rateLimitMap) {
+      if (now > entry.resetAt) rateLimitMap.delete(ip);
+    }
+  }, RATE_LIMIT_CLEANUP_INTERVAL_MS);
+  rateLimitCleanupTimer.unref(); // 프로세스 종료 차단 방지
+
+  app.use('/api', (req, res, next) => {
+    const ip = req.ip ?? 'unknown';
+    const now = Date.now();
+    const entry = rateLimitMap.get(ip);
+
+    if (!entry || now > entry.resetAt) {
+      rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+      return next();
+    }
+
+    entry.count++;
+    if (entry.count > RATE_LIMIT_MAX) {
+      res.status(429).json({ error: 'Too many requests. Try again later.' });
+      return;
+    }
+
+    next();
+  });
 
   // REST routes
   const router = createRoutes({
@@ -50,6 +105,20 @@ export function createDashboardServer(deps: DashboardDependencies): DashboardSer
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', uptime: process.uptime() });
   });
+
+  // Serve built dashboard-client static files (production single-port mode)
+  if (opts.staticDir && existsSync(opts.staticDir)) {
+    app.use(express.static(opts.staticDir));
+    // API 404 handler: /api/* 경로는 JSON 404 반환
+    app.all('/api/*', (_req, res) => {
+      res.status(404).json({ error: 'Not found' });
+    });
+    // SPA fallback: any non-API route returns index.html
+    app.get('*', (_req, res) => {
+      res.sendFile(resolve(opts.staticDir!, 'index.html'));
+    });
+    log.info({ staticDir: opts.staticDir }, 'Serving static dashboard files');
+  }
 
   // Create HTTP server
   const httpServer = createServer(app);
@@ -279,16 +348,27 @@ class InMemoryMessageBus implements DashboardMessageBus {
 /**
  * Start the dashboard server in standalone dev mode.
  * Creates its own in-memory state store and message bus — no PostgreSQL or GitHub needed.
+ *
+ * @param devPort 포트 번호. 미지정 시 DASHBOARD_PORT 환경변수 또는 3001.
  */
-export async function startStandalone(): Promise<DashboardServer> {
-  const port = Number(process.env.DASHBOARD_PORT) || 3001;
+export async function startStandalone(devPort?: number): Promise<DashboardServer> {
+  const port = devPort ?? (Number(process.env.DASHBOARD_PORT) || 3001);
 
   const stateStore = new InMemoryStateStore();
   const messageBus = new InMemoryMessageBus(stateStore);
 
+  // No-op agent registry for standalone dev mode (pause/resume log instead of acting)
+  const noopRegistry = {
+    async pause(agentId: string) { log.info({ agentId }, '[dev] Agent pause requested (no-op)'); },
+    async resume(agentId: string) { log.info({ agentId }, '[dev] Agent resume requested (no-op)'); },
+    async pauseAll() { log.info('[dev] System pause requested (no-op)'); },
+    async resumeAll() { log.info('[dev] System resume requested (no-op)'); },
+  };
+
   const server = createDashboardServer({
     stateStore,
     messageBus,
+    agentRegistry: noopRegistry,
   });
 
   await server.listen(port);

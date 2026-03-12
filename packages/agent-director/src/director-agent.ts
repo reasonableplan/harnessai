@@ -1,16 +1,17 @@
 import {
   BaseAgent,
+  ClaudeClient,
   type AgentDependencies,
   type AgentConfig,
   type Task,
   type TaskResult,
   type Message,
+  type IClaudeClient,
   MESSAGE_TYPES,
   createLogger,
 } from '@agent/core';
 
 const log = createLogger('Director');
-import { ClaudeClient } from './claude-client.js';
 import { EpicPlanner } from './epic-planner.js';
 import { Dispatcher } from './dispatcher.js';
 import { ReviewProcessor } from './review-processor.js';
@@ -20,13 +21,6 @@ import type {
   ClarifyAction,
   DirectorAction,
 } from './action-types.js';
-
-export interface IClaudeClient {
-  chatJSON<T>(
-    systemPrompt: string,
-    userMessage: string,
-  ): Promise<{ data: T; usage: { inputTokens: number; outputTokens: number } }>;
-}
 
 export interface DirectorConfig {
   claudeApiKey?: string;
@@ -61,6 +55,9 @@ export class DirectorAgent extends BaseAgent {
     };
     super(config, deps);
 
+    if (!directorConfig.claudeClient && !directorConfig.claudeApiKey) {
+      throw new Error('DirectorAgent requires either claudeClient or claudeApiKey');
+    }
     this.claude =
       directorConfig.claudeClient ??
       new ClaudeClient(
@@ -69,12 +66,13 @@ export class DirectorAgent extends BaseAgent {
           maxTokens: config.maxTokens,
           temperature: config.temperature,
         },
-        directorConfig.claudeApiKey,
+        directorConfig.claudeApiKey!,
       );
 
     this.epicPlanner = new EpicPlanner(this.id, this.stateStore, this.gitService, this.messageBus);
     this.dispatcher = new Dispatcher(this.stateStore, this.gitService);
     this.dispatcher.setClaudeClient(this.claude);
+    this.dispatcher.setMessageBus(this.messageBus);
     this.reviewProcessor = new ReviewProcessor(
       this.stateStore,
       this.gitService,
@@ -134,6 +132,7 @@ Rules:
 
     try {
       const { data, usage } = await this.claude.chatJSON<DirectorAction>(systemPrompt, content);
+      await this.publishTokenUsage(usage.inputTokens, usage.outputTokens);
       log.info(
         { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens },
         'Claude usage',

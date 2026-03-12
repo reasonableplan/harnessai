@@ -43,6 +43,7 @@ function createMockStateStore(): IStateStore {
     getAllTasks: vi.fn().mockResolvedValue([]),
     getAllEpics: vi.fn().mockResolvedValue([]),
     getRecentMessages: vi.fn().mockResolvedValue([]),
+    transaction: vi.fn().mockImplementation((fn) => fn({})),
   };
 }
 
@@ -66,6 +67,10 @@ function createMockGitService(): IGitService {
 
 function createMockClaude(response: unknown): IClaudeClient {
   return {
+    chat: vi.fn().mockResolvedValue({
+      content: JSON.stringify(response),
+      usage: { inputTokens: 100, outputTokens: 50 },
+    }),
     chatJSON: vi.fn().mockResolvedValue({
       data: response,
       usage: { inputTokens: 100, outputTokens: 50 },
@@ -403,29 +408,30 @@ describe('DirectorAgent', () => {
     );
   });
 
-  it('auto-approves when Claude review call fails', async () => {
+  it('rejects when Claude review call fails (fail-closed)', async () => {
     const reviewClaude = {
       chatJSON: vi.fn().mockRejectedValue(new Error('API unavailable')),
     };
     agent = new DirectorAgent(deps, { claudeClient: reviewClaude });
 
     vi.mocked(stateStore.getTask).mockResolvedValueOnce(
-      makeTask({ id: 'task-gh-50', githubIssueNumber: 50 }),
+      makeTask({ id: 'task-gh-50', githubIssueNumber: 50, retryCount: 0 }),
     );
 
     await (agent as never as { onReviewRequest: (m: Message) => Promise<void> }).onReviewRequest(
       makeReviewMessage('task-gh-50', true),
     );
 
-    // 리뷰 실패 시 자동 승인 (작업 차단 방지) → Done으로 이동
+    // Fail-closed: 리뷰 서비스 장애 시 거부하여 품질 게이트 유지
     expect(stateStore.updateTask).toHaveBeenCalledWith(
       'task-gh-50',
       expect.objectContaining({
-        status: 'done',
-        boardColumn: 'Done',
+        status: 'ready',
+        boardColumn: 'Ready',
+        retryCount: 1,
       }),
     );
-    expect(gitService.moveIssueToColumn).toHaveBeenCalledWith(50, 'Done');
+    expect(gitService.moveIssueToColumn).toHaveBeenCalledWith(50, 'Ready');
   });
 
   it('retries failed task when under max retries — saves error as reviewNote', async () => {

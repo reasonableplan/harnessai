@@ -4,7 +4,7 @@ import type { ProjectSetup } from './project-setup.js';
 import type { IssueManager } from './issue-manager.js';
 import type { ProjectItemsResponse } from './types.js';
 import { parseDependencies, parseGeneratedBy, parseEpicId } from './issue-parser.js';
-import { withRetry } from '../api-retry.js';
+import { withRetry } from '../resilience/api-retry.js';
 
 export class BoardOperations {
   private ctx: GitHubContext;

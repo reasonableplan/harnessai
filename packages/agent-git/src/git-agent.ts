@@ -12,6 +12,8 @@ import { TaskHandlers, detectTaskType } from './task-handlers.js';
 export interface GitAgentConfig {
   workDir: string; // base workspace directory
   githubToken?: string; // for git push authentication
+  githubOwner?: string;
+  githubRepo?: string;
 }
 
 export class GitAgent extends BaseAgent {
@@ -31,7 +33,10 @@ export class GitAgent extends BaseAgent {
     super(config, deps);
 
     const gitCli = new GitCli(gitAgentConfig.githubToken);
-    this.workspaceManager = new WorkspaceManager(gitAgentConfig.workDir, gitCli);
+    this.workspaceManager = new WorkspaceManager(gitAgentConfig.workDir, gitCli, {
+      githubOwner: gitAgentConfig.githubOwner ?? '',
+      githubRepo: gitAgentConfig.githubRepo ?? '',
+    });
     this.taskHandlers = new TaskHandlers(deps.gitService, gitCli, this.workspaceManager);
   }
 

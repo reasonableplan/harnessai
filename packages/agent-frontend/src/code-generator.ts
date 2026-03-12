@@ -1,22 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
-import { createLogger, type GeneratedCode, type Task } from '@agent/core';
+import { createLogger, type IClaudeClient, type GeneratedCode, type Task } from '@agent/core';
 import type { FrontendTaskType } from './task-router.js';
 
-const log = createLogger('FrontendCodeGen');
+export type { IClaudeClient } from '@agent/core';
 
-/**
- * Claude API 인터페이스. 테스트에서 mock 주입 가능.
- */
-export interface IClaudeClient {
-  chatJSON<T>(
-    systemPrompt: string,
-    userMessage: string,
-  ): Promise<{
-    data: T;
-    usage: { inputTokens: number; outputTokens: number };
-  }>;
-}
+const log = createLogger('FrontendCodeGen');
 
 /** 파일 읽기 제한 (문자 수 기준) */
 const MAX_FILE_READ_CHARS = 50_000; // 파일당 최대 ~50K 문자
@@ -32,7 +21,7 @@ export class CodeGenerator {
     private workDir?: string,
   ) {}
 
-  async generate(task: Task, taskType: FrontendTaskType): Promise<GeneratedCode> {
+  async generate(task: Task, taskType: FrontendTaskType): Promise<GeneratedCode & { usage: { inputTokens: number; outputTokens: number } }> {
     const systemPrompt = this.buildSystemPrompt(taskType);
     const userMessage = await this.buildUserMessage(task, taskType);
 
@@ -43,7 +32,7 @@ export class CodeGenerator {
       throw new Error('Invalid Claude response shape: missing "files" array or "summary" string');
     }
 
-    return data;
+    return { ...data, usage };
   }
 
   private buildSystemPrompt(taskType: FrontendTaskType): string {
@@ -177,13 +166,11 @@ Use action "update" for modified files.`,
             ? content.slice(0, MAX_FILE_READ_CHARS) + '\n... (truncated)'
             : content;
 
-        const charCount = Math.min(content.length, MAX_FILE_READ_CHARS);
-        if (totalChars + charCount > MAX_TOTAL_READ_CHARS) break;
-
-        totalChars += charCount;
+        if (totalChars + truncated.length > MAX_TOTAL_READ_CHARS) break;
+        totalChars += truncated.length;
         results.push({ path: filePath, content: truncated });
-      } catch {
-        // 파일이 없거나 읽기 실패 시 skip
+      } catch (err) {
+        log.warn({ path: filePath, err: err instanceof Error ? err.message : err }, 'Failed to read existing file, skipping');
       }
     }
 
