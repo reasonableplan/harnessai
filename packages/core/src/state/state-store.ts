@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, count } from 'drizzle-orm';
+import { eq, and, desc, sql, count, inArray } from 'drizzle-orm';
 import type { Database } from '../db/index.js';
 import { agents, epics, tasks, messages, artifacts, agentConfig, hooks } from '../db/schema.js';
 import type {
@@ -30,6 +30,9 @@ export class StateStore implements IStateStore {
    * 에러 발생 시 자동 rollback.
    */
   async transaction<T>(fn: (tx: Database) => Promise<T>): Promise<T> {
+    // IStateStore.transaction의 tx 파라미터는 unknown으로 선언되어 있어 이중 캐스트가 필요하다.
+    // 실제로는 Drizzle의 트랜잭션 객체가 전달되며, Database 타입과 호환된다.
+    // 인터페이스 변경 시 @agent/testing mock과 모든 호출처도 함께 변경해야 한다.
     return this.db.transaction(fn as unknown as Parameters<Database['transaction']>[0]) as Promise<T>;
   }
 
@@ -77,23 +80,26 @@ export class StateStore implements IStateStore {
         log.warn({ taskId: id }, 'updateTask: task not found');
         return;
       }
-      if (current.length > 0) {
-        const from = current[0]!.status as TaskStatus;
-        const to = updates.status as TaskStatus;
-        if (!isValidTransition(from, to)) {
-          log.warn({ taskId: id, from, to }, 'Invalid task status transition, skipping');
-          return;
-        }
-        // Atomic update: include current status in WHERE clause to prevent races
-        await this.db.update(tasks).set(updates).where(and(eq(tasks.id, id), eq(tasks.status, from)));
+      const from = current[0]!.status as TaskStatus;
+      const to = updates.status as TaskStatus;
+      if (!isValidTransition(from, to)) {
+        log.warn({ taskId: id, from, to }, 'Invalid task status transition, skipping');
         return;
       }
+      // Atomic update: include current status in WHERE clause to prevent races
+      await this.db.update(tasks).set(updates).where(and(eq(tasks.id, id), eq(tasks.status, from)));
+      return;
     }
     await this.db.update(tasks).set(updates).where(eq(tasks.id, id));
   }
 
   async getTasksByColumn(column: string): Promise<TaskRow[]> {
     return this.db.select().from(tasks).where(eq(tasks.boardColumn, column));
+  }
+
+  async getTasksByIds(ids: string[]): Promise<TaskRow[]> {
+    if (ids.length === 0) return [];
+    return this.db.select().from(tasks).where(inArray(tasks.id, ids));
   }
 
   async getTasksByAgent(agentId: string): Promise<TaskRow[]> {
@@ -259,30 +265,20 @@ export class StateStore implements IStateStore {
   }
 
   async upsertAgentConfig(agentId: string, config: Partial<AgentConfigRow>): Promise<void> {
+    // values와 onConflictDoUpdate.set에서 동일한 필드를 공유한다.
+    const configFields = {
+      ...(config.claudeModel != null && { claudeModel: config.claudeModel }),
+      ...(config.maxTokens != null && { maxTokens: config.maxTokens }),
+      ...(config.temperature != null && { temperature: config.temperature }),
+      ...(config.tokenBudget != null && { tokenBudget: config.tokenBudget }),
+      ...(config.taskTimeoutMs != null && { taskTimeoutMs: config.taskTimeoutMs }),
+      ...(config.pollIntervalMs != null && { pollIntervalMs: config.pollIntervalMs }),
+      updatedAt: new Date(),
+    };
     await this.db
       .insert(agentConfig)
-      .values({
-        agentId,
-        ...(config.claudeModel != null && { claudeModel: config.claudeModel }),
-        ...(config.maxTokens != null && { maxTokens: config.maxTokens }),
-        ...(config.temperature != null && { temperature: config.temperature }),
-        ...(config.tokenBudget != null && { tokenBudget: config.tokenBudget }),
-        ...(config.taskTimeoutMs != null && { taskTimeoutMs: config.taskTimeoutMs }),
-        ...(config.pollIntervalMs != null && { pollIntervalMs: config.pollIntervalMs }),
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: agentConfig.agentId,
-        set: {
-          ...(config.claudeModel != null && { claudeModel: config.claudeModel }),
-          ...(config.maxTokens != null && { maxTokens: config.maxTokens }),
-          ...(config.temperature != null && { temperature: config.temperature }),
-          ...(config.tokenBudget != null && { tokenBudget: config.tokenBudget }),
-          ...(config.taskTimeoutMs != null && { taskTimeoutMs: config.taskTimeoutMs }),
-          ...(config.pollIntervalMs != null && { pollIntervalMs: config.pollIntervalMs }),
-          updatedAt: new Date(),
-        },
-      });
+      .values({ agentId, ...configFields })
+      .onConflictDoUpdate({ target: agentConfig.agentId, set: configFields });
   }
 
   // ===== Hooks =====

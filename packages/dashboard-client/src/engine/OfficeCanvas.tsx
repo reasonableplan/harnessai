@@ -234,7 +234,7 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
   agentsRef.current = agents;
   selectedAgentRef.current = selectedAgent;
 
-  // Initialize buffers + anim states
+  // Initialize buffers (no agents dependency — anim state init handled by second useEffect)
   useEffect(() => {
     ctxRef.current = canvasRef.current?.getContext('2d') ?? null;
     bgBufferRef.current = createBackgroundBuffer();
@@ -247,13 +247,6 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
         charCacheRef.current = cache; // upgrade to image sprites when ready
       }
     });
-
-    // Init anim states for all agents
-    for (const agent of Object.values(agents)) {
-      if (!animStatesRef.current.has(agent.id)) {
-        animStatesRef.current.set(agent.id, createAgentAnimState(agent.slot));
-      }
-    }
 
     return () => { cancelled = true; };
   }, []);
@@ -268,6 +261,7 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
   }, [agents]);
 
   // ---- Render loop ----
+  // deps는 의도적으로 비어있음 — 모든 동적 값은 ref를 통해 접근
   useEffect(() => {
     let lastTime = 0;
 

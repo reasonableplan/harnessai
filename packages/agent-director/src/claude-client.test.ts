@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ClaudeClient } from './claude-client.js';
+import { ClaudeClient } from '@agent/core';
 
 describe('ClaudeClient.extractJSON', () => {
   it('extracts JSON from markdown code block', () => {

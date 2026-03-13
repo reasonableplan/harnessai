@@ -157,6 +157,8 @@ export default function AgentSettingsModal() {
                 <label className="font-pixel text-[6px] text-gray-400 block mb-1">MAX TOKENS</label>
                 <input
                   type="number"
+                  min={100}
+                  max={200000}
                   value={form.maxTokens}
                   onChange={(e) => setForm({ ...form, maxTokens: Number(e.target.value) })}
                   className="w-full bg-[#2D1B0E] border border-[#5C3A1A] text-gray-200 font-pixel text-[6px] px-2 py-1"
@@ -184,6 +186,8 @@ export default function AgentSettingsModal() {
                 <label className="font-pixel text-[6px] text-gray-400 block mb-1">TOKEN BUDGET</label>
                 <input
                   type="number"
+                  min={1000}
+                  max={100000000}
                   value={form.tokenBudget}
                   onChange={(e) => setForm({ ...form, tokenBudget: Number(e.target.value) })}
                   className="w-full bg-[#2D1B0E] border border-[#5C3A1A] text-gray-200 font-pixel text-[6px] px-2 py-1"
@@ -197,6 +201,8 @@ export default function AgentSettingsModal() {
                 </label>
                 <input
                   type="number"
+                  min={5000}
+                  max={3600000}
                   value={form.taskTimeoutMs}
                   onChange={(e) => setForm({ ...form, taskTimeoutMs: Number(e.target.value) })}
                   className="w-full bg-[#2D1B0E] border border-[#5C3A1A] text-gray-200 font-pixel text-[6px] px-2 py-1"
@@ -210,6 +216,8 @@ export default function AgentSettingsModal() {
                 </label>
                 <input
                   type="number"
+                  min={1000}
+                  max={300000}
                   value={form.pollIntervalMs}
                   onChange={(e) => setForm({ ...form, pollIntervalMs: Number(e.target.value) })}
                   className="w-full bg-[#2D1B0E] border border-[#5C3A1A] text-gray-200 font-pixel text-[6px] px-2 py-1"

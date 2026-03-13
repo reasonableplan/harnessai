@@ -6,7 +6,7 @@ import type { IStateStore, UserInput } from '../types/index.js';
  * Director가 없어도 시스템 관리가 가능하다.
  */
 export class SystemController {
-  private systemCommands = ['pause', 'resume', 'status', 'help'] as const;
+  private systemCommands = new Set<string>(['pause', 'resume', 'status', 'help']);
 
   constructor(
     private agents: BaseAgent[],
@@ -15,7 +15,7 @@ export class SystemController {
 
   isSystemCommand(content: string): boolean {
     const command = (content.trim().split(' ')[0] ?? '').toLowerCase();
-    return (this.systemCommands as readonly string[]).includes(command);
+    return this.systemCommands.has(command);
   }
 
   async handleSystemCommand(input: UserInput): Promise<string> {

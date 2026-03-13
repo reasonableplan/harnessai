@@ -82,6 +82,7 @@ export class WSHandler {
    * Shut down the WebSocket server and clean up.
    */
   close(): void {
+    // TODO: DashboardMessageBus에 unsubscribeAll 추가 후 여기서 호출
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;

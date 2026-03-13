@@ -379,6 +379,7 @@ class InMemoryStateStore implements DashboardStateStore {
   // Allow the mock message bus to push messages
   addMessage(message: Message): void {
     this.messages.push(message);
+    if (this.messages.length > 1000) this.messages = this.messages.slice(-500);
   }
 }
 

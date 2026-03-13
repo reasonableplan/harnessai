@@ -299,6 +299,9 @@ export class EventMapper {
         type: 'agent.config' as const,
         payload: {
           agentId: payload.agentId,
+          // payload.config는 Record<string, unknown>으로 수신되나 DashboardEvent 타입은
+          // AgentConfigRow를 요구한다. 런타임 값은 동일하므로 이중 캐스트(as unknown as)로
+          // 타입 시스템을 통과시킨다 — 구조적 호환성은 EventMapper 호출부에서 보장됨.
           config: payload.config as unknown as import('@agent/core').AgentConfigRow,
         },
       },

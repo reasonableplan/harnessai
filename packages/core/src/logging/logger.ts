@@ -1,5 +1,7 @@
 import pino from 'pino';
 
+// process.env를 직접 참조한다. loadConfig()보다 logger가 먼저 초기화되어야 하므로
+// AppConfig DI를 사용할 수 없다. 로거는 모든 모듈에서 import하는 최하위 의존성이다.
 const LOG_LEVEL = process.env.LOG_LEVEL ?? 'info';
 
 const rootLogger = pino({

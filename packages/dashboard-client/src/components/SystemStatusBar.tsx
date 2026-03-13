@@ -1,17 +1,12 @@
 import { useEffect } from 'react';
 import { useOfficeStore } from '@/stores/office-store';
+import { formatTokens } from '@/utils/format';
 
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
 }
 
 const COLUMN_COLORS: Record<string, string> = {
@@ -42,7 +37,12 @@ export default function SystemStatusBar() {
 
   const agentList = Object.values(agents);
   const activeCount = agentList.filter(
-    (a) => a.status === 'working' || a.status === 'reviewing' || a.status === 'delivering',
+    (a) =>
+      a.status === 'working' ||
+      a.status === 'reviewing' ||
+      a.status === 'delivering' ||
+      a.status === 'thinking' ||
+      a.status === 'searching',
   ).length;
   const errorCount = agentList.filter((a) => a.status === 'error').length;
   const idleCount = agentList.length - activeCount - errorCount;

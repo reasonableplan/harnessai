@@ -3,8 +3,6 @@ import { resolve, sep } from 'node:path';
 import { createLogger, type IClaudeClient, type GeneratedCode, type Task } from '@agent/core';
 import type { FrontendTaskType } from './task-router.js';
 
-export type { IClaudeClient } from '@agent/core';
-
 const log = createLogger('FrontendCodeGen');
 
 /** 파일 읽기 제한 (문자 수 기준) */

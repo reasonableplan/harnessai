@@ -1,6 +1,7 @@
 import {
   BaseAgent,
   ClaudeClient,
+  DEFAULT_CLAUDE_MODEL,
   type AgentDependencies,
   type AgentConfig,
   type Task,
@@ -26,6 +27,7 @@ export interface DirectorConfig {
   claudeApiKey?: string;
   /** 테스트용 ClaudeClient 주입. 지정하지 않으면 실제 API 클라이언트 생성. */
   claudeClient?: IClaudeClient;
+  claudeModel?: string;
 }
 
 /**
@@ -48,7 +50,7 @@ export class DirectorAgent extends BaseAgent {
       id: 'director',
       domain: 'orchestration',
       level: 0,
-      claudeModel: 'claude-sonnet-4-20250514',
+      claudeModel: directorConfig.claudeModel ?? DEFAULT_CLAUDE_MODEL,
       maxTokens: 8192,
       temperature: 0.3,
       tokenBudget: 200_000,
@@ -160,9 +162,29 @@ Rules:
   // ========== Status Query ==========
 
   private async handleStatusQuery(_action: StatusQueryAction): Promise<string> {
-    // 간단한 상태 조회 — SystemController.handleStatus()와 유사하지만 Epic 수준
-    // Step 4에서 Claude 기반 자연어 응답으로 확장
-    return '[Director] Status query support coming in Step 4.';
+    try {
+      const [agents, tasks, epics] = await Promise.all([
+        this.stateStore.getAllAgents(),
+        this.stateStore.getAllTasks(),
+        this.stateStore.getAllEpics(),
+      ]);
+
+      const activeAgents = agents.filter((a) => a.status === 'running').length;
+      const activeTasks = tasks.filter(
+        (t) => t.status === 'in-progress' || t.status === 'ready',
+      ).length;
+      const activeEpics = epics.filter((e) => e.status === 'active').length;
+      const doneTasks = tasks.filter((t) => t.status === 'done').length;
+
+      return (
+        `[Director] System Status: ${agents.length} agents (${activeAgents} running), ` +
+        `${tasks.length} tasks (${activeTasks} active, ${doneTasks} done), ` +
+        `${epics.length} epics (${activeEpics} active).`
+      );
+    } catch (err) {
+      log.error({ err }, 'handleStatusQuery failed');
+      return '[Director] Status query failed — unable to retrieve system state.';
+    }
   }
 
   // ========== Delegating methods (exposed for test compatibility) ==========

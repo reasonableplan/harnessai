@@ -161,10 +161,9 @@ describe('DirectorAgent', () => {
         githubIssueNumber: 102,
       },
     ] as never);
-    vi.mocked(stateStore.getTask).mockResolvedValueOnce({
-      id: 'task-gh-101',
-      boardColumn: 'Done',
-    } as never);
+    vi.mocked(stateStore.getTasksByIds).mockResolvedValueOnce([
+      { id: 'task-gh-101', boardColumn: 'Done' },
+    ] as never);
 
     await (
       agent as never as { checkAndPromoteDependents: (n: number) => Promise<void> }
@@ -190,9 +189,10 @@ describe('DirectorAgent', () => {
         githubIssueNumber: 103,
       },
     ] as never);
-    vi.mocked(stateStore.getTask)
-      .mockResolvedValueOnce({ id: 'task-gh-101', boardColumn: 'Done' } as never)
-      .mockResolvedValueOnce({ id: 'task-gh-102', boardColumn: 'In Progress' } as never);
+    vi.mocked(stateStore.getTasksByIds).mockResolvedValueOnce([
+      { id: 'task-gh-101', boardColumn: 'Done' },
+      { id: 'task-gh-102', boardColumn: 'In Progress' },
+    ] as never);
 
     await (
       agent as never as { checkAndPromoteDependents: (n: number) => Promise<void> }
@@ -212,10 +212,9 @@ describe('DirectorAgent', () => {
         githubIssueNumber: 102,
       },
     ] as never);
-    vi.mocked(stateStore.getTask).mockResolvedValueOnce({
-      id: 'task-gh-101',
-      boardColumn: 'Done',
-    } as never);
+    vi.mocked(stateStore.getTasksByIds).mockResolvedValueOnce([
+      { id: 'task-gh-101', boardColumn: 'Done' },
+    ] as never);
 
     // Call twice — should not throw
     await (

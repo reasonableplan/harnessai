@@ -35,14 +35,19 @@ export class WorkspaceManager {
       // .git 디렉토리가 있으면 이미 클론된 repo
       await fs.access(path.join(epicDir, '.git'));
     } catch {
-      // 클론되지 않은 경우: repo를 해당 branch로 clone
+      // .git not found — clone needed (expected path)
+      log.debug({ epicId }, 'No .git directory found, cloning');
       await fs.mkdir(epicDir, { recursive: true });
       const repoUrl = `https://github.com/${this.wsConfig.githubOwner}/${this.wsConfig.githubRepo}.git`;
       const branchName = `epic/${epicId}`;
       try {
         await this.gitCli.exec(this.workDir, 'clone', '--branch', branchName, repoUrl, epicId);
-      } catch {
+      } catch (cloneErr) {
         // branch가 아직 없으면 main으로 clone 후 branch 생성
+        log.info(
+          { err: cloneErr instanceof Error ? cloneErr.message : String(cloneErr), branchName },
+          'Branch clone failed, falling back to main',
+        );
         try {
           await this.gitCli.exec(this.workDir, 'clone', repoUrl, epicId);
           await this.gitCli.exec(epicDir, 'checkout', '-b', branchName);

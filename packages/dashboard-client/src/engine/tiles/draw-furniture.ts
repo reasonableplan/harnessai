@@ -819,11 +819,11 @@ export function drawPoster(
   x: number,
   y: number,
   w: number,
-  _h: number,
+  h: number,
   type: string,
 ) {
   const pw = w * T;
-  const ph = _h * T;
+  const ph = h * T;
 
   ctx.fillStyle = 'rgba(40,25,10,0.2)';
   ctx.fillRect(x + 4, y + 3, pw - 4, ph - 2);

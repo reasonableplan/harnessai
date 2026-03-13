@@ -86,7 +86,7 @@ export class FollowUpCreator {
     const followUps: FollowUp[] = [];
 
     // API 엔드포인트가 생성된 경우 Frontend 연동 훅 생성
-    const hasApiFiles = files.some((f) => f.includes('/routes/') || f.includes('/controllers/'));
+    const hasApiFiles = files.some((f) => /[/\\](routes|controllers)[/\\]/.test(f));
     if (hasApiFiles) {
       followUps.push({
         title: `[FE] API 연동: ${task.title}`,
@@ -119,7 +119,7 @@ export class FollowUpCreator {
     const followUps: FollowUp[] = [];
 
     // 컴포넌트 문서 생성 요청
-    const hasComponents = files.some((f) => f.includes('/components/') || f.includes('/pages/'));
+    const hasComponents = files.some((f) => /[/\\](components|pages)[/\\]/.test(f));
     if (hasComponents) {
       followUps.push({
         title: `[DOCS] 컴포넌트 문서: ${task.title}`,

@@ -70,13 +70,16 @@ export abstract class BaseAgent {
     const dbConfig = await this.stateStore.getAgentConfig(this.id);
     if (!dbConfig) return;
 
-    const mutableConfig = this.config as AgentConfig;
-    mutableConfig.claudeModel = dbConfig.claudeModel;
-    mutableConfig.maxTokens = dbConfig.maxTokens;
-    mutableConfig.temperature = dbConfig.temperature;
-    mutableConfig.tokenBudget = dbConfig.tokenBudget;
-    mutableConfig.taskTimeoutMs = dbConfig.taskTimeoutMs;
-    mutableConfig.pollIntervalMs = dbConfig.pollIntervalMs;
+    // 새 객체를 할당하여 readonly 계약을 위반하지 않음
+    (this as { config: AgentConfig }).config = {
+      ...this.config,
+      claudeModel: dbConfig.claudeModel,
+      maxTokens: dbConfig.maxTokens,
+      temperature: dbConfig.temperature,
+      tokenBudget: dbConfig.tokenBudget,
+      taskTimeoutMs: dbConfig.taskTimeoutMs,
+      pollIntervalMs: dbConfig.pollIntervalMs,
+    };
 
     this.log.info({ config: dbConfig }, 'Config reloaded');
   }
@@ -85,7 +88,7 @@ export abstract class BaseAgent {
     return this._status;
   }
 
-  protected async setStatus(status: AgentStatus, taskId?: string): Promise<void> {
+  protected async setStatus(status: AgentStatus, taskId?: string, traceId?: string): Promise<void> {
     this._status = status;
     await this.messageBus.publish({
       id: crypto.randomUUID(),
@@ -93,7 +96,7 @@ export abstract class BaseAgent {
       from: this.id,
       to: null,
       payload: { status, ...(taskId ? { taskId } : {}) },
-      traceId: crypto.randomUUID(),
+      traceId: traceId ?? crypto.randomUUID(),
       timestamp: new Date(),
     });
   }
@@ -192,10 +195,12 @@ export abstract class BaseAgent {
           const task = await this.findNextTask();
           this.consecutiveErrors = 0; // 태스크 유무와 관계없이 에러 없이 완료 시 리셋
           if (task) {
-            await this.setStatus('busy', task.id);
+            // 태스크 처리 전 기간 동안 단일 traceId를 유지하여 상태 변경 추적
+            const taskTraceId = crypto.randomUUID();
+            await this.setStatus('busy', task.id, taskTraceId);
             const result = await this.executeTaskWithTimeout(task);
             await this.onTaskComplete(task, result);
-            await this.setStatus('idle');
+            await this.setStatus('idle', undefined, taskTraceId);
           }
         } catch (error) {
           this.consecutiveErrors++;
@@ -347,11 +352,9 @@ export abstract class BaseAgent {
 function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) return Promise.resolve();
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => {
-      clearTimeout(timer);
-      resolve();
-    }, { once: true });
+    const onAbort = () => { clearTimeout(timer); resolve(); };
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }
 

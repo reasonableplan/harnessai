@@ -14,7 +14,8 @@ export class EpicPlanner {
 
   async createEpic(action: CreateEpicAction): Promise<string> {
     const taskCount = action.tasks.length;
-    log.info({ title: action.title, taskCount }, 'Planning epic');
+    const traceId = crypto.randomUUID();
+    log.info({ title: action.title, taskCount, traceId }, 'Planning epic');
 
     // Epic을 DB에 저장
     const epicId = crypto.randomUUID();
@@ -141,7 +142,7 @@ export class EpicPlanner {
         done: 0,
         ready: readyCount,
       },
-      traceId: crypto.randomUUID(),
+      traceId,
       timestamp: new Date(),
     });
 

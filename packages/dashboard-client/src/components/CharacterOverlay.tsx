@@ -47,6 +47,10 @@ const BUBBLE_STYLES: Record<string, { bg: string; border: string; text: string }
 
 export default function CharacterOverlay() {
   const agents = useOfficeStore((s) => s.agents);
+  // Keep agents in a ref so the rAF loop always reads latest value without restarting
+  const agentsRef = useRef(agents);
+  agentsRef.current = agents;
+
   const positionsRef = useRef<Map<string, PosState>>(new Map());
   const [positions, setPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
   const renderedPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
@@ -56,9 +60,10 @@ export default function CharacterOverlay() {
   const hasBubbles = useMemo(() => Object.values(agents).some((a) => a.bubble !== null), [agents]);
 
   // Sync spring positions with animation frame (only when bubbles exist)
+  // agents dep removed — always read from agentsRef inside loop to avoid rAF restarts
   useEffect(() => {
     // Always init positions for new agents (so they're ready when bubbles appear)
-    for (const agent of Object.values(agents)) {
+    for (const agent of Object.values(agentsRef.current)) {
       if (!positionsRef.current.has(agent.id)) {
         const pos = getAgentPixelPosition(agent.slot, agent.status);
         positionsRef.current.set(agent.id, { x: pos.x, y: pos.y, vx: 0, vy: 0 });
@@ -75,7 +80,7 @@ export default function CharacterOverlay() {
 
       const newPositions = new Map<string, { x: number; y: number }>();
       let changed = false;
-      for (const agent of Object.values(agents)) {
+      for (const agent of Object.values(agentsRef.current)) {
         if (!agent.bubble) continue; // only track agents with bubbles
         const s = positionsRef.current.get(agent.id);
         if (!s) continue;
@@ -97,7 +102,7 @@ export default function CharacterOverlay() {
 
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [agents, hasBubbles]);
+  }, [hasBubbles]);
 
   // The overlay is sized to match the canvas internal resolution (CANVAS_W x CANVAS_H)
   // by the parent wrapper, which uses CSS transform to scale it to the actual canvas display size.

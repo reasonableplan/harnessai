@@ -1,6 +1,9 @@
 import { config as loadDotenv } from 'dotenv';
 import { ConfigError } from './errors.js';
 
+/** 에이전트가 기본적으로 사용하는 Claude 모델 식별자. */
+export const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-4-20250514';
+
 export interface AppConfig {
   database: {
     url: string;
@@ -38,6 +41,18 @@ function requiredEnv(key: string): string {
 }
 
 /**
+ * 환경변수에서 숫자를 파싱한다. NaN이면 ConfigError를 던지고,
+ * 변수가 없으면 defaultValue를 반환한다.
+ */
+function optionalEnvNumber(key: string, defaultValue: number): number {
+  const raw = process.env[key];
+  if (raw == null || raw === '') return defaultValue;
+  const v = Number(raw);
+  if (Number.isNaN(v)) throw new ConfigError(`Invalid numeric environment variable: ${key}="${raw}"`);
+  return v;
+}
+
+/**
  * 환경 변수를 한번에 로드하여 타입이 있는 설정 객체를 반환한다.
  * entry point(main)에서 한번만 호출하고, DI로 전달한다.
  *
@@ -61,8 +76,8 @@ export function loadConfig(opts: { requireAll?: boolean } = {}): AppConfig {
       token: env('GITHUB_TOKEN'),
       owner: env('GITHUB_OWNER'),
       repo: env('GITHUB_REPO'),
-      projectNumber: process.env.GITHUB_PROJECT_NUMBER
-        ? (Number.isNaN(Number(process.env.GITHUB_PROJECT_NUMBER)) ? undefined : Number(process.env.GITHUB_PROJECT_NUMBER))
+      projectNumber: process.env.GITHUB_PROJECT_NUMBER != null && process.env.GITHUB_PROJECT_NUMBER !== ''
+        ? optionalEnvNumber('GITHUB_PROJECT_NUMBER', 0)
         : undefined,
     },
     claude: {
@@ -72,7 +87,7 @@ export function loadConfig(opts: { requireAll?: boolean } = {}): AppConfig {
       workDir: process.env.GIT_WORK_DIR ?? './workspace',
     },
     dashboard: {
-      port: Number(process.env.DASHBOARD_PORT) || 3001,
+      port: optionalEnvNumber('DASHBOARD_PORT', 3001),
       corsOrigins: process.env.CORS_ORIGINS
         ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
         : ['http://localhost:3000', 'http://localhost:5173'],

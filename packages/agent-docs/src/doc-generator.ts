@@ -3,8 +3,6 @@ import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import type { DocsTaskType } from './task-router.js';
 
-export type { IClaudeClient } from '@agent/core';
-
 const log = createLogger('DocGenerator');
 
 /** 파일 읽기 제한 */

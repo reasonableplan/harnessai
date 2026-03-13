@@ -40,6 +40,7 @@ export class ProjectSetup {
     log.info({ user: user.login }, 'Authenticated');
 
     // Token scope 경고: classic PAT의 경우 x-oauth-scopes 헤더에서 확인 가능
+    // Octokit headers 타입에 x-oauth-scopes 미포함, classic PAT에서만 존재
     const scopes = (response.headers as Record<string, string>)['x-oauth-scopes'] ?? '';
     if (scopes) {
       const scopeList = scopes.split(',').map((s) => s.trim());

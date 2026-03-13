@@ -1,5 +1,6 @@
 import {
   BaseAgent,
+  DEFAULT_CLAUDE_MODEL,
   type AgentDependencies,
   type AgentConfig,
   type Task,
@@ -14,6 +15,7 @@ export interface GitAgentConfig {
   githubToken?: string; // for git push authentication
   githubOwner?: string;
   githubRepo?: string;
+  claudeModel?: string;
 }
 
 export class GitAgent extends BaseAgent {
@@ -25,7 +27,7 @@ export class GitAgent extends BaseAgent {
       id: 'git',
       domain: 'git',
       level: 2,
-      claudeModel: 'claude-sonnet-4-20250514',
+      claudeModel: gitAgentConfig.claudeModel ?? DEFAULT_CLAUDE_MODEL,
       maxTokens: 8192,
       temperature: 0.2,
       tokenBudget: 50_000,

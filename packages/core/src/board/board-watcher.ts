@@ -23,6 +23,9 @@ const STATUS_PRIORITY: Record<string, number> = {
   done: 5,
 };
 
+/** Statuses that should always sync from Board to DB regardless of priority. */
+const ALWAYS_SYNC_STATUSES = new Set(['failed', 'done']);
+
 /**
  * BoardWatcher is the single source of Board → DB synchronization.
  * One GraphQL call per cycle fetches all project items.
@@ -86,11 +89,9 @@ export class BoardWatcher {
       // AbortSignal로 즉시 깨어남 — graceful shutdown 지원
       if (signal?.aborted) break;
       await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, this.pollIntervalMs);
-        signal?.addEventListener('abort', () => {
-          clearTimeout(timer);
-          resolve();
-        }, { once: true });
+        const onAbort = () => { clearTimeout(timer); resolve(); };
+        const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, this.pollIntervalMs);
+        signal?.addEventListener('abort', onAbort, { once: true });
       });
       if (!this.running) break;
     }
@@ -236,8 +237,7 @@ export class BoardWatcher {
       const boardPriority = STATUS_PRIORITY[boardStatus] ?? 0;
 
       // failed/done은 항상 동기화, 그 외는 Board가 DB보다 앞선 상태일 때만 업데이트
-      const ALWAYS_SYNC = new Set(['failed', 'done']);
-      if (ALWAYS_SYNC.has(boardStatus) || boardPriority > dbPriority) {
+      if (ALWAYS_SYNC_STATUSES.has(boardStatus) || boardPriority > dbPriority) {
         await this.stateStore.updateTask(taskId, {
           boardColumn: issue.column,
           status: boardStatus,

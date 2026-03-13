@@ -33,7 +33,6 @@ export const FLOOR_KNOT = '#8A6A3A';
 export const FLOOR_BORDER = '#A08555';
 
 export const WALL_COLORS = ['#8B7355', '#836C4E', '#937B5D', '#7B6448'];
-export const MORTAR = '#6B5A42';
 export const BRICK_HI = 'rgba(255,240,200,0.18)';
 export const BRICK_SH = 'rgba(0,0,0,0.12)';
 export const WALL_CAP = '#5A4530';
