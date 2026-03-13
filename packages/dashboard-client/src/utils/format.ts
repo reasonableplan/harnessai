@@ -16,6 +16,7 @@ export function formatDuration(ms: number | null): string {
 /** Agent domain → brand color mapping */
 export const DOMAIN_COLORS: Record<string, string> = {
   director: '#FFD700',
+  orchestration: '#FFD700', // server sends "orchestration" for director
   git: '#F05032',
   frontend: '#61DAFB',
   backend: '#68A063',

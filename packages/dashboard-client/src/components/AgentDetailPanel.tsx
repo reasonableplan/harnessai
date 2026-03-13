@@ -6,6 +6,7 @@ import { formatTokens, formatDuration, DOMAIN_COLORS } from '@/utils/format';
 
 const DOMAIN_TITLES: Record<string, string> = {
   director: 'Director Agent',
+  orchestration: 'Director Agent',
   git: 'Git Agent',
   frontend: 'Frontend Agent',
   backend: 'Backend Agent',
@@ -83,11 +84,10 @@ export default function AgentDetailPanel() {
     <AnimatePresence>
       {agent && (
         <motion.div
-          initial={{ x: '100%' }}
-          animate={{ x: 0 }}
-          exit={{ x: '100%' }}
-          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-          className="absolute right-0 top-0 bottom-0 w-72 bg-[#3A2410] border-l-2 border-[#5C3A1A] z-30 flex flex-col"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="h-full bg-[#3A2410] border-l-2 border-[#5C3A1A] flex flex-col"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-3 border-b border-[#5C3A1A]">

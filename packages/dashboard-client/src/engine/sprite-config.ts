@@ -93,8 +93,12 @@ export const AGENT_COLORS: Record<string, AgentColors> = {
   },
 };
 
+// Server sends domain "orchestration" for the director agent — alias it
+AGENT_COLORS['orchestration'] = AGENT_COLORS['director']!;
+
 export const DOMAIN_LABELS: Record<string, string> = {
   director: 'DIR',
+  orchestration: 'DIR',
   git: 'GIT',
   frontend: 'FE',
   backend: 'BE',

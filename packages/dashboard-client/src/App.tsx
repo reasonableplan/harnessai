@@ -20,6 +20,7 @@ export default function App() {
   const updateAgent = useOfficeStore((s) => s.updateAgent);
   const addMessage = useOfficeStore((s) => s.addMessage);
   const updateTokenUsage = useOfficeStore((s) => s.updateTokenUsage);
+  const selectedAgent = useOfficeStore((s) => s.selectedAgent);
   const [sidePanel, setSidePanel] = useState<SidePanel>('activity');
 
   // Demo mode: simulate agent activity when there is no real server
@@ -153,52 +154,57 @@ export default function App() {
       {/* Center area: Office + Side Panel */}
       <div className="flex-1 flex min-h-0 relative">
         {/* Main office scene */}
-        <div className="flex-1 min-w-0 relative">
+        <div className="flex-1 min-w-0">
           <OfficeScene />
-          <AgentDetailPanel />
         </div>
 
-        {/* Right sidebar with tab switch */}
+        {/* Right sidebar: agent detail OR tabs */}
         <div className="w-64 flex-shrink-0 hidden lg:flex flex-col">
-          {/* Tab buttons */}
-          <div className="flex border-b-2 border-[#5C3A1A] bg-[#3A2410]">
-            <button
-              onClick={() => setSidePanel('activity')}
-              className={`flex-1 py-1.5 font-pixel text-[6px] transition-colors ${
-                sidePanel === 'activity'
-                  ? 'text-amber-300 bg-[#2D1B0E] border-b-2 border-amber-400'
-                  : 'text-amber-800 hover:text-amber-500'
-              }`}
-            >
-              ACTIVITY
-            </button>
-            <button
-              onClick={() => setSidePanel('tokens')}
-              className={`flex-1 py-1.5 font-pixel text-[6px] transition-colors ${
-                sidePanel === 'tokens'
-                  ? 'text-amber-300 bg-[#2D1B0E] border-b-2 border-amber-400'
-                  : 'text-amber-800 hover:text-amber-500'
-              }`}
-            >
-              TOKENS
-            </button>
-            <button
-              onClick={() => setSidePanel('stats')}
-              className={`flex-1 py-1.5 font-pixel text-[6px] transition-colors ${
-                sidePanel === 'stats'
-                  ? 'text-amber-300 bg-[#2D1B0E] border-b-2 border-amber-400'
-                  : 'text-amber-800 hover:text-amber-500'
-              }`}
-            >
-              STATS
-            </button>
-          </div>
-          {/* Panel content */}
-          <div className="flex-1 min-h-0">
-            {sidePanel === 'activity' && <ActivityLog />}
-            {sidePanel === 'tokens' && <TokenUsagePanel />}
-            {sidePanel === 'stats' && <StatsPanel />}
-          </div>
+          {selectedAgent ? (
+            <AgentDetailPanel />
+          ) : (
+            <>
+              {/* Tab buttons */}
+              <div className="flex border-b-2 border-[#5C3A1A] bg-[#3A2410]">
+                <button
+                  onClick={() => setSidePanel('activity')}
+                  className={`flex-1 py-1.5 font-pixel text-[6px] transition-colors ${
+                    sidePanel === 'activity'
+                      ? 'text-amber-300 bg-[#2D1B0E] border-b-2 border-amber-400'
+                      : 'text-amber-800 hover:text-amber-500'
+                  }`}
+                >
+                  ACTIVITY
+                </button>
+                <button
+                  onClick={() => setSidePanel('tokens')}
+                  className={`flex-1 py-1.5 font-pixel text-[6px] transition-colors ${
+                    sidePanel === 'tokens'
+                      ? 'text-amber-300 bg-[#2D1B0E] border-b-2 border-amber-400'
+                      : 'text-amber-800 hover:text-amber-500'
+                  }`}
+                >
+                  TOKENS
+                </button>
+                <button
+                  onClick={() => setSidePanel('stats')}
+                  className={`flex-1 py-1.5 font-pixel text-[6px] transition-colors ${
+                    sidePanel === 'stats'
+                      ? 'text-amber-300 bg-[#2D1B0E] border-b-2 border-amber-400'
+                      : 'text-amber-800 hover:text-amber-500'
+                  }`}
+                >
+                  STATS
+                </button>
+              </div>
+              {/* Panel content */}
+              <div className="flex-1 min-h-0">
+                {sidePanel === 'activity' && <ActivityLog />}
+                {sidePanel === 'tokens' && <TokenUsagePanel />}
+                {sidePanel === 'stats' && <StatsPanel />}
+              </div>
+            </>
+          )}
         </div>
       </div>
 

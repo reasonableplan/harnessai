@@ -58,6 +58,7 @@ const CHARACTER_DEFS: CharacterDef[] = [
 
 const DEFAULT_ASSIGNMENTS: Record<string, string> = {
   director: 'bob',
+  orchestration: 'bob', // server sends "orchestration" for director agent
   git: 'alex',
   frontend: 'amelia',
   backend: 'adam',

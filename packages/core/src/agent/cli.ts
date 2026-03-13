@@ -57,6 +57,10 @@ export function startCLI(options: CLIOptions): readline.Interface {
   });
 
   rl.on('close', () => {
+    // Non-TTY stdin (piped/background) → CLI 종료가 시스템 종료를 유발하면 안 됨
+    if (!process.stdin.isTTY) {
+      return;
+    }
     // process.exit를 직접 호출하지 않고 SIGINT를 emit하여
     // bootstrap의 시그널 핸들러가 graceful shutdown을 수행하도록 한다.
     // process.kill은 Windows에서 신뢰할 수 없으므로 직접 emit한다.
