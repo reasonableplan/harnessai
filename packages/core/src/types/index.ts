@@ -202,6 +202,7 @@ export interface IStateStore {
   getTask(id: string): Promise<TaskRow | null>;
   updateTask(id: string, updates: Partial<TaskRow>): Promise<void>;
   getTasksByColumn(column: string): Promise<TaskRow[]>;
+  getTasksByIds(ids: string[]): Promise<TaskRow[]>;
   getTasksByAgent(agentId: string): Promise<TaskRow[]>;
   getReadyTasksForAgent(agentId: string): Promise<TaskRow[]>;
   /** Atomically claim a Ready task → In Progress. Returns true if this agent won the claim. */
@@ -319,4 +320,5 @@ export interface IMessageBus {
   subscribe(type: string, handler: MessageHandler): void;
   subscribeAll(handler: MessageHandler): void;
   unsubscribe(type: string, handler: MessageHandler): void;
+  unsubscribeAll(handler: MessageHandler): void;
 }

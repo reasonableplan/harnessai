@@ -64,7 +64,8 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
   async function cleanupInternal() {
     // 역순 정리: agents → orphanCleaner → boardWatcher → agent DB status → db
     // drain()은 in-flight 작업이 끝날 때까지 대기한다.
-    await Promise.all(startedAgents.map((agent) => agent.drain()));
+    // Promise.allSettled: 하나의 agent drain 실패가 나머지 drain을 막지 않도록 한다.
+    await Promise.allSettled(startedAgents.map((agent) => agent.drain()));
     orphanCleaner?.stop();
     if (boardWatcher) {
       await boardWatcher.drain();

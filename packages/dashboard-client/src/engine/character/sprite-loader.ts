@@ -108,26 +108,6 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-/** Extract a single 16×32 frame from a spritesheet */
-function extractFrame(
-  source: HTMLImageElement,
-  frameIndex: number,
-): HTMLCanvasElement {
-  const canvas = document.createElement('canvas');
-  canvas.width = SPRITE_FRAME_W;
-  canvas.height = SPRITE_FRAME_H;
-  const ctx = canvas.getContext('2d')!;
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(
-    source,
-    frameIndex * SPRITE_FRAME_W, 0,
-    SPRITE_FRAME_W, SPRITE_FRAME_H,
-    0, 0,
-    SPRITE_FRAME_W, SPRITE_FRAME_H,
-  );
-  return canvas;
-}
-
 async function loadCharacterSheets(name: string): Promise<Map<PoseSheet, HTMLImageElement>> {
   const sheets = new Map<PoseSheet, HTMLImageElement>();
   const basePath = `/assets/characters/modern/${name}`;
@@ -138,7 +118,7 @@ async function loadCharacterSheets(name: string): Promise<Map<PoseSheet, HTMLIma
         const img = await loadImage(`${basePath}-${sheet}.png`);
         sheets.set(sheet, img);
       } catch {
-        console.warn(`[sprite-loader] Failed to load ${basePath}-${sheet}.png`);
+        if (import.meta.env.DEV) console.warn(`[sprite-loader] Failed to load ${basePath}-${sheet}.png`);
       }
     }),
   );
@@ -179,9 +159,24 @@ export function saveAssignments(assignments: Record<string, string>): void {
   } catch { /* ignore */ }
 }
 
+// ---- Reusable offscreen canvas for getSpriteFrame ----
+let _reusableCanvas: HTMLCanvasElement | null = null;
+
+function getReusableCanvas(): HTMLCanvasElement {
+  if (!_reusableCanvas) {
+    _reusableCanvas = document.createElement('canvas');
+    _reusableCanvas.width = SPRITE_FRAME_W;
+    _reusableCanvas.height = SPRITE_FRAME_H;
+  }
+  return _reusableCanvas;
+}
+
 /**
  * Get a rendered 16×32 frame canvas for a domain + status + animation frame.
  * Returns null if sprites aren't loaded.
+ *
+ * NOTE: 반환된 canvas는 재사용되므로, 호출자는 즉시 drawImage()로
+ * 대상 canvas에 복사해야 한다. 다음 호출 시 내용이 덮어씌워진다.
  */
 export function getSpriteFrame(
   collection: SpriteCollection,
@@ -197,7 +192,18 @@ export function getSpriteFrame(
   const sheet = sheets.get(ref.sheet);
   if (!sheet) return null;
 
-  return extractFrame(sheet, ref.frameIndex);
+  const canvas = getReusableCanvas();
+  const ctx = canvas.getContext('2d')!;
+  ctx.clearRect(0, 0, SPRITE_FRAME_W, SPRITE_FRAME_H);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(
+    sheet,
+    ref.frameIndex * SPRITE_FRAME_W, 0,
+    SPRITE_FRAME_W, SPRITE_FRAME_H,
+    0, 0,
+    SPRITE_FRAME_W, SPRITE_FRAME_H,
+  );
+  return canvas;
 }
 
 /** Get the full character catalog */

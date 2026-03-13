@@ -4,6 +4,11 @@ import { MESSAGE_TYPES, createLogger } from '@agent/core';
 const log = createLogger('Dispatcher');
 
 export class Dispatcher {
+  // null 초기화 + setter 패턴:
+  // DirectorAgent constructor에서 Dispatcher를 먼저 생성한 뒤
+  // MessageBus·ClaudeClient를 주입한다. 이는 Bootstrap 단계에서
+  // Director → Dispatcher → MessageBus 순으로 생성되는 순환 의존성을
+  // 깨기 위한 의도적 설계다. constructor DI로 대체하면 순환 참조가 발생한다.
   private claude: IClaudeClient | null = null;
   private messageBus: IMessageBus | null = null;
 
@@ -23,7 +28,12 @@ export class Dispatcher {
   }
 
   async onBoardMove(msg: Message): Promise<void> {
-    const payload = msg.payload as {
+    const raw = msg.payload;
+    if (!raw || typeof raw !== 'object') {
+      log.warn({ msgId: msg.id }, 'board.move payload missing or invalid');
+      return;
+    }
+    const payload = raw as {
       issueNumber: number;
       title: string;
       fromColumn: string;
@@ -31,7 +41,7 @@ export class Dispatcher {
       labels: string[];
     };
 
-    if (!payload.toColumn) {
+    if (!payload.toColumn || typeof payload.toColumn !== 'string') {
       log.warn({ msgId: msg.id }, 'board.move missing toColumn');
       return;
     }
@@ -43,7 +53,7 @@ export class Dispatcher {
 
     // 새 이슈가 Backlog에 도착했을 때 (에이전트가 만든 후속 이슈 또는 Failed에서 복귀)
     if (payload.toColumn === 'Backlog') {
-      await this.reviewBacklogIssue(payload);
+      await this.reviewBacklogIssue(payload, msg.traceId);
     }
   }
 
@@ -56,7 +66,7 @@ export class Dispatcher {
     issueNumber: number;
     title: string;
     labels: string[];
-  }): Promise<void> {
+  }, traceId: string = crypto.randomUUID()): Promise<void> {
     // type:commit (Git commit 요청)은 자동 승인
     if (payload.labels.includes('type:commit')) {
       await this.approveToReady(
@@ -96,7 +106,7 @@ Respond with JSON: {"approved": true|false, "reason": "brief explanation"}`,
           from: 'director',
           to: null,
           payload: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens },
-          traceId: crypto.randomUUID(),
+          traceId,
           timestamp: new Date(),
         });
       }
@@ -146,29 +156,34 @@ Respond with JSON: {"approved": true|false, "reason": "brief explanation"}`,
     // DB에서 Backlog 상태의 모든 Task를 조회
     const backlogTasks = await this.stateStore.getTasksByColumn('Backlog');
 
-    for (const task of backlogTasks) {
+    // 관련 Task만 필터 + 모든 의존성 ID를 수집하여 batch 쿼리
+    const candidateTasks = backlogTasks.filter((t) => {
+      const deps = (t.dependencies as string[]) ?? [];
+      return deps.includes(completedTaskId);
+    });
+    if (candidateTasks.length === 0) return;
+
+    const allDepIds = [...new Set(candidateTasks.flatMap((t) => (t.dependencies as string[]) ?? []))];
+    const depTasks = await this.stateStore.getTasksByIds(allDepIds);
+    const depMap = new Map(depTasks.map((t) => [t.id, t]));
+
+    for (const task of candidateTasks) {
       try {
         const deps = (task.dependencies as string[]) ?? [];
-        if (!deps.includes(completedTaskId)) continue;
-
-        // 이 Task의 모든 의존성이 Done인지 확인
-        let allDepsDone = true;
-        for (const depId of deps) {
-          const depTask = await this.stateStore.getTask(depId);
-          if (!depTask || depTask.boardColumn !== 'Done') {
-            allDepsDone = false;
-            break;
-          }
-        }
+        const allDepsDone = deps.every((depId) => {
+          const dep = depMap.get(depId);
+          return dep && dep.boardColumn === 'Done';
+        });
 
         if (allDepsDone) {
+          // Board FIRST — Board 실패 시 DB는 원래 상태 유지
+          if (task.githubIssueNumber) {
+            await this.gitService.moveIssueToColumn(task.githubIssueNumber, 'Ready');
+          }
           await this.stateStore.updateTask(task.id, {
             status: 'ready',
             boardColumn: 'Ready',
           });
-          if (task.githubIssueNumber) {
-            await this.gitService.moveIssueToColumn(task.githubIssueNumber, 'Ready');
-          }
           log.info({ taskTitle: task.title }, 'Promoted to Ready (all deps done)');
         }
       } catch (error) {

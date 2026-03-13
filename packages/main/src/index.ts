@@ -47,6 +47,8 @@ async function main() {
   log.info(`  WebSocket:  ws://localhost:${appConfig.dashboard.port}`);
   log.info(`  Health:     http://localhost:${appConfig.dashboard.port}/health`);
 
+  // SIGINT/SIGTERM 핸들러는 bootstrap() 내부에서 등록됨 (process.on('SIGINT'/'SIGTERM', signalHandler))
+  // context.shutdown을 호출하면 해당 핸들러가 자동으로 제거됨
   // Graceful shutdown에 dashboard 포함
   const originalShutdown = context.shutdown;
   let shuttingDown = false;

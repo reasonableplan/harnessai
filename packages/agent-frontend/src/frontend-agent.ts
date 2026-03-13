@@ -4,6 +4,7 @@ import {
   FollowUpCreator,
   ClaudeClient,
   CommitRequester,
+  DEFAULT_CLAUDE_MODEL,
   type AgentDependencies,
   type AgentConfig,
   type Task,
@@ -17,6 +18,7 @@ export interface FrontendAgentConfig {
   workDir: string;
   claudeApiKey?: string;
   claudeClient?: IClaudeClient;
+  claudeModel?: string;
 }
 
 export class FrontendAgent extends BaseAgent {
@@ -30,7 +32,7 @@ export class FrontendAgent extends BaseAgent {
       id: 'frontend',
       domain: 'frontend',
       level: 2,
-      claudeModel: 'claude-sonnet-4-20250514',
+      claudeModel: frontendConfig.claudeModel ?? DEFAULT_CLAUDE_MODEL,
       maxTokens: 16384,
       temperature: 0.2,
       tokenBudget: 100_000,

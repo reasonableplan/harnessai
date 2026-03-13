@@ -205,9 +205,9 @@ export class ClaudeClient implements IClaudeClient {
     if (msg.includes('timeout') || msg.includes('timed out')) return true;
     if (msg.includes('network') || msg.includes('econnreset') || msg.includes('socket'))
       return true;
-    if (msg.includes('500') || msg.includes('502') || msg.includes('503') || msg.includes('529'))
-      return true;
+    // 단어 경계(\b)로 숫자가 다른 문자열의 일부일 때 false positive 방지
+    if (/\b5\d{2}\b/.test(msg)) return true;
     if (msg.includes('401') || msg.includes('403') || msg.includes('invalid')) return false;
-    return true; // unknown errors → retry
+    return false; // unknown errors → do not retry (안전한 기본값)
   }
 }

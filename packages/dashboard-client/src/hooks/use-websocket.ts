@@ -97,7 +97,7 @@ export function useWebSocket() {
 
       case 'toast':
         addToast({
-          id: `toast-${Date.now()}`,
+          id: `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           type: (payload.type as 'success' | 'error' | 'info' | 'warning') ?? 'info',
           title: (payload.title as string) ?? '',
           message: (payload.message as string) ?? '',
@@ -162,11 +162,10 @@ export function useWebSocket() {
       };
 
       ws.onmessage = (event) => {
-        try {
-          const data: DashboardEvent = JSON.parse(event.data);
-          handleEvent(data);
-        } catch {
-          // ignore malformed messages
+        let data: DashboardEvent;
+        try { data = JSON.parse(event.data); } catch { return; }
+        try { handleEvent(data); } catch (err) {
+          console.error('[WS] Event handling error:', err);
         }
       };
 

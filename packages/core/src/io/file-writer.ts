@@ -27,6 +27,7 @@ export class FileWriter {
       const absolutePath = path.resolve(resolvedWorkDir, file.path);
 
       // Sandbox: workDir 밖으로 나가는 경로 차단
+      // path.sep을 붙여 비교함으로써 workDir 자체(빈 경로)를 쓰기 대상으로 허용하지 않음
       if (!absolutePath.startsWith(resolvedWorkDir + path.sep)) {
         throw new SandboxEscapeError(file.path, resolvedWorkDir);
       }

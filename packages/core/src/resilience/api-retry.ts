@@ -51,9 +51,8 @@ function isRetryable(error: unknown): boolean {
   if (msg.includes('econnreset') || msg.includes('socket') || msg.includes('timeout')) return true;
   if (msg.includes('network') || msg.includes('fetch failed')) return true;
 
-  // HTTP 서버 에러
-  if (msg.includes('500') || msg.includes('502') || msg.includes('503') || msg.includes('504'))
-    return true;
+  // HTTP 서버 에러 — 단어 경계(\b)로 숫자가 다른 문자열의 일부일 때 false positive 방지
+  if (/\b5\d{2}\b/.test(msg)) return true;
 
   // Rate limit
   if (msg.includes('rate limit') || msg.includes('429') || msg.includes('secondary rate'))

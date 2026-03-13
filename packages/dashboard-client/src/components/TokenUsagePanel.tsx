@@ -1,12 +1,5 @@
 import { useOfficeStore } from '@/stores/office-store';
-
-const DOMAIN_COLORS: Record<string, string> = {
-  director: '#FFD700',
-  git: '#F05032',
-  frontend: '#61DAFB',
-  backend: '#68A063',
-  docs: '#F7DF1E',
-};
+import { formatTokens, DOMAIN_COLORS } from '@/utils/format';
 
 const DOMAIN_LABELS: Record<string, string> = {
   director: 'Director',
@@ -15,12 +8,6 @@ const DOMAIN_LABELS: Record<string, string> = {
   backend: 'Backend',
   docs: 'Docs',
 };
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
 
 export default function TokenUsagePanel() {
   const tokenUsage = useOfficeStore((s) => s.tokenUsage);
@@ -158,17 +145,22 @@ export default function TokenUsagePanel() {
           })}
       </div>
 
-      {/* Legend */}
-      <div className="px-3 py-2 border-t border-[#5C3A1A]">
-        <div className="flex flex-wrap gap-2">
-          {Object.entries(DOMAIN_COLORS).map(([id, color]) => (
-            <div key={id} className="flex items-center gap-1">
-              <div className="w-1.5 h-1.5" style={{ backgroundColor: color }} />
-              <span className="font-pixel text-[4px] text-gray-500">{DOMAIN_LABELS[id] ?? id}</span>
-            </div>
-          ))}
+      {/* Legend — only show agents that have token usage data */}
+      {Object.keys(tokenUsage).length > 0 && (
+        <div className="px-3 py-2 border-t border-[#5C3A1A]">
+          <div className="flex flex-wrap gap-2">
+            {Object.keys(tokenUsage).map((id) => {
+              const color = DOMAIN_COLORS[id] ?? '#888';
+              return (
+                <div key={id} className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5" style={{ backgroundColor: color }} />
+                  <span className="font-pixel text-[4px] text-gray-500">{DOMAIN_LABELS[id] ?? id}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

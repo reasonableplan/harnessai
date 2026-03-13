@@ -3,8 +3,6 @@ import { resolve, sep } from 'node:path';
 import { createLogger, type IClaudeClient, type GeneratedCode, type Task } from '@agent/core';
 import type { BackendTaskType } from './task-router.js';
 
-export type { IClaudeClient } from '@agent/core';
-
 const log = createLogger('CodeGenerator');
 
 const MAX_FILE_READ_CHARS = 8000;

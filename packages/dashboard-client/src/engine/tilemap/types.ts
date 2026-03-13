@@ -1,3 +1,5 @@
+// TODO: Phase N — 타일맵 JSON 렌더링 전환 시 사용 예정. 현재는 참조 없음.
+
 /**
  * Tilemap data types for sprite-based office rendering
  */

@@ -1,20 +1,23 @@
 import type { IStateStore, IGitService, IClaudeClient, Task, TaskResult, Message, IMessageBus } from '@agent/core';
 import { MESSAGE_TYPES, createLogger, taskRowToTask } from '@agent/core';
 
-function publishTokenUsage(messageBus: IMessageBus, from: string, inputTokens: number, outputTokens: number): Promise<void> {
+function publishTokenUsage(messageBus: IMessageBus, from: string, inputTokens: number, outputTokens: number, traceId: string): Promise<void> {
   return messageBus.publish({
     id: crypto.randomUUID(),
     type: MESSAGE_TYPES.TOKEN_USAGE,
     from,
     to: null,
     payload: { inputTokens, outputTokens },
-    traceId: crypto.randomUUID(),
+    traceId,
     timestamp: new Date(),
   });
 }
 import type { Dispatcher } from './dispatcher.js';
 
 const log = createLogger('ReviewProcessor');
+
+/** 태스크당 최대 재시도 횟수. 초과 시 Failed로 전환한다. */
+const MAX_RETRIES = 3;
 
 export class ReviewProcessor {
   constructor(
@@ -26,7 +29,12 @@ export class ReviewProcessor {
   ) {}
 
   async onReviewRequest(msg: Message): Promise<void> {
-    const payload = msg.payload as { taskId: string; result: TaskResult };
+    const raw = msg.payload;
+    if (!raw || typeof raw !== 'object' || !('taskId' in raw) || !('result' in raw)) {
+      log.warn({ msgId: msg.id }, 'review.request payload missing required fields');
+      return;
+    }
+    const payload = raw as { taskId: string; result: TaskResult };
     log.info({ taskId: payload.taskId, success: payload.result.success }, 'Review request');
 
     if (payload.result.success) {
@@ -34,7 +42,7 @@ export class ReviewProcessor {
       const taskRow = await this.stateStore.getTask(payload.taskId);
       if (taskRow) {
         const task = taskRowToTask(taskRow);
-        const reviewResult = await this.reviewWithClaude(task, payload.result);
+        const reviewResult = await this.reviewWithClaude(task, payload.result, msg.traceId);
         if (reviewResult.approved) {
           log.info({ taskId: payload.taskId, reason: reviewResult.reason }, 'Task approved');
           // Done으로 이동 + 후속 의존성 체인 트리거
@@ -62,7 +70,7 @@ export class ReviewProcessor {
         } else {
           log.warn({ taskId: payload.taskId, reason: reviewResult.reason }, 'Review rejected');
           // 리뷰 실패 → 피드백 저장 후 재시도로 전환
-          await this.retryOrFail(task, payload.taskId, reviewResult.reason);
+          await this.retryOrFail(task, payload.taskId, reviewResult.reason, msg.traceId);
         }
       }
     } else {
@@ -71,7 +79,7 @@ export class ReviewProcessor {
       if (taskRow) {
         const task = taskRowToTask(taskRow);
         const errorFeedback = payload.result.error?.message ?? 'Task execution failed';
-        await this.retryOrFail(task, payload.taskId, errorFeedback);
+        await this.retryOrFail(task, payload.taskId, errorFeedback, msg.traceId);
       }
     }
   }
@@ -82,6 +90,7 @@ export class ReviewProcessor {
   private async reviewWithClaude(
     task: Task,
     result: TaskResult,
+    traceId: string,
   ): Promise<{ approved: boolean; reason: string }> {
     const systemPrompt = `You are a code reviewer for a multi-agent software development system.
 Review whether the worker's output matches the original task requirements.
@@ -99,7 +108,7 @@ Respond with JSON only:
         userMessage,
       );
       if (this.messageBus) {
-        await publishTokenUsage(this.messageBus, 'director', usage.inputTokens, usage.outputTokens);
+        await publishTokenUsage(this.messageBus, 'director', usage.inputTokens, usage.outputTokens, traceId);
       }
       return data;
     } catch (error) {
@@ -120,8 +129,8 @@ Respond with JSON only:
    * 재시도 가능하면 피드백과 함께 Ready로 되돌리고, 최대 횟수 초과 시 Failed 처리.
    * @param feedback Director의 리뷰 피드백 (거절 사유 또는 에러 메시지)
    */
-  private async retryOrFail(task: Task, taskId: string, feedback: string): Promise<void> {
-    if ((task.retryCount ?? 0) < 2) {
+  private async retryOrFail(task: Task, taskId: string, feedback: string, traceId: string): Promise<void> {
+    if ((task.retryCount ?? 0) < MAX_RETRIES - 1) {
       const newRetryCount = (task.retryCount ?? 0) + 1;
 
       // 1. GitHub Board 이동 먼저 — 실패 시 DB 업데이트 안 함
@@ -130,7 +139,7 @@ Respond with JSON only:
         try {
           await this.gitService.addComment(
             task.githubIssueNumber,
-            `🔄 **[Director Review] Revision Requested** (attempt ${newRetryCount}/3)\n\n${feedback}`,
+            `🔄 **[Director Review] Revision Requested** (attempt ${newRetryCount}/${MAX_RETRIES})\n\n${feedback}`,
           );
         } catch (err) {
           log.warn({ err }, 'Failed to add comment (non-fatal)');
@@ -156,15 +165,15 @@ Respond with JSON only:
             taskId,
             feedback,
             retryCount: newRetryCount,
-            maxRetries: 3,
+            maxRetries: MAX_RETRIES,
           },
-          traceId: crypto.randomUUID(),
+          traceId,
           timestamp: new Date(),
         });
       }
 
       log.info(
-        { taskId, attempt: newRetryCount, maxRetries: 3, feedback },
+        { taskId, attempt: newRetryCount, maxRetries: MAX_RETRIES, feedback },
         'Task sent back with feedback',
       );
     } else {
@@ -184,7 +193,7 @@ Respond with JSON only:
       await this.stateStore.updateTask(taskId, {
         status: 'failed',
         boardColumn: 'Failed',
-        reviewNote: `Final failure after 3 attempts. Last feedback: ${feedback}`,
+        reviewNote: `Final failure after ${MAX_RETRIES} attempts. Last feedback: ${feedback}`,
       });
       log.error({ taskId, feedback }, 'Task failed after max retries');
     }

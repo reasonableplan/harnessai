@@ -1,3 +1,4 @@
+import path from 'path';
 import type { Task, TaskResult, IGitService } from '@agent/core';
 import { createLogger } from '@agent/core';
 
@@ -83,13 +84,23 @@ export class TaskHandlers {
     }
 
     const epicId = task.epicId;
+    const branchName = this.extractBranchName(task);
     const workDir = await this.workspaceManager.getEpicWorkDir(epicId);
-    const message = task.description || task.title;
+    // commit 메시지 sanitize: 첫 줄만, 최대 200자
+    const rawMessage = task.description || task.title;
+    const message = (rawMessage.split(/\r?\n/)[0] ?? 'Auto-commit').slice(0, 200);
 
     // artifacts가 지정되어 있으면 해당 파일만, 아니면 전체 add
     if (task.artifacts.length > 0) {
       for (const filePath of task.artifacts) {
-        await this.gitCli.exec(workDir, 'add', filePath);
+        // 보안: path traversal 방지 — workDir 하위만 허용
+        const resolved = path.resolve(workDir, filePath);
+        if (!resolved.startsWith(workDir + path.sep) && resolved !== workDir) {
+          log.warn({ filePath, workDir }, 'Path traversal attempt blocked');
+          continue;
+        }
+        // '--' 구분자로 옵션 인젝션 방지
+        await this.gitCli.exec(workDir, 'add', '--', filePath);
       }
     } else {
       await this.gitCli.exec(workDir, 'add', '-A');
@@ -105,7 +116,6 @@ export class TaskHandlers {
     }
 
     await this.gitCli.exec(workDir, 'commit', '-m', message);
-    const branchName = `epic/${epicId}`;
     await this.gitCli.exec(workDir, 'push', 'origin', branchName);
     log.info({ message }, 'Committed and pushed');
 
@@ -134,7 +144,7 @@ export class TaskHandlers {
     }
 
     const epicId = task.epicId;
-    const branchName = `epic/${epicId}`;
+    const branchName = this.extractBranchName(task);
 
     // Director 피드백이 있으면 PR 설명에 반영
     const baseDescription = task.description || task.title;

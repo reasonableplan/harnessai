@@ -1,5 +1,5 @@
 export * from './types/index.js';
-export { loadConfig, type AppConfig } from './config.js';
+export { loadConfig, DEFAULT_CLAUDE_MODEL, type AppConfig } from './config.js';
 export * from './errors.js';
 export * from './db/schema.js';
 export { createDb, runMigrations, type Database, type DbConnection } from './db/index.js';

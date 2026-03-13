@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useOfficeStore } from '@/stores/office-store';
+import { formatDuration, DOMAIN_COLORS } from '@/utils/format';
 import HooksPanel from './HooksPanel';
 
 interface SystemSummary {
@@ -18,25 +19,11 @@ interface SystemSummary {
   }>;
 }
 
-const DOMAIN_COLORS: Record<string, string> = {
-  director: '#FFD700',
-  git: '#F05032',
-  frontend: '#61DAFB',
-  backend: '#68A063',
-  docs: '#F7DF1E',
-};
-
-function formatDuration(ms: number | null): string {
-  if (ms == null) return '-';
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${(ms / 60_000).toFixed(1)}m`;
-}
-
 export default function StatsPanel() {
   const agents = useOfficeStore((s) => s.agents);
   const [summary, setSummary] = useState<SystemSummary | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,12 +33,15 @@ export default function StatsPanel() {
       try {
         const baseUrl = import.meta.env.VITE_API_URL ?? '';
         const res = await fetch(`${baseUrl}/api/stats/summary`);
-        if (res.ok && !cancelled) {
+        if (!res.ok) {
+          if (!cancelled) setError('Failed to load stats');
+        } else if (!cancelled) {
           const data = await res.json();
           setSummary(data.summary);
+          setError(null);
         }
       } catch {
-        // silently fail — stats are optional
+        if (!cancelled) setError('Failed to load stats');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -72,6 +62,10 @@ export default function StatsPanel() {
 
       {loading && !summary && (
         <span className="font-pixel text-[6px] text-gray-500">Loading...</span>
+      )}
+
+      {error && !loading && (
+        <span className="font-pixel text-[6px] text-red-400">{error}</span>
       )}
 
       {summary && (

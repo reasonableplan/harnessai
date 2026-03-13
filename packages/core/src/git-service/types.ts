@@ -30,5 +30,5 @@ export interface ProjectItemsResponse {
       }>;
       pageInfo: { hasNextPage: boolean; endCursor: string };
     };
-  };
+  } | null; // GraphQL node() query can return null
 }

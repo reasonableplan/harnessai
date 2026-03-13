@@ -2,14 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useOfficeStore } from '@/stores/office-store';
 import type { AgentStatsState } from '@/stores/office-store';
-
-const DOMAIN_COLORS: Record<string, string> = {
-  director: '#FFD700',
-  git: '#F05032',
-  frontend: '#61DAFB',
-  backend: '#68A063',
-  docs: '#F7DF1E',
-};
+import { formatTokens, formatDuration, DOMAIN_COLORS } from '@/utils/format';
 
 const DOMAIN_TITLES: Record<string, string> = {
   director: 'Director Agent',
@@ -29,19 +22,6 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   waiting: { label: 'WAITING', color: 'text-orange-400' },
   error: { label: 'ERROR', color: 'text-red-400' },
 };
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
-
-function formatDuration(ms: number | null): string {
-  if (ms == null) return '-';
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${(ms / 60_000).toFixed(1)}m`;
-}
 
 export default function AgentDetailPanel() {
   const selectedAgent = useOfficeStore((s) => s.selectedAgent);

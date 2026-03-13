@@ -20,7 +20,7 @@ export default function HooksPanel() {
       .catch(() => {
         // silently fail — hooks are optional
       });
-  }, [setHooks]);
+  }, []);
 
   const handleToggle = async (hookId: string, enabled: boolean) => {
     // Optimistic update

@@ -1,5 +1,5 @@
 /**
- * Color utility helpers, walk cycle, and outline helpers for Stardew-style character rendering
+ * Color utility helpers and walk cycle for Stardew-style character rendering
  */
 
 /** Lighten a hex color by a factor (0-1) */
@@ -26,59 +26,9 @@ export function darken(hex: string, factor: number): string {
   return `#${dr.toString(16).padStart(2, '0')}${dg.toString(16).padStart(2, '0')}${db.toString(16).padStart(2, '0')}`;
 }
 
-/** Draw a single filled rectangle (pixel block) */
-export function px(ctx: CanvasRenderingContext2D, x: number, y: number, w = 1, h = 1) {
-  ctx.fillRect(x, y, w, h);
-}
-
-/** Set fill and draw a pixel in one call */
-export function cpx(
-  ctx: CanvasRenderingContext2D,
-  color: string,
-  x: number,
-  y: number,
-  w = 1,
-  h = 1,
-) {
-  ctx.fillStyle = color;
-  ctx.fillRect(x, y, w, h);
-}
-
-/** Draw outlined rectangle (Stardew style — dark border + fill) */
-export function outlinedRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  fill: string,
-  outline: string,
-) {
-  ctx.fillStyle = outline;
-  ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = fill;
-  ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
-}
-
 // ---- Walk cycle offsets ----
 
 export function getWalkBob(walkFrame: number): number {
   // Bob pattern: 0, -1, 0, -1
   return walkFrame % 2 === 1 ? -1 : 0;
-}
-
-export function getWalkStride(walkFrame: number): { left: number; right: number } {
-  // Stride pattern for legs: frame 0=center, 1=left forward, 2=center, 3=right forward
-  switch (walkFrame) {
-    case 0:
-      return { left: 0, right: 0 };
-    case 1:
-      return { left: -2, right: 2 };
-    case 2:
-      return { left: 0, right: 0 };
-    case 3:
-      return { left: 2, right: -2 };
-    default:
-      return { left: 0, right: 0 };
-  }
 }

@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useOfficeStore } from '@/stores/office-store';
+import { DOMAIN_COLORS } from '@/utils/format';
 
 const COLUMNS = [
   { key: 'Backlog', color: '#888888', headerBg: '#555555' },
@@ -9,14 +10,6 @@ const COLUMNS = [
   { key: 'Failed', color: '#E74C3C', headerBg: '#C7342C' },
   { key: 'Done', color: '#2ECC71', headerBg: '#1EAC51' },
 ];
-
-const AGENT_COLORS: Record<string, string> = {
-  director: '#FFD700',
-  git: '#F05032',
-  frontend: '#61DAFB',
-  backend: '#68A063',
-  docs: '#F7DF1E',
-};
 
 export default function BoardExpandedView() {
   const boardExpanded = useOfficeStore((s) => s.boardExpanded);
@@ -88,7 +81,7 @@ export default function BoardExpandedView() {
                     {/* Cards */}
                     <div className="flex-1 overflow-y-auto p-1.5 space-y-1.5">
                       {colTasks.map((task) => {
-                        const agentColor = AGENT_COLORS[task.assignedAgent ?? ''] ?? '#666666';
+                        const agentColor = DOMAIN_COLORS[task.assignedAgent ?? ''] ?? '#666666';
                         return (
                           <div
                             key={task.id}
