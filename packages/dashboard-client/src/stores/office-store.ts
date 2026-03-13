@@ -92,6 +92,9 @@ export interface OfficeStore {
   agentConfigs: Record<string, AgentConfigState>;
   hooksList: HookState[];
   settingsModalAgent: string | null;
+  characterModalAgent: string | null;
+  /** Incremented when character assignments change, to trigger cache rebuild */
+  characterVersion: number;
   /** true when a real server has sent an init event */
   connected: boolean;
 
@@ -120,6 +123,9 @@ export interface OfficeStore {
   updateHookEnabled(id: string, enabled: boolean): void;
   openSettingsModal(agentId: string): void;
   closeSettingsModal(): void;
+  openCharacterModal(agentId: string): void;
+  closeCharacterModal(): void;
+  bumpCharacterVersion(): void;
 }
 
 const DEFAULT_AGENTS: Record<string, AgentState> = {
@@ -184,6 +190,8 @@ export const useOfficeStore = create<OfficeStore>((set) => ({
   agentConfigs: {},
   hooksList: [],
   settingsModalAgent: null,
+  characterModalAgent: null,
+  characterVersion: 0,
   connected: false,
 
   setInitialState: (data) =>
@@ -335,4 +343,10 @@ export const useOfficeStore = create<OfficeStore>((set) => ({
   openSettingsModal: (agentId) => set({ settingsModalAgent: agentId }),
 
   closeSettingsModal: () => set({ settingsModalAgent: null }),
+
+  openCharacterModal: (agentId) => set({ characterModalAgent: agentId }),
+
+  closeCharacterModal: () => set({ characterModalAgent: null }),
+
+  bumpCharacterVersion: () => set((state) => ({ characterVersion: state.characterVersion + 1 })),
 }));

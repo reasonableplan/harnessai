@@ -6,7 +6,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import { useOfficeStore, type AgentState } from '@/stores/office-store';
 import { createBackgroundBuffer } from './tile-renderer';
-import { prerenderCharacters, prerenderCharactersAsync } from './character-renderer';
+import { prerenderCharacters, prerenderCharactersAsync, rebuildCache } from './character-renderer';
 import {
   CANVAS_W,
   CANVAS_H,
@@ -229,6 +229,7 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
   // Subscribe to store
   const agents = useOfficeStore((s) => s.agents);
   const selectedAgent = useOfficeStore((s) => s.selectedAgent);
+  const characterVersion = useOfficeStore((s) => s.characterVersion);
 
   // Keep refs in sync
   agentsRef.current = agents;
@@ -250,6 +251,12 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
 
     return () => { cancelled = true; };
   }, []);
+
+  // Rebuild character cache when assignments change
+  useEffect(() => {
+    if (characterVersion === 0) return; // skip initial mount
+    charCacheRef.current = rebuildCache();
+  }, [characterVersion]);
 
   // Ensure anim states exist for new agents
   useEffect(() => {

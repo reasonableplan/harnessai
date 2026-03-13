@@ -9,6 +9,7 @@ import StatsPanel from '@/components/StatsPanel';
 import CommandBar from '@/components/CommandBar';
 import AgentDetailPanel from '@/components/AgentDetailPanel';
 import AgentSettingsModal from '@/components/AgentSettingsModal';
+import CharacterSelectModal from '@/components/CharacterSelectModal';
 import BoardExpandedView from '@/components/BoardExpandedView';
 import ToastContainer from '@/components/ToastContainer';
 
@@ -207,6 +208,7 @@ export default function App() {
       {/* Overlays */}
       <BoardExpandedView />
       <AgentSettingsModal />
+      <CharacterSelectModal />
       <ToastContainer />
     </div>
   );
