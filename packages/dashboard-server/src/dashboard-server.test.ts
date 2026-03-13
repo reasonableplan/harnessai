@@ -287,4 +287,43 @@ describe('EventMapper', () => {
       expect(events[0].type).toBe('message');
     });
   });
+
+  describe('warmCache', () => {
+    it('pre-loads active tasks into cache', async () => {
+      const activeTasks = [
+        { id: 'task-1', status: 'in-progress', boardColumn: 'In Progress', title: 'Active 1' },
+        { id: 'task-2', status: 'ready', boardColumn: 'Ready', title: 'Active 2' },
+        { id: 'task-3', status: 'review', boardColumn: 'Review', title: 'Review 1' },
+        { id: 'task-done', status: 'done', boardColumn: 'Done', title: 'Done 1' },
+      ] as unknown as TaskRow[];
+      vi.mocked(stateStore.getAllTasks).mockResolvedValue(activeTasks);
+
+      const count = await mapper.warmCache();
+
+      // Only active tasks (not done/failed) should be cached
+      expect(count).toBe(3);
+
+      // Verify cache is populated
+      expect(mapper.cacheSize).toBe(3);
+    });
+
+    it('returns 0 when no active tasks exist', async () => {
+      vi.mocked(stateStore.getAllTasks).mockResolvedValue([]);
+
+      const count = await mapper.warmCache();
+      expect(count).toBe(0);
+      expect(mapper.cacheSize).toBe(0);
+    });
+
+    it('skips failed and done tasks', async () => {
+      const tasks = [
+        { id: 'task-a', status: 'failed', boardColumn: 'Failed', title: 'F' },
+        { id: 'task-b', status: 'done', boardColumn: 'Done', title: 'D' },
+      ] as unknown as TaskRow[];
+      vi.mocked(stateStore.getAllTasks).mockResolvedValue(tasks);
+
+      const count = await mapper.warmCache();
+      expect(count).toBe(0);
+    });
+  });
 });

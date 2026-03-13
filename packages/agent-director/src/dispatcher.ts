@@ -1,5 +1,5 @@
 import type { IStateStore, IGitService, IClaudeClient, IMessageBus, Message } from '@agent/core';
-import { MESSAGE_TYPES, createLogger } from '@agent/core';
+import { MESSAGE_TYPES, createLogger, boardThenDb } from '@agent/core';
 
 const log = createLogger('Dispatcher');
 
@@ -137,10 +137,13 @@ Respond with JSON: {"approved": true|false, "reason": "brief explanation"}`,
     const taskId = `task-gh-${issueNumber}`;
     const task = await this.stateStore.getTask(taskId);
     if (task) {
-      // Board FIRST
-      await this.gitService.moveIssueToColumn(issueNumber, 'Ready');
-      // Then DB
-      await this.stateStore.updateTask(taskId, { status: 'ready', boardColumn: 'Ready', assignedAgent: task.assignedAgent });
+      await boardThenDb({
+        issueNumber,
+        targetColumn: 'Ready',
+        fromColumn: task.boardColumn,
+        moveToColumn: (n, col) => this.gitService.moveIssueToColumn(n, col),
+        updateDb: () => this.stateStore.updateTask(taskId, { status: 'ready', boardColumn: 'Ready', assignedAgent: task.assignedAgent }),
+      });
       log.info({ issueNumber, title, reason }, 'Backlog issue approved → Ready');
     } else {
       log.warn({ issueNumber, taskId }, 'Task not found in DB, skipping Board move');
@@ -176,13 +179,15 @@ Respond with JSON: {"approved": true|false, "reason": "brief explanation"}`,
         });
 
         if (allDepsDone) {
-          // Board FIRST — Board 실패 시 DB는 원래 상태 유지
-          if (task.githubIssueNumber) {
-            await this.gitService.moveIssueToColumn(task.githubIssueNumber, 'Ready');
-          }
-          await this.stateStore.updateTask(task.id, {
-            status: 'ready',
-            boardColumn: 'Ready',
+          await boardThenDb({
+            issueNumber: task.githubIssueNumber,
+            targetColumn: 'Ready',
+            fromColumn: task.boardColumn,
+            moveToColumn: (n, col) => this.gitService.moveIssueToColumn(n, col),
+            updateDb: () => this.stateStore.updateTask(task.id, {
+              status: 'ready',
+              boardColumn: 'Ready',
+            }),
           });
           log.info({ taskTitle: task.title }, 'Promoted to Ready (all deps done)');
         }

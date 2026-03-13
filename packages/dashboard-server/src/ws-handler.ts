@@ -4,6 +4,7 @@ import type { Server } from 'http';
 import { createLogger, MESSAGE_TYPES } from '@agent/core';
 import type { DashboardEvent, DashboardCommand, DashboardDependencies } from './types.js';
 import { EventMapper } from './event-mapper.js';
+import { validateWsToken } from './auth-middleware.js';
 
 const log = createLogger('WSHandler');
 
@@ -25,14 +26,26 @@ export class WSHandler {
   private eventMapper: EventMapper;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private deps: DashboardDependencies;
+  private authToken: string | undefined;
 
-  constructor(server: Server, deps: DashboardDependencies) {
+  constructor(server: Server, deps: DashboardDependencies, authToken?: string) {
     this.deps = deps;
+    this.authToken = authToken;
     this.eventMapper = new EventMapper(deps.stateStore);
 
     this.wss = new WebSocketServer({ server, maxPayload: 64 * 1024 }); // 64KB limit
 
     this.wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
+      // Validate token from query parameter: ws://host/ws?token=xxx
+      const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+      const clientToken = url.searchParams.get('token') ?? undefined;
+
+      if (!validateWsToken(this.authToken, clientToken)) {
+        log.warn({ ip: req.socket.remoteAddress }, 'WebSocket auth failed');
+        ws.close(4401, 'Unauthorized');
+        return;
+      }
+
       this.handleConnection(ws as ExtendedWebSocket, req);
     });
 
@@ -50,6 +63,13 @@ export class WSHandler {
 
     // Start heartbeat ping/pong
     this.startHeartbeat();
+
+    // Warm EventMapper task cache to avoid DB query burst on startup
+    this.eventMapper.warmCache().then((count) => {
+      if (count > 0) log.info({ cachedTasks: count }, 'EventMapper cache warmed');
+    }).catch((err) => {
+      log.error({ err }, 'Failed to warm EventMapper cache');
+    });
 
     log.info('WebSocket server initialized');
   }

@@ -23,6 +23,8 @@ export interface AppConfig {
   dashboard: {
     port: number;
     corsOrigins: string[];
+    /** Bearer token for REST + WS auth. If empty/undefined, auth is skipped (dev mode). */
+    authToken?: string;
   };
   logging: {
     level: string;
@@ -91,6 +93,7 @@ export function loadConfig(opts: { requireAll?: boolean } = {}): AppConfig {
       corsOrigins: process.env.CORS_ORIGINS
         ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
         : ['http://localhost:3000', 'http://localhost:5173'],
+      authToken: process.env.DASHBOARD_AUTH_TOKEN || undefined,
     },
     logging: {
       level: process.env.LOG_LEVEL ?? 'info',

@@ -18,6 +18,7 @@ export { isValidTransition, assertValidTransition } from './state/task-state-mac
 export * from './resilience/api-retry.js';
 export * from './io/follow-up-creator.js';
 export { OrphanCleaner, type OrphanCleanerConfig } from './resilience/orphan-cleaner.js';
+export { boardThenDb, type BoardThenDbOptions } from './resilience/board-then-db.js';
 export { createLogger, type Logger } from './logging/logger.js';
 export * from './agent/system-controller.js';
 export { startCLI, type CLIOptions } from './agent/cli.js';

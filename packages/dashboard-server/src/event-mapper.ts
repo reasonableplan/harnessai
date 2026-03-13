@@ -38,6 +38,33 @@ export class EventMapper {
     this.taskCache.clear();
   }
 
+  /** Number of entries currently in the task cache. */
+  get cacheSize(): number {
+    return this.taskCache.size;
+  }
+
+  /**
+   * Pre-load active tasks into cache on server startup.
+   * Only caches tasks in active states (backlog, ready, in-progress, review)
+   * to avoid wasting memory on completed/failed tasks.
+   * Returns the number of tasks cached.
+   */
+  async warmCache(): Promise<number> {
+    const ACTIVE_STATUSES = new Set(['backlog', 'ready', 'in-progress', 'review']);
+    const allTasks = await this.stateStore.getAllTasks();
+    const now = Date.now();
+    let count = 0;
+
+    for (const task of allTasks) {
+      if (ACTIVE_STATUSES.has(task.status)) {
+        this.taskCache.set(task.id, { task, cachedAt: now });
+        count++;
+      }
+    }
+
+    return count;
+  }
+
   private async getTaskCached(taskId: string): Promise<TaskRow | null> {
     const now = Date.now();
     const cached = this.taskCache.get(taskId);
@@ -183,8 +210,8 @@ export class EventMapper {
     const taskId = `task-gh-${payload.issueNumber}`;
     const events: DashboardEvent[] = [];
 
-    // Try to get the full task row for the board update (캐시 사용)
-    this.invalidateTask(taskId); // board.move 시 기존 캐시 무효화
+    // Force DB fetch by invalidating stale cache entry first (board.move = state changed)
+    this.invalidateTask(taskId);
     const task = await this.getTaskCached(taskId);
     if (task) {
       events.push({

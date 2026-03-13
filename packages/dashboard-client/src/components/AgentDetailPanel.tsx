@@ -32,6 +32,7 @@ export default function AgentDetailPanel() {
   const tokenBudget = useOfficeStore((s) => s.tokenBudget);
   const selectAgent = useOfficeStore((s) => s.selectAgent);
   const openSettingsModal = useOfficeStore((s) => s.openSettingsModal);
+  const openCharacterModal = useOfficeStore((s) => s.openCharacterModal);
 
   const [stats, setStats] = useState<AgentStatsState | null>(null);
 
@@ -293,7 +294,7 @@ export default function AgentDetailPanel() {
           </div>
 
           {/* Controls */}
-          <div className="px-3 py-2 border-t border-[#5C3A1A] flex gap-2">
+          <div className="px-3 py-2 border-t border-[#5C3A1A] flex gap-2 flex-wrap">
             <button className="pixel-btn text-[6px] flex-1">FOCUS</button>
             <button className="pixel-btn text-[6px] flex-1">RESTART</button>
             <button
@@ -301,6 +302,12 @@ export default function AgentDetailPanel() {
               onClick={() => agent && openSettingsModal(agent.id)}
             >
               SETTINGS
+            </button>
+            <button
+              className="pixel-btn text-[6px] flex-1"
+              onClick={() => agent && openCharacterModal(agent.id)}
+            >
+              CHARACTER
             </button>
           </div>
         </motion.div>

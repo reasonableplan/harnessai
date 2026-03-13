@@ -39,6 +39,7 @@ async function main() {
   const dashboard = createDashboardServer(dashboardDeps, {
     corsOrigins: appConfig.dashboard.corsOrigins,
     staticDir,
+    authToken: appConfig.dashboard.authToken,
   });
   await dashboard.listen(appConfig.dashboard.port);
 

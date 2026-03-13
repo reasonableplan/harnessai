@@ -1,5 +1,5 @@
 import type { IStateStore, IGitService, IMessageBus } from '@agent/core';
-import { MESSAGE_TYPES, createLogger } from '@agent/core';
+import { MESSAGE_TYPES, createLogger, boardThenDb } from '@agent/core';
 
 const log = createLogger('EpicPlanner');
 import type { CreateEpicAction } from './action-types.js';
@@ -117,10 +117,15 @@ export class EpicPlanner {
       const taskRow = await this.stateStore.getTask(dbTaskId);
       const deps = (taskRow?.dependencies as string[]) ?? [];
       if (deps.length === 0) {
-        await this.gitService.moveIssueToColumn(issueNumber, 'Ready');
-        await this.stateStore.updateTask(dbTaskId, {
-          status: 'ready',
-          boardColumn: 'Ready',
+        await boardThenDb({
+          issueNumber,
+          targetColumn: 'Ready',
+          fromColumn: 'Backlog',
+          moveToColumn: (n, col) => this.gitService.moveIssueToColumn(n, col),
+          updateDb: () => this.stateStore.updateTask(dbTaskId, {
+            status: 'ready',
+            boardColumn: 'Ready',
+          }),
         });
         readyCount++;
       }

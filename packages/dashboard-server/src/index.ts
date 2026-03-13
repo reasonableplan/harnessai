@@ -5,6 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import { createLogger } from '@agent/core';
 import type { Message, AgentRow, TaskRow, EpicRow, AgentStats, TaskHistoryEntry, AgentConfigRow, HookRow } from '@agent/core';
+import { createAuthMiddleware } from './auth-middleware.js';
 import { createRoutes } from './routes.js';
 import { WSHandler } from './ws-handler.js';
 import type { DashboardDependencies, DashboardStateStore, DashboardMessageBus } from './types.js';
@@ -17,6 +18,7 @@ export type {
 } from './types.js';
 export type { DashboardEvent, DashboardCommand } from './types.js';
 export { EventMapper } from './event-mapper.js';
+export { createAuthMiddleware, validateWsToken } from './auth-middleware.js';
 
 const log = createLogger('DashboardServer');
 
@@ -39,6 +41,8 @@ export interface DashboardServerOptions {
   corsOrigins?: string[];
   /** Path to built dashboard-client dist folder. If provided, serves static files + SPA fallback. */
   staticDir?: string;
+  /** Bearer token for REST + WS auth. If empty/undefined, auth is skipped (dev mode). */
+  authToken?: string;
 }
 
 export function createDashboardServer(
@@ -94,6 +98,9 @@ export function createDashboardServer(
     next();
   });
 
+  // Auth middleware (skipped if no token configured)
+  app.use('/api', createAuthMiddleware(opts.authToken));
+
   // REST routes
   const router = createRoutes({
     stateStore: deps.stateStore,
@@ -124,7 +131,7 @@ export function createDashboardServer(
   const httpServer = createServer(app);
 
   // Attach WebSocket handler
-  const wsHandler = new WSHandler(httpServer, deps);
+  const wsHandler = new WSHandler(httpServer, deps, opts.authToken);
 
   return {
     httpServer,

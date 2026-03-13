@@ -190,7 +190,14 @@ export function useWebSocket() {
 
   const connect = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = import.meta.env.VITE_WS_URL ?? `${protocol}//${window.location.host}/ws`;
+    let wsUrl = import.meta.env.VITE_WS_URL ?? `${protocol}//${window.location.host}/ws`;
+
+    // Append auth token as query parameter if configured
+    const authToken = import.meta.env.VITE_DASHBOARD_AUTH_TOKEN;
+    if (authToken) {
+      const separator = wsUrl.includes('?') ? '&' : '?';
+      wsUrl = `${wsUrl}${separator}token=${encodeURIComponent(authToken)}`;
+    }
 
     try {
       const ws = new WebSocket(wsUrl);
@@ -208,7 +215,10 @@ export function useWebSocket() {
 
       ws.onmessage = (event) => {
         let data: DashboardEvent;
-        try { data = JSON.parse(event.data); } catch { return; }
+        try { data = JSON.parse(event.data); } catch {
+          if (import.meta.env.DEV) console.warn('[WS] Failed to parse server message');
+          return;
+        }
         try { handleEvent(data); } catch (err) {
           console.error('[WS] Event handling error:', err);
         }
@@ -222,7 +232,8 @@ export function useWebSocket() {
       ws.onerror = () => {
         ws.close();
       };
-    } catch {
+    } catch (err) {
+      if (import.meta.env.DEV) console.warn('[WS] Connection failed:', err);
       scheduleReconnect();
     }
   }, [handleEvent, scheduleReconnect]);
