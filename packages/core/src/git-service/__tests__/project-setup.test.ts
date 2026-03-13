@@ -314,9 +314,13 @@ describe('ProjectSetup', () => {
 
     it('creates project when not found by title', async () => {
       mockSuccessfulAuth();
-      // findProjectByTitle returns null
+      // findProjectByTitle: user returns empty
       (ctx.graphqlWithAuth as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         user: { projectsV2: { nodes: [] } },
+      });
+      // findProjectByTitle: organization fallback also returns empty
+      (ctx.graphqlWithAuth as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        organization: { projectsV2: { nodes: [] } },
       });
       // createProject
       (ctx.octokit.rest.users.getByUsername as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -333,33 +337,53 @@ describe('ProjectSetup', () => {
     });
   });
 
-  describe('createColumnOption', () => {
-    it('merges existing options with new one', async () => {
+  describe('createColumnOption (via ensureColumns)', () => {
+    it('merges existing options with new one and updates cache', async () => {
       setup.projectId = 'proj-1';
-      setup.columnFieldId = 'field-1';
-      setup.columnOptions.set('Backlog', 'opt-1');
 
+      // ensureColumns first call: returns Status field with only Backlog
       (ctx.graphqlWithAuth as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-        updateProjectV2Field: {
-          projectV2Field: {
-            options: [
-              { id: 'opt-1', name: 'Backlog' },
-              { id: 'opt-new', name: 'Ready' },
+        node: {
+          fields: {
+            nodes: [
+              {
+                id: 'field-1',
+                name: 'Status',
+                options: [{ id: 'opt-1', name: 'Backlog' }],
+              },
             ],
           },
         },
       });
 
-      await setup.createColumnOption('Ready');
+      // createColumnOption calls for: Ready, In Progress, Review, Failed, Done (5 missing columns)
+      const missingColumns = ['Ready', 'In Progress', 'Review', 'Failed', 'Done'];
+      const cumulativeOptions = [{ id: 'opt-1', name: 'Backlog' }];
+      for (const col of missingColumns) {
+        cumulativeOptions.push({ id: `opt-${col}`, name: col });
+        (ctx.graphqlWithAuth as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+          updateProjectV2Field: {
+            projectV2Field: {
+              options: [...cumulativeOptions],
+            },
+          },
+        });
+      }
 
-      const callArgs = (ctx.graphqlWithAuth as ReturnType<typeof vi.fn>).mock.calls[0];
-      const vars = callArgs[1];
-      expect(vars.singleSelectOptions).toHaveLength(2);
-      expect(vars.singleSelectOptions[0]).toEqual(expect.objectContaining({ id: 'opt-1', name: 'Backlog' }));
-      expect(vars.singleSelectOptions[1]).toEqual(expect.objectContaining({ name: 'Ready' }));
+      await setup.ensureColumns();
 
-      // Cache updated from response
-      expect(setup.columnOptions.get('Ready')).toBe('opt-new');
+      // Verify mutation was called without 'id' in singleSelectOptions input
+      // First call is the query, subsequent 5 are mutations
+      const firstMutationArgs = (ctx.graphqlWithAuth as ReturnType<typeof vi.fn>).mock.calls[1];
+      const vars = firstMutationArgs[1];
+      expect(vars.singleSelectOptions).toHaveLength(2); // Backlog + Ready
+      expect(vars.singleSelectOptions[0]).toEqual({ name: 'Backlog', color: 'GRAY', description: '' });
+      expect(vars.singleSelectOptions[1]).toEqual({ name: 'Ready', color: 'GRAY', description: '' });
+
+      // Cache updated from responses
+      expect(setup.columnOptions.get('Ready')).toBe('opt-Ready');
+      expect(setup.columnOptions.get('Done')).toBe('opt-Done');
+      expect(setup.columnOptions.size).toBe(6);
     });
   });
 });

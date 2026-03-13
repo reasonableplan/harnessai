@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'http';
-import { existsSync } from 'fs';
+import { existsSync, realpathSync } from 'fs';
 import { resolve } from 'path';
 import express from 'express';
 import cors from 'cors';
@@ -110,11 +110,11 @@ export function createDashboardServer(
   if (opts.staticDir && existsSync(opts.staticDir)) {
     app.use(express.static(opts.staticDir));
     // API 404 handler: /api/* 경로는 JSON 404 반환
-    app.all('/api/*', (_req, res) => {
+    app.all('/api/{*path}', (_req, res) => {
       res.status(404).json({ error: 'Not found' });
     });
     // SPA fallback: any non-API route returns index.html
-    app.get('*', (_req, res) => {
+    app.get('{*path}', (_req, res) => {
       res.sendFile(resolve(opts.staticDir!, 'index.html'));
     });
     log.info({ staticDir: opts.staticDir }, 'Serving static dashboard files');
@@ -377,9 +377,14 @@ class InMemoryStateStore implements DashboardStateStore {
   }
 
   // Allow the mock message bus to push messages
+  private static readonly MESSAGE_BUFFER_MAX = 1000;
+  private static readonly MESSAGE_BUFFER_TRIM_TO = 500;
+
   addMessage(message: Message): void {
     this.messages.push(message);
-    if (this.messages.length > 1000) this.messages = this.messages.slice(-500);
+    if (this.messages.length > InMemoryStateStore.MESSAGE_BUFFER_MAX) {
+      this.messages = this.messages.slice(-InMemoryStateStore.MESSAGE_BUFFER_TRIM_TO);
+    }
   }
 }
 
@@ -443,9 +448,24 @@ export async function startStandalone(devPort?: number): Promise<DashboardServer
   return server;
 }
 
-// If this file is run directly, start in standalone mode
-const isDirectRun =
-  process.argv[1] && (process.argv[1].endsWith('index.ts') || process.argv[1].endsWith('index.js'));
+// If this file is run directly (not bundled into another package), start in standalone mode.
+// Check import.meta.url against process.argv[1] to avoid false positives when
+// this code is bundled into other packages (e.g., @agent/main) by tsup.
+// realpathSync로 심볼릭 링크/junction 경로 정규화하여 비교 정확성 보장.
+import { fileURLToPath as _fileURLToPath } from 'url';
+
+function _isDirectRun(): boolean {
+  if (!process.argv[1]) return false;
+  try {
+    const thisFile = realpathSync(_fileURLToPath(import.meta.url));
+    const entryFile = realpathSync(resolve(process.argv[1]));
+    return thisFile === entryFile;
+  } catch {
+    return false;
+  }
+}
+
+const isDirectRun = _isDirectRun();
 
 if (isDirectRun) {
   startStandalone().catch((err) => {

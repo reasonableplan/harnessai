@@ -5,6 +5,7 @@ dist/
 workspace/
 *.log
 drizzle/
+!packages/core/drizzle/
 docs/
 .claude/
 .omc/

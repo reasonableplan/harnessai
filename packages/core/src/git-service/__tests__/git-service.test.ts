@@ -13,7 +13,6 @@ vi.mock('../project-setup.js', () => ({
       findProject: vi.fn(),
       createProject: vi.fn(),
       ensureColumns: vi.fn(),
-      createColumnOption: vi.fn(),
     };
   }),
 }));

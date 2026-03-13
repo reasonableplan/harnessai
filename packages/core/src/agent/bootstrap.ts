@@ -1,3 +1,6 @@
+import { resolve, dirname } from 'path';
+import { existsSync } from 'fs';
+import { fileURLToPath } from 'url';
 import { createDb, runMigrations, type Database, type DbConnection } from '../db/index.js';
 import { MessageBus } from '../messaging/message-bus.js';
 import { StateStore } from '../state/state-store.js';
@@ -13,6 +16,25 @@ import { loadConfig, type AppConfig } from '../config.js';
 import type { BaseAgent } from './base-agent.js';
 import type { AgentDependencies } from './base-agent.js';
 import type { UserInput } from '../types/index.js';
+
+/**
+ * @agent/core 패키지 루트 기준 drizzle 마이그레이션 폴더 절대경로.
+ * tsup 번들(dist/index.js) → ../drizzle, dev tsx(src/agent/bootstrap.ts) → ../../drizzle
+ */
+function findMigrationsDir(): string {
+  const thisDir = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    resolve(thisDir, '../drizzle'),
+    resolve(thisDir, '../../drizzle'),
+  ];
+  const found = candidates.find((d) => existsSync(resolve(d, 'meta/_journal.json')));
+  if (!found) {
+    throw new Error(
+      `Cannot find drizzle migrations directory (from ${thisDir}). Searched: ${candidates.join(', ')}`,
+    );
+  }
+  return found;
+}
 
 const log = createLogger('Bootstrap');
 
@@ -65,7 +87,13 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
     // 역순 정리: agents → orphanCleaner → boardWatcher → agent DB status → db
     // drain()은 in-flight 작업이 끝날 때까지 대기한다.
     // Promise.allSettled: 하나의 agent drain 실패가 나머지 drain을 막지 않도록 한다.
-    await Promise.allSettled(startedAgents.map((agent) => agent.drain()));
+    const drainResults = await Promise.allSettled(startedAgents.map((agent) => agent.drain()));
+    for (let i = 0; i < drainResults.length; i++) {
+      const r = drainResults[i];
+      if (r && r.status === 'rejected') {
+        log.error({ err: r.reason, agentId: startedAgents[i]?.id }, 'Agent drain failed');
+      }
+    }
     orphanCleaner?.stop();
     if (boardWatcher) {
       await boardWatcher.drain();
@@ -127,7 +155,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<SystemContext> {
     dbConn = createDb(appConfig.database.url);
     const db = dbConn.db;
     if (!cfg.skipMigration) {
-      await runMigrations(db, './drizzle');
+      await runMigrations(db, findMigrationsDir());
       log.info('Database migrations applied');
     }
     stateStore = new StateStore(db);

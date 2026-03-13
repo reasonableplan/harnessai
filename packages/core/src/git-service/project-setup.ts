@@ -40,8 +40,10 @@ export class ProjectSetup {
     log.info({ user: user.login }, 'Authenticated');
 
     // Token scope 경고: classic PAT의 경우 x-oauth-scopes 헤더에서 확인 가능
-    // Octokit headers 타입에 x-oauth-scopes 미포함, classic PAT에서만 존재
-    const scopes = (response.headers as Record<string, string>)['x-oauth-scopes'] ?? '';
+    // Octokit headers 타입에 x-oauth-scopes 미포함 — unknown으로 안전 접근 후 String 변환
+    const scopes = String(
+      (response.headers as Record<string, unknown>)['x-oauth-scopes'] ?? '',
+    );
     if (scopes) {
       const scopeList = scopes.split(',').map((s) => s.trim());
       if (!scopeList.some((s) => s === 'project' || s === 'read:project')) {
@@ -104,6 +106,7 @@ export class ProjectSetup {
   }
 
   private async findProjectByTitle(title: string): Promise<string | null> {
+    // user 소유 프로젝트 검색, 실패 시 organization fallback (findProject와 동일 패턴)
     try {
       const result = await this.ctx.graphqlWithAuth<{
         user: { projectsV2: { nodes: Array<{ id: string; title: string }> } };
@@ -118,6 +121,26 @@ export class ProjectSetup {
         { login: this.ctx.owner },
       );
       const project = result.user.projectsV2.nodes.find((p) => p.title === title);
+      if (project) return project.id;
+    } catch (err) {
+      if (!isNotFoundError(err)) throw err;
+    }
+
+    // Organization fallback
+    try {
+      const result = await this.ctx.graphqlWithAuth<{
+        organization: { projectsV2: { nodes: Array<{ id: string; title: string }> } };
+      }>(
+        `query($login: String!) {
+          organization(login: $login) {
+            projectsV2(first: 20) {
+              nodes { id title }
+            }
+          }
+        }`,
+        { login: this.ctx.owner },
+      );
+      const project = result.organization.projectsV2.nodes.find((p) => p.title === title);
       return project?.id ?? null;
     } catch (err) {
       if (!isNotFoundError(err)) throw err;
@@ -196,15 +219,17 @@ export class ProjectSetup {
     }
   }
 
-  async createColumnOption(name: string): Promise<void> {
+  private async createColumnOption(name: string): Promise<void> {
+    if (!this.columnFieldId) {
+      throw new Error('columnFieldId is not initialized — call ensureColumns first');
+    }
+
     // Build merged options list: existing options + new one
-    const existingOptions = Array.from(this.columnOptions.entries()).map(([optName, id]) => ({
-      id,
-      name: optName,
-    }));
+    // GitHub API no longer accepts 'id' in ProjectV2SingleSelectFieldOptionInput
+    const existingOptionNames = Array.from(this.columnOptions.keys());
     const singleSelectOptions = [
-      ...existingOptions.map((o) => ({ id: o.id, name: o.name, color: 'GRAY', description: '' })),
-      { name, color: 'GRAY', description: '' },
+      ...existingOptionNames.map((optName) => ({ name: optName, color: 'GRAY' as const, description: '' })),
+      { name, color: 'GRAY' as const, description: '' },
     ];
 
     const result = await this.ctx.graphqlWithAuth<{
@@ -214,9 +239,8 @@ export class ProjectSetup {
         };
       };
     }>(
-      `mutation($projectId: ID!, $fieldId: ID!, $singleSelectOptions: [ProjectV2SingleSelectFieldOptionInput!]!) {
+      `mutation($fieldId: ID!, $singleSelectOptions: [ProjectV2SingleSelectFieldOptionInput!]!) {
         updateProjectV2Field(input: {
-          projectId: $projectId
           fieldId: $fieldId
           singleSelectOptions: $singleSelectOptions
         }) {
@@ -225,7 +249,7 @@ export class ProjectSetup {
           }
         }
       }`,
-      { projectId: this.projectId, fieldId: this.columnFieldId, singleSelectOptions },
+      { fieldId: this.columnFieldId, singleSelectOptions },
     );
 
     // mutation 응답에서 직접 캐시 업데이트 (ensureColumns 재호출로 인한 무한재귀 방지)
