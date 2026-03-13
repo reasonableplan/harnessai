@@ -1,13 +1,5 @@
-import { createLogger, type IClaudeClient, type GeneratedCode, type Task } from '@agent/core';
-import { readFile } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
+import { BaseCodeGenerator } from '@agent/core';
 import type { DocsTaskType } from './task-router.js';
-
-const log = createLogger('DocGenerator');
-
-/** 파일 읽기 제한 */
-const MAX_FILE_READ_CHARS = 50_000;
-const MAX_TOTAL_READ_CHARS = 200_000;
 
 const BASE_SYSTEM_PROMPT = `You are a technical documentation generator for a TypeScript project.
 Generate production-quality documentation following these conventions:
@@ -118,96 +110,14 @@ Use action "update" for modified files.`,
  * Claude API를 사용하여 문서를 생성하는 엔진.
  * 각 task type에 맞는 시스템 프롬프트를 제공한다.
  */
-export class DocGenerator {
-  constructor(
-    private claude: IClaudeClient,
-    private workDir?: string,
-  ) {}
-
-  async generate(task: Task, taskType: DocsTaskType): Promise<GeneratedCode & { usage: { inputTokens: number; outputTokens: number } }> {
-    const systemPrompt = this.buildSystemPrompt(taskType);
-    const userMessage = await this.buildUserMessage(task, taskType);
-
-    const { data, usage } = await this.claude.chatJSON<GeneratedCode>(systemPrompt, userMessage);
-    log.info({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens }, 'Claude usage');
-
-    if (!data || !Array.isArray(data.files) || typeof data.summary !== 'string') {
-      throw new Error(`Invalid Claude response shape: missing "files" array or "summary" string`);
-    }
-    if (!data.files.every((f: unknown) => typeof (f as Record<string, unknown>).path === 'string' && typeof (f as Record<string, unknown>).content === 'string')) {
-      throw new Error('Invalid Claude response: file entry missing path or content');
-    }
-
-    return { ...data, usage };
+export class DocGenerator extends BaseCodeGenerator<DocsTaskType> {
+  constructor(claude: ConstructorParameters<typeof BaseCodeGenerator>[0], workDir?: string) {
+    super(claude, workDir, 'DocGenerator', {
+      isModifyType: (t) => t.includes('update') || t === 'jsdoc.add',
+    });
   }
 
-  private buildSystemPrompt(taskType: DocsTaskType): string {
+  protected buildSystemPrompt(taskType: DocsTaskType): string {
     return BASE_SYSTEM_PROMPT + (TYPE_SPECIFIC_PROMPTS[taskType] ?? '');
-  }
-
-  private async buildUserMessage(task: Task, taskType: DocsTaskType): Promise<string> {
-    const lines = [`<task>\n<title>${task.title}</title>\n<description>${task.description ?? ''}</description>\n</task>`];
-
-    if (task.reviewNote) {
-      lines.push(
-        '',
-        '<review_feedback>',
-        task.reviewNote,
-        '</review_feedback>',
-        `Attempt: ${(task.retryCount ?? 0) + 1}/3`,
-      );
-    }
-
-    if (task.epicId) {
-      lines.push(`Epic ID: ${task.epicId}`);
-    }
-
-    if (task.artifacts.length > 0) {
-      lines.push(`Existing files: ${task.artifacts.join(', ')}`);
-    }
-
-    // update 작업 시 기존 파일 내용을 프롬프트에 포함
-    const isUpdate = taskType.includes('update') || taskType === 'jsdoc.add';
-    if (isUpdate && this.workDir && task.artifacts.length > 0) {
-      const fileContents = await this.readExistingFiles(task.artifacts);
-      if (fileContents.length > 0) {
-        lines.push('', '### Existing File Contents');
-        for (const fc of fileContents) {
-          lines.push(`\n**${fc.path}**\n\`\`\`\n${fc.content}\n\`\`\``);
-        }
-      }
-    }
-
-    return lines.join('\n');
-  }
-
-  private async readExistingFiles(
-    paths: string[],
-  ): Promise<Array<{ path: string; content: string }>> {
-    if (!this.workDir) return [];
-    const resolvedWorkDir = resolve(this.workDir);
-    const results: Array<{ path: string; content: string }> = [];
-    let totalChars = 0;
-
-    for (const filePath of paths) {
-      const absPath = resolve(resolvedWorkDir, filePath);
-      if (!absPath.startsWith(resolvedWorkDir + sep)) continue;
-
-      try {
-        const content = await readFile(absPath, 'utf-8');
-        const truncated =
-          content.length > MAX_FILE_READ_CHARS
-            ? content.slice(0, MAX_FILE_READ_CHARS) + '\n... (truncated)'
-            : content;
-
-        if (totalChars + truncated.length > MAX_TOTAL_READ_CHARS) break;
-        totalChars += truncated.length;
-        results.push({ path: filePath, content: truncated });
-      } catch (err) {
-        log.warn({ path: filePath, err: err instanceof Error ? err.message : err }, 'Failed to read existing file, skipping');
-      }
-    }
-
-    return results;
   }
 }

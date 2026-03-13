@@ -4,6 +4,8 @@ export * from './errors.js';
 export * from './db/schema.js';
 export { createDb, runMigrations, type Database, type DbConnection } from './db/index.js';
 export * from './agent/base-agent.js';
+export { BaseWorkerAgent, type WorkerAgentDeps } from './agent/base-worker-agent.js';
+export { BaseCodeGenerator, type CodeGeneratorConfig } from './llm/base-code-generator.js';
 export * from './messaging/message-bus.js';
 export * from './state/state-store.js';
 export { GitService, type GitServiceConfig } from './git-service/index.js';

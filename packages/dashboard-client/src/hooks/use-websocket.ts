@@ -1,5 +1,17 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useOfficeStore } from '@/stores/office-store';
+import {
+  agentStatusSchema,
+  agentBubbleSchema,
+  taskUpdateSchema,
+  epicProgressSchema,
+  messageSchema,
+  tokenUsageSchema,
+  agentConfigSchema,
+  toastSchema,
+  defaultFallbackSchema,
+  initPayloadSchema,
+} from './ws-event-schemas';
 
 interface DashboardEvent {
   type: string;
@@ -20,98 +32,131 @@ export function useWebSocket() {
       useOfficeStore.getState();
 
     switch (type) {
-      case 'init':
+      case 'init': {
         setInitialState(mapInitPayload(payload));
         break;
+      }
 
-      case 'agent.status':
-        if (payload.agentId && typeof payload.agentId === 'string') {
-          updateAgent(payload.agentId, {
-            status: payload.status as string,
-            ...(payload.task ? { currentTask: payload.task as string } : {}),
-          });
+      case 'agent.status': {
+        const result = agentStatusSchema.safeParse(payload);
+        if (!result.success) {
+          if (import.meta.env.DEV) console.warn('[WS] agent.status parse failed', result.error);
+          break;
         }
-        break;
-
-      case 'agent.bubble':
-        if (payload.agentId && typeof payload.agentId === 'string') {
-          updateAgent(payload.agentId, {
-            bubble: payload.bubble as {
-              content: string;
-              type: 'task' | 'thinking' | 'info' | 'error';
-            } | null,
-          });
-        }
-        break;
-
-      case 'task.update':
-        if (payload.taskId && typeof payload.taskId === 'string') {
-          const { taskId, status, boardColumn, assignedAgent, title, epicId } = payload as Record<string, unknown>;
-          updateTask(taskId as string, {
-            ...(status != null && { status: status as string }),
-            ...(boardColumn != null && { boardColumn: boardColumn as string }),
-            ...(assignedAgent !== undefined && { assignedAgent: assignedAgent as string | null }),
-            ...(title != null && { title: title as string }),
-            ...(epicId !== undefined && { epicId: epicId as string | null }),
-          });
-        }
-        break;
-
-      case 'epic.progress':
-        if (payload.epicId && typeof payload.epicId === 'string') {
-          const { epicId, title, progress } = payload as Record<string, unknown>;
-          updateEpic(epicId as string, {
-            ...(title != null && { title: title as string }),
-            ...(progress != null && { progress: progress as number }),
-          });
-        }
-        break;
-
-      case 'message':
-        addMessage({
-          id: (payload.id as string) ?? `msg-${Date.now()}`,
-          type: (payload.type as string) ?? 'info',
-          from: (payload.from as string) ?? 'system',
-          content: (payload.content as string) ?? '',
-          timestamp: (payload.timestamp as string) ?? new Date().toISOString(),
+        updateAgent(result.data.agentId, {
+          status: result.data.status,
+          ...(result.data.task != null ? { currentTask: result.data.task } : {}),
         });
         break;
+      }
 
-      case 'token.usage':
-        if (payload.agentId && typeof payload.agentId === 'string') {
-          const { updateTokenUsage } = useOfficeStore.getState();
-          updateTokenUsage(
-            payload.agentId as string,
-            (payload.inputTokens as number) ?? 0,
-            (payload.outputTokens as number) ?? 0,
-          );
+      case 'agent.bubble': {
+        const result = agentBubbleSchema.safeParse(payload);
+        if (!result.success) {
+          if (import.meta.env.DEV) console.warn('[WS] agent.bubble parse failed', result.error);
+          break;
         }
+        updateAgent(result.data.agentId, { bubble: result.data.bubble });
         break;
+      }
 
-      case 'agent.config':
-        if (payload.agentId && typeof payload.agentId === 'string' && payload.config) {
-          const { setAgentConfig } = useOfficeStore.getState();
-          setAgentConfig(payload.agentId, payload.config as Record<string, unknown> as Parameters<typeof setAgentConfig>[1]);
+      case 'task.update': {
+        const result = taskUpdateSchema.safeParse(payload);
+        if (!result.success) {
+          if (import.meta.env.DEV) console.warn('[WS] task.update parse failed', result.error);
+          break;
         }
+        const { taskId, status, boardColumn, assignedAgent, title, epicId } = result.data;
+        updateTask(taskId, {
+          ...(status != null && { status }),
+          ...(boardColumn != null && { boardColumn }),
+          ...(assignedAgent !== undefined && { assignedAgent }),
+          ...(title != null && { title }),
+          ...(epicId !== undefined && { epicId }),
+        });
         break;
+      }
 
-      case 'toast':
+      case 'epic.progress': {
+        const result = epicProgressSchema.safeParse(payload);
+        if (!result.success) {
+          if (import.meta.env.DEV) console.warn('[WS] epic.progress parse failed', result.error);
+          break;
+        }
+        const { epicId, title, progress } = result.data;
+        updateEpic(epicId, {
+          ...(title != null && { title }),
+          ...(progress != null && { progress }),
+        });
+        break;
+      }
+
+      case 'message': {
+        const result = messageSchema.safeParse(payload);
+        if (!result.success) {
+          if (import.meta.env.DEV) console.warn('[WS] message parse failed', result.error);
+          break;
+        }
+        addMessage({
+          id: result.data.id ?? `msg-${Date.now()}`,
+          type: result.data.type ?? 'info',
+          from: result.data.from ?? 'system',
+          content: result.data.content ?? '',
+          timestamp: result.data.timestamp ?? new Date().toISOString(),
+        });
+        break;
+      }
+
+      case 'token.usage': {
+        const result = tokenUsageSchema.safeParse(payload);
+        if (!result.success) {
+          if (import.meta.env.DEV) console.warn('[WS] token.usage parse failed', result.error);
+          break;
+        }
+        const { updateTokenUsage } = useOfficeStore.getState();
+        updateTokenUsage(result.data.agentId, result.data.inputTokens, result.data.outputTokens);
+        break;
+      }
+
+      case 'agent.config': {
+        const result = agentConfigSchema.safeParse(payload);
+        if (!result.success) {
+          if (import.meta.env.DEV) console.warn('[WS] agent.config parse failed', result.error);
+          break;
+        }
+        const { setAgentConfig } = useOfficeStore.getState();
+        setAgentConfig(
+          result.data.agentId,
+          result.data.config as Parameters<typeof setAgentConfig>[1],
+        );
+        break;
+      }
+
+      case 'toast': {
+        const result = toastSchema.safeParse(payload);
+        if (!result.success) {
+          if (import.meta.env.DEV) console.warn('[WS] toast parse failed', result.error);
+          break;
+        }
         addToast({
           id: `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          type: (payload.type as 'success' | 'error' | 'info' | 'warning') ?? 'info',
-          title: (payload.title as string) ?? '',
-          message: (payload.message as string) ?? '',
+          type: result.data.type,
+          title: result.data.title,
+          message: result.data.message,
         });
         break;
+      }
 
-      default:
+      default: {
+        const result = defaultFallbackSchema.safeParse(payload);
         addMessage({
           id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           type,
-          from: (payload.from as string) ?? 'system',
+          from: result.success ? (result.data.from ?? 'system') : 'system',
           content: JSON.stringify(payload),
           timestamp: new Date().toISOString(),
         });
+      }
     }
   }, []);
 
@@ -214,56 +259,50 @@ export function useWebSocket() {
 function mapInitPayload(payload: Record<string, unknown>) {
   const result: Record<string, unknown> = {};
 
-  const rawAgents = payload.agents;
-  if (Array.isArray(rawAgents)) {
+  const parsed = initPayloadSchema.safeParse(payload);
+  if (!parsed.success) {
+    if (import.meta.env.DEV) console.warn('[WS] init payload parse failed', parsed.error);
+    return result;
+  }
+
+  if (parsed.data.agents) {
     const agents: Record<string, Record<string, unknown>> = {};
-    for (const a of rawAgents) {
-      if (a && typeof a === 'object' && 'id' in a) {
-        const agent = a as Record<string, unknown>;
-        agents[agent.id as string] = {
-          id: agent.id,
-          status: agent.status ?? 'idle',
-          currentTask: null,
-          bubble: null,
-          domain: agent.domain ?? agent.id,
-          // slot is omitted — auto-assigned by setInitialState
-        };
-      }
+    for (const a of parsed.data.agents) {
+      agents[a.id] = {
+        id: a.id,
+        status: a.status,
+        currentTask: null,
+        bubble: null,
+        domain: a.domain ?? a.id,
+        // slot is omitted — auto-assigned by setInitialState
+      };
     }
     result.agents = agents;
   }
 
-  const rawTasks = payload.tasks;
-  if (Array.isArray(rawTasks)) {
+  if (parsed.data.tasks) {
     const tasks: Record<string, Record<string, unknown>> = {};
-    for (const t of rawTasks) {
-      if (t && typeof t === 'object' && 'id' in t) {
-        const task = t as Record<string, unknown>;
-        tasks[task.id as string] = {
-          id: task.id,
-          title: task.title ?? '',
-          status: task.status ?? '',
-          boardColumn: task.boardColumn ?? 'Backlog',
-          assignedAgent: task.assignedAgent ?? null,
-          epicId: task.epicId ?? null,
-        };
-      }
+    for (const t of parsed.data.tasks) {
+      tasks[t.id] = {
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        boardColumn: t.boardColumn,
+        assignedAgent: t.assignedAgent,
+        epicId: t.epicId,
+      };
     }
     result.tasks = tasks;
   }
 
-  const rawEpics = payload.epics;
-  if (Array.isArray(rawEpics)) {
+  if (parsed.data.epics) {
     const epics: Record<string, Record<string, unknown>> = {};
-    for (const e of rawEpics) {
-      if (e && typeof e === 'object' && 'id' in e) {
-        const epic = e as Record<string, unknown>;
-        epics[epic.id as string] = {
-          id: epic.id,
-          title: epic.title ?? '',
-          progress: epic.progress ?? 0,
-        };
-      }
+    for (const e of parsed.data.epics) {
+      epics[e.id] = {
+        id: e.id,
+        title: e.title,
+        progress: e.progress,
+      };
     }
     result.epics = epics;
   }

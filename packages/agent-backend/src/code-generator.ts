@@ -1,41 +1,20 @@
-import { readFile } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
-import { createLogger, type IClaudeClient, type GeneratedCode, type Task } from '@agent/core';
+import { BaseCodeGenerator } from '@agent/core';
 import type { BackendTaskType } from './task-router.js';
-
-const log = createLogger('CodeGenerator');
-
-const MAX_FILE_READ_CHARS = 8000;
-const MAX_TOTAL_CHARS = 30000;
 
 /**
  * Claude API를 사용하여 백엔드 코드를 생성하는 엔진.
  * 각 task type에 맞는 시스템 프롬프트를 제공한다.
  */
-export class CodeGenerator {
-  constructor(
-    private claude: IClaudeClient,
-    private workDir?: string,
-  ) {}
-
-  async generate(task: Task, taskType: BackendTaskType): Promise<GeneratedCode & { usage: { inputTokens: number; outputTokens: number } }> {
-    const systemPrompt = this.buildSystemPrompt(taskType);
-    const userMessage = await this.buildUserMessage(task, taskType);
-
-    const { data, usage } = await this.claude.chatJSON<GeneratedCode>(systemPrompt, userMessage);
-    log.info({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens }, 'Claude usage');
-
-    if (!data || !Array.isArray(data.files) || typeof data.summary !== 'string') {
-      throw new Error('Invalid Claude response shape: missing "files" array or "summary" string');
-    }
-    if (!data.files.every((f: unknown) => typeof (f as Record<string, unknown>).path === 'string' && typeof (f as Record<string, unknown>).content === 'string')) {
-      throw new Error('Invalid Claude response: file entry missing path or content');
-    }
-
-    return { ...data, usage };
+export class CodeGenerator extends BaseCodeGenerator<BackendTaskType> {
+  constructor(claude: ConstructorParameters<typeof BaseCodeGenerator>[0], workDir?: string) {
+    super(claude, workDir, 'CodeGenerator', {
+      maxFileReadChars: 8_000,
+      maxTotalReadChars: 30_000,
+      isModifyType: (t) => t === 'api.modify' || t === 'model.modify',
+    });
   }
 
-  private buildSystemPrompt(taskType: BackendTaskType): string {
+  protected buildSystemPrompt(taskType: BackendTaskType): string {
     const base = `You are a backend code generator for a Node.js/Express/TypeScript project.
 Generate production-quality code following these conventions:
 - Express with TypeScript
@@ -89,75 +68,5 @@ Use action "update" for modified files.`,
     };
 
     return base + (typeSpecific[taskType] ?? '');
-  }
-
-  private async buildUserMessage(task: Task, taskType: BackendTaskType): Promise<string> {
-    const lines = [`<task>\n<title>${task.title}</title>\n<description>${task.description ?? ''}</description>\n</task>`];
-
-    if (task.reviewNote) {
-      lines.push(
-        '',
-        '<review_feedback>',
-        task.reviewNote,
-        '</review_feedback>',
-        `Attempt: ${(task.retryCount ?? 0) + 1}/3`,
-      );
-    }
-
-    if (task.epicId) {
-      lines.push(`Epic ID: ${task.epicId}`);
-    }
-
-    if (task.artifacts.length > 0) {
-      lines.push(`Existing files: ${task.artifacts.join(', ')}`);
-    }
-
-    // modify 작업 시 기존 파일 내용을 프롬프트에 포함
-    const isModify = taskType === 'api.modify' || taskType === 'model.modify';
-    if (isModify && this.workDir && task.artifacts.length > 0) {
-      const fileContents = await this.readExistingFiles(task.artifacts);
-      if (fileContents.length > 0) {
-        lines.push('', '### Existing File Contents');
-        for (const fc of fileContents) {
-          lines.push(`\n**${fc.path}**\n\`\`\`\n${fc.content}\n\`\`\``);
-        }
-      }
-    }
-
-    return lines.join('\n');
-  }
-
-  private async readExistingFiles(
-    paths: string[],
-  ): Promise<Array<{ path: string; content: string }>> {
-    if (!this.workDir) return [];
-    const resolvedWorkDir = resolve(this.workDir);
-    const results: Array<{ path: string; content: string }> = [];
-    let totalChars = 0;
-
-    for (const filePath of paths) {
-      const absPath = resolve(resolvedWorkDir, filePath);
-
-      // Sandbox: workDir 밖 경로 차단
-      if (!absPath.startsWith(resolvedWorkDir + sep)) continue;
-
-      try {
-        const content = await readFile(absPath, 'utf-8');
-
-        const truncated =
-          content.length > MAX_FILE_READ_CHARS
-            ? content.slice(0, MAX_FILE_READ_CHARS) + '\n... (truncated)'
-            : content;
-
-        if (totalChars + truncated.length > MAX_TOTAL_CHARS) break;
-        totalChars += truncated.length;
-
-        results.push({ path: filePath, content: truncated });
-      } catch (err) {
-        log.warn({ path: filePath, err: err instanceof Error ? err.message : err }, 'Failed to read existing file, skipping');
-      }
-    }
-
-    return results;
   }
 }
