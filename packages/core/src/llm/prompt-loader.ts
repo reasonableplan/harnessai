@@ -68,6 +68,11 @@ export class PromptLoader {
     return this.readPromptFile(filename) ?? '';
   }
 
+  /** prompts 디렉토리 경로를 반환한다. */
+  get directory(): string {
+    return this.promptsDir;
+  }
+
   /** 캐시를 비운다. 프롬프트 파일 변경 후 핫 리로드 시 사용. */
   clearCache(): void {
     this.cache.clear();
@@ -121,7 +126,7 @@ let defaultLoader: PromptLoader | null = null;
 export function getPromptLoader(promptsDir?: string): PromptLoader {
   if (!defaultLoader) {
     defaultLoader = new PromptLoader(promptsDir);
-  } else if (promptsDir !== undefined && resolve(promptsDir) !== resolve((defaultLoader as unknown as { promptsDir: string }).promptsDir)) {
+  } else if (promptsDir !== undefined && resolve(promptsDir) !== resolve(defaultLoader.directory)) {
     log.warn(
       { requested: promptsDir },
       'getPromptLoader() called with different promptsDir after initialization — ignoring. Use new PromptLoader() for a separate instance.',

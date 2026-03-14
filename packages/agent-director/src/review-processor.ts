@@ -1,5 +1,6 @@
 import type { IStateStore, IGitService, IClaudeClient, Task, TaskResult, Message, IMessageBus } from '@agent/core';
 import { MESSAGE_TYPES, createLogger, taskRowToTask, boardThenDb, getPromptLoader } from '@agent/core';
+import type { Dispatcher } from './dispatcher.js';
 
 function publishTokenUsage(messageBus: IMessageBus, from: string, inputTokens: number, outputTokens: number, traceId: string): Promise<void> {
   return messageBus.publish({
@@ -12,7 +13,6 @@ function publishTokenUsage(messageBus: IMessageBus, from: string, inputTokens: n
     timestamp: new Date(),
   });
 }
-import type { Dispatcher } from './dispatcher.js';
 
 const log = createLogger('ReviewProcessor');
 

@@ -214,8 +214,15 @@ export function createRoutes(deps: RouteDependencies): Router {
 
       // Type and range validation
       const validationErrors: string[] = [];
-      if (filtered.claudeModel !== undefined && typeof filtered.claudeModel !== 'string') {
-        validationErrors.push('claudeModel must be a string');
+      const ALLOWED_MODELS = new Set([
+        'claude-sonnet-4-20250514',
+        'claude-opus-4-20250514',
+        'claude-haiku-4-5-20251001',
+      ]);
+      if (filtered.claudeModel !== undefined) {
+        if (typeof filtered.claudeModel !== 'string' || !ALLOWED_MODELS.has(filtered.claudeModel)) {
+          validationErrors.push(`claudeModel must be one of: ${[...ALLOWED_MODELS].join(', ')}`);
+        }
       }
       if (filtered.maxTokens !== undefined) {
         if (typeof filtered.maxTokens !== 'number' || filtered.maxTokens < 1 || filtered.maxTokens > 200_000) {

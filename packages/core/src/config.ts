@@ -98,8 +98,8 @@ export function loadConfig(opts: { requireAll?: boolean } = {}): AppConfig {
       const localEnabled = process.env.USE_LOCAL_MODEL === 'true';
       const useCli = !localEnabled && (process.env.USE_CLAUDE_CLI === 'true' || !process.env.ANTHROPIC_API_KEY);
       const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
-      // API 모드인데 apiKey가 없으면 설정 오류 (CLI/로컬 모델 사용 안 하는 경우)
-      if (!useCli && !localEnabled && !apiKey) {
+      // requireAll=true(프로덕션)일 때만 apiKey 필수 검증 — 테스트/개발에서는 빈 값 허용
+      if (requireAll && !useCli && !localEnabled && !apiKey) {
         throw new ConfigError(
           'ANTHROPIC_API_KEY is required when USE_CLAUDE_CLI and USE_LOCAL_MODEL are not enabled.\n'
           + 'Set ANTHROPIC_API_KEY, USE_CLAUDE_CLI=true, or USE_LOCAL_MODEL=true.',

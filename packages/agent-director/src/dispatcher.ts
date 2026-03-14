@@ -45,6 +45,14 @@ export class Dispatcher {
       log.warn({ msgId: msg.id }, 'board.move missing toColumn');
       return;
     }
+    if (typeof payload.issueNumber !== 'number') {
+      log.warn({ msgId: msg.id }, 'board.move missing or invalid issueNumber');
+      return;
+    }
+    if (!Array.isArray(payload.labels)) {
+      log.warn({ msgId: msg.id }, 'board.move missing labels array');
+      return;
+    }
 
     // Task가 Done으로 이동했을 때, 후속 Task의 의존성을 확인하고 Ready로 승인
     if (payload.toColumn === 'Done') {

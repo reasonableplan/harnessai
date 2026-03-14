@@ -1,7 +1,7 @@
 import { createLogger } from '../logging/logger.js';
 import { TokenBudgetError } from '../errors.js';
 import { withRetry } from '../resilience/api-retry.js';
-import { extractJSON } from './json-extract.js';
+import { parseJSONResponse } from './json-extract.js';
 import type { IClaudeClient, ClaudeResponse } from './claude-client.js';
 
 const log = createLogger('LocalModelClient');
@@ -47,13 +47,37 @@ interface ChatCompletionResponse {
  * - HuggingFace: baseUrl='https://api-inference.huggingface.co/models/{model}/v1', model='tgi', apiKey='hf_...'
  * - OpenRouter: baseUrl='https://openrouter.ai/api/v1', model='meta-llama/llama-3.1-70b', apiKey='sk-or-...'
  */
+/** SSRF 방어: 클라우드 메타데이터 엔드포인트 차단 */
+const BLOCKED_HOSTS = new Set([
+  '169.254.169.254',       // AWS EC2 metadata
+  'metadata.google.internal', // GCP metadata
+  '100.100.100.200',       // Alibaba Cloud metadata
+  'fd00:ec2::254',         // AWS EC2 metadata (IPv6)
+]);
+
+function validateBaseUrl(baseUrl: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    throw new Error(`Invalid LOCAL_MODEL_BASE_URL: ${baseUrl}`);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`Unsupported protocol in LOCAL_MODEL_BASE_URL: ${parsed.protocol} (only http/https allowed)`);
+  }
+  if (BLOCKED_HOSTS.has(parsed.hostname)) {
+    throw new Error(`Blocked SSRF target in LOCAL_MODEL_BASE_URL: ${parsed.hostname}`);
+  }
+}
+
 export class LocalModelClient implements IClaudeClient {
   private config: LocalModelClientConfig;
   private totalTokensUsed = 0;
 
   constructor(config: LocalModelClientConfig) {
+    validateBaseUrl(config.baseUrl);
     this.config = config;
-    log.info(
+    log.debug(
       { baseUrl: config.baseUrl, model: config.model },
       'Local model client initialized',
     );
@@ -98,17 +122,7 @@ export class LocalModelClient implements IClaudeClient {
       userMessage,
     );
 
-    const jsonStr = extractJSON(response.content);
-    let data: T;
-    try {
-      data = JSON.parse(jsonStr) as T;
-    } catch (err) {
-      const preview = jsonStr.length > 200 ? jsonStr.slice(0, 200) + '...' : jsonStr;
-      throw new Error(
-        `Failed to parse local model JSON response: ${(err as Error).message}\nResponse preview: ${preview}`,
-        { cause: err },
-      );
-    }
+    const data = parseJSONResponse<T>(response.content, 'local model');
     return { data, usage: response.usage };
   }
 

@@ -15,7 +15,7 @@ export { ClaudeClient, type IClaudeClient, type ClaudeClientConfig, type ClaudeR
 export { ClaudeCliClient, type ClaudeCliClientConfig } from './llm/claude-cli-client.js';
 export { LocalModelClient, type LocalModelClientConfig } from './llm/local-model-client.js';
 export { PromptLoader, getPromptLoader, resetPromptLoader } from './llm/prompt-loader.js';
-export { extractJSON } from './llm/json-extract.js';
+export { extractJSON, parseJSONResponse } from './llm/json-extract.js';
 export { CommitRequester } from './llm/commit-requester.js';
 export * from './resilience/circuit-breaker.js';
 export { isValidTransition, assertValidTransition } from './state/task-state-machine.js';

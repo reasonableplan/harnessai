@@ -20,12 +20,16 @@ function safeCompare(a: string, b: string): boolean {
 /**
  * Express middleware that validates Bearer token on /api/* routes.
  * If `expectedToken` is undefined or empty, auth is skipped (dev mode).
+ * 프로덕션(NODE_ENV=production)에서 토큰 미설정 시 경고 로그를 출력한다.
  */
 export function createAuthMiddleware(
   expectedToken: string | undefined,
 ): (req: Request, res: Response, next: NextFunction) => void {
-  // Dev mode: no token configured → skip auth
+  // Dev mode: no token configured → skip auth (with production warning)
   if (!expectedToken) {
+    if (process.env.NODE_ENV === 'production') {
+      log.error('DASHBOARD_AUTH_TOKEN is not set in production — all API endpoints are unauthenticated!');
+    }
     return (_req, _res, next) => next();
   }
 

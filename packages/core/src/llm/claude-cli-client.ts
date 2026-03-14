@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { createLogger } from '../logging/logger.js';
 import { TokenBudgetError } from '../errors.js';
 import { withRetry } from '../resilience/api-retry.js';
-import { extractJSON } from './json-extract.js';
+import { parseJSONResponse } from './json-extract.js';
 import type { IClaudeClient, ClaudeResponse } from './claude-client.js';
 
 const log = createLogger('ClaudeCliClient');
@@ -85,14 +85,7 @@ export class ClaudeCliClient implements IClaudeClient {
       userMessage,
     );
 
-    const jsonStr = extractJSON(response.content);
-    let data: T;
-    try {
-      data = JSON.parse(jsonStr) as T;
-    } catch (err) {
-      const preview = jsonStr.length > 200 ? jsonStr.slice(0, 200) + '...' : jsonStr;
-      throw new Error(`Failed to parse Claude CLI JSON response: ${(err as Error).message}\nResponse preview: ${preview}`, { cause: err });
-    }
+    const data = parseJSONResponse<T>(response.content, 'Claude CLI');
     return { data, usage: response.usage };
   }
 
@@ -113,7 +106,9 @@ export class ClaudeCliClient implements IClaudeClient {
         args.push('--temperature', String(this.config.temperature));
       }
 
-      args.push(userMessage);
+      // '--' 이후 인수는 positional로 강제 — argument injection 방어
+      // (userMessage가 '--dangerously-skip-permissions' 등으로 시작해도 플래그로 해석 안 됨)
+      args.push('--', userMessage);
 
       // shell: false (기본값) — 커맨드 인젝션 방지.
       // stdin: 'ignore' — 사용하지 않는 파이프를 열지 않음.
@@ -129,7 +124,12 @@ export class ClaudeCliClient implements IClaudeClient {
       const killProc = (reason: string): void => {
         if (killed) return;
         killed = true;
-        proc.kill('SIGKILL');
+        // Windows에서는 SIGKILL 미지원 — 인수 없이 kill() 호출
+        if (process.platform === 'win32') {
+          proc.kill();
+        } else {
+          proc.kill('SIGKILL');
+        }
         reject(new Error(reason));
       };
 

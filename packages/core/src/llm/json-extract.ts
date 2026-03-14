@@ -1,6 +1,6 @@
 /**
  * Claude 응답에서 JSON을 추출하는 공유 유틸리티.
- * ClaudeClient와 ClaudeCliClient 양쪽에서 사용한다.
+ * ClaudeClient, ClaudeCliClient, LocalModelClient 모두 사용한다.
  */
 
 /** 마크다운 코드 블록 또는 raw JSON을 추출한다. */
@@ -57,4 +57,22 @@ function extractBalancedJSON(text: string, start: number): string | null {
   }
 
   return null;
+}
+
+/**
+ * LLM 응답 텍스트에서 JSON을 추출하고 파싱한다.
+ * 3개 클라이언트 (ClaudeClient, ClaudeCliClient, LocalModelClient)의
+ * chatJSON 메서드에서 공통으로 사용하여 DRY를 유지한다.
+ */
+export function parseJSONResponse<T>(content: string, source: string): T {
+  const jsonStr = extractJSON(content);
+  try {
+    return JSON.parse(jsonStr) as T;
+  } catch (err) {
+    const preview = jsonStr.length > 200 ? jsonStr.slice(0, 200) + '...' : jsonStr;
+    throw new Error(
+      `Failed to parse ${source} JSON response: ${(err as Error).message}\nResponse preview: ${preview}`,
+      { cause: err },
+    );
+  }
 }
