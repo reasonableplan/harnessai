@@ -10,43 +10,42 @@ graph TB
         PG["PostgreSQL"]
     end
 
-    subgraph Main["packages/main"]
-        Bootstrap["bootstrap()"]
-        Factories["AgentFactories"]
-        Adapter["DashboardAdapter"]
+    subgraph Bootstrap["bootstrap.py"]
+        BConfig["AppConfig 로드"]
+        BAgents["에이전트 인스턴스 생성"]
+        BResources["리소스 초기화<br/>(GitService, StateStore 등)"]
     end
 
-    subgraph Core["packages/core"]
+    subgraph Core["core/"]
         direction TB
         subgraph Agent["agent/"]
             BaseAgent["BaseAgent"]
-            BaseWorker["BaseWorkerAgent"]
-            SysCtrl["SystemController"]
+            BaseCodeGen["BaseCodeGenerator"]
         end
         subgraph Messaging["messaging/"]
             MsgBus["MessageBus"]
         end
         subgraph State["state/"]
             StateStore["StateStore"]
-            TaskSM["isValidTransition()<br/>assertValidTransition()"]
+            TaskSM["TaskStateMachine"]
         end
         subgraph Board["board/"]
             BoardWatcher["BoardWatcher"]
         end
         subgraph LLM["llm/"]
             ClaudeClient["ClaudeClient<br/>(Anthropic API)"]
-            CliClient["ClaudeCliClient<br/>(Claude Code CLI)"]
+            CliClient["ClaudeCliClient<br/>(subprocess)"]
             LocalClient["LocalModelClient<br/>(OpenAI-compat)"]
             PromptLoader["PromptLoader"]
-            CommitReq["CommitRequester"]
-            BaseCodeGen["BaseCodeGenerator"]
+            BaseCodeGen2["BaseCodeGenerator"]
         end
         subgraph Resilience["resilience/"]
             CB["CircuitBreaker"]
             Retry["withRetry()"]
             Orphan["OrphanCleaner"]
+            BoardThenDB["boardThenDb()"]
         end
-        subgraph Git["git-service/"]
+        subgraph GitSvc["git_service/"]
             GitFacade["GitService (Facade)"]
             BoardOps["BoardOperations"]
             IssueManager["IssueManager"]
@@ -59,33 +58,37 @@ graph TB
             FileWriter["FileWriter"]
             FollowUp["FollowUpCreator"]
         end
-        DB["db/ (Drizzle Schema)"]
-        Config["config.ts"]
-        Errors["errors.ts"]
+        DB["db/<br/>(SQLAlchemy Schema)"]
+        Config["config.py"]
+        Errors["errors.py"]
     end
 
-    subgraph Agents["Worker Agents"]
-        Director["agent-director<br/>(L0 Director)"]
-        GitAgent["agent-git<br/>(L2 Worker)"]
-        Backend["agent-backend<br/>(L2 Worker)"]
-        Frontend["agent-frontend<br/>(L2 Worker)"]
-        Docs["agent-docs<br/>(L2 Worker)"]
+    subgraph Agents["agents/"]
+        Director["director/<br/>(L0 Director)"]
+        GitAgent["git/<br/>(L2 Worker)"]
+        Backend["backend/<br/>(L2 Worker)"]
+        Frontend["frontend/<br/>(L2 Worker)"]
+        Docs["docs/<br/>(L2 Worker)"]
     end
 
-    subgraph Dashboard["Dashboard"]
-        Server["dashboard-server<br/>(Express + WebSocket)"]
-        Client["dashboard-client<br/>(React + Canvas)"]
+    subgraph Dashboard["dashboard/"]
+        Server["server.py<br/>(FastAPI)"]
+        EventMapper["event_mapper.py<br/>(MessageBus → WS)"]
+        WSManager["ws_manager.py"]
+    end
+
+    subgraph Client["dashboard-client<br/>(TypeScript/React)"]
+        Canvas["Canvas<br/>(RPG Maker 스타일)"]
+        UIComponents["UI Components<br/>(Stats, Activity 등)"]
     end
 
     %% Bootstrap flow
-    Bootstrap --> Config
-    Bootstrap --> Factories
-    Bootstrap --> Adapter
-    Factories --> Director & GitAgent & Backend & Frontend & Docs
+    Bootstrap --> BConfig --> Config
+    Bootstrap --> BAgents --> Director & GitAgent & Backend & Frontend & Docs
+    Bootstrap --> BResources --> Core
 
     %% Agent dependencies
     Director & GitAgent & Backend & Frontend & Docs --> BaseAgent
-    Backend & Frontend & Docs --> BaseWorker
     Backend & Frontend & Docs --> BaseCodeGen
 
     %% Core internal wiring
@@ -94,46 +97,55 @@ graph TB
     StateStore --> DB
     GitFacade --> BoardOps & IssueManager & GitOps
 
+    %% Resilience
+    GitFacade -.->|"wrapped by"| CB & Retry & BoardThenDB
+    BoardWatcher -.->|"resilience"| Retry
+
     %% External connections
     GitFacade -->|"REST + GraphQL"| GH
     ClaudeClient -->|"API"| Claude
     CliClient -->|"subprocess"| Claude
     LocalClient -->|"fetch"| LocalLLM["Local/Cloud LLM<br/>(Ollama, HuggingFace 등)"]
     PromptLoader -->|"fs.readFile"| Prompts["prompts/<br/>(shared + agent)"]
-    DB -->|"pg driver"| PG
+    DB -->|"asyncpg"| PG
     BoardWatcher -->|"GraphQL poll"| GH
 
     %% Dashboard
-    Server --> StateStore & MsgBus
-    Adapter --> Server
-    Client -->|"WebSocket + REST"| Server
+    Server --> StateStore & MsgBus & EventMapper
+    EventMapper --> MsgBus
+    EventMapper --> WSManager
+    WSManager --> Canvas & UIComponents
+    Canvas -->|"WebSocket + REST"| Server
 
-    %% Resilience wrapping
-    GitFacade -.->|"wrapped by"| CB & Retry
+    %% Main
+    Main["main.py<br/>(uvicorn + agents)"] --> Bootstrap
+    Main --> Server
 ```
 
-## 패키지 의존성 그래프
+## 모듈 의존성 그래프
 
 ```mermaid
 graph LR
-    core["@agent/core"]
-    git["@agent/agent-git"]
-    director["@agent/agent-director"]
-    backend["@agent/agent-backend"]
-    frontend["@agent/agent-frontend"]
-    docs["@agent/agent-docs"]
-    server["@agent/dashboard-server"]
-    client["@agent/dashboard-client"]
-    main["@agent/main"]
+    core["core/<br/>(config, db, agent, llm, etc)"]
+    git["agents/git"]
+    director["agents/director"]
+    backend["agents/backend"]
+    frontend["agents/frontend"]
+    docs["agents/docs"]
+    dashboard["dashboard/<br/>(server, event_mapper, ws_manager)"]
+    client["dashboard-client/<br/>(TypeScript/React)"]
+    bootstrap["bootstrap.py"]
+    main["main.py"]
 
     git --> core
     director --> core
     backend --> core
     frontend --> core
     docs --> core
-    server --> core
-    main --> core & git & director & backend & frontend & docs & server
-    client -.->|"WebSocket runtime"| server
+    dashboard --> core
+    bootstrap --> core & git & director & backend & frontend & docs & dashboard
+    main --> bootstrap & dashboard
+    client -.->|"WebSocket"| dashboard
 ```
 
 ## 에이전트 계층 구조
@@ -317,42 +329,48 @@ sequenceDiagram
 
 ## LLM 백엔드 아키텍처
 
-3가지 LLM 백엔드를 지원하며, `createClaudeClient()` 팩토리가 설정에 따라 적절한 클라이언트를 생성한다.
+3가지 LLM 백엔드를 지원하며, bootstrap.py에서 설정에 따라 적절한 클라이언트를 생성한다.
 
 ```mermaid
 graph LR
-    Factory["createClaudeClient()<br/>(agent-factories.ts)"]
+    Factory["create_llm_client()<br/>(bootstrap.py)"]
 
-    subgraph Backends["IClaudeClient 구현체"]
+    subgraph Backends["ILLMClient 구현체"]
         API["ClaudeClient<br/>Anthropic API"]
-        CLI["ClaudeCliClient<br/>Claude Code CLI"]
+        CLI["ClaudeCliClient<br/>subprocess + CLI"]
         Local["LocalModelClient<br/>OpenAI-compat API"]
     end
 
     subgraph Targets["LLM 서비스"]
-        Anthropic["Anthropic API"]
-        ClaudeCLI["Claude Code<br/>(Max 구독)"]
+        Anthropic["Anthropic API<br/>(API Key)"]
+        ClaudeCLI["Claude Code CLI<br/>(Max 구독)"]
         Ollama["Ollama / LM Studio"]
         HF["HuggingFace<br/>Inference API"]
         OR["OpenRouter"]
     end
 
-    Factory -->|"localModel.enabled"| Local
-    Factory -->|"claude.useCli"| CLI
-    Factory -->|"기본"| API
+    Factory -->|"USE_LOCAL_MODEL"| Local
+    Factory -->|"USE_CLAUDE_CLI"| CLI
+    Factory -->|"기본 (ANTHROPIC_API_KEY)"| API
 
     API --> Anthropic
-    CLI --> ClaudeCLI
+    CLI -->|"subprocess.run"| ClaudeCLI
     Local --> Ollama & HF & OR
 ```
 
-### 우선순위
+### 우선순위 및 구현
 
-| 순위 | 조건 | 클라이언트 | 환경변수 |
-|------|------|-----------|----------|
-| 1 | `USE_LOCAL_MODEL=true` | `LocalModelClient` | `LOCAL_MODEL_BASE_URL`, `LOCAL_MODEL_NAME`, `LOCAL_MODEL_API_KEY` |
-| 2 | `USE_CLAUDE_CLI=true` | `ClaudeCliClient` | — (Claude Code 설치 필요) |
-| 3 | 기본 | `ClaudeClient` | `ANTHROPIC_API_KEY` |
+| 순위 | 조건 | 클라이언트 | 구현 | 환경변수 |
+|------|------|-----------|------|----------|
+| 1 | `USE_LOCAL_MODEL=true` | `LocalModelClient` | httpx.AsyncClient로 OpenAI-compat API 호출 | `LOCAL_MODEL_BASE_URL`, `LOCAL_MODEL_NAME`, `LOCAL_MODEL_API_KEY` |
+| 2 | `USE_CLAUDE_CLI=true` | `ClaudeCliClient` | subprocess + stdin/stdout으로 Claude Code CLI 실행 | — (Claude Code 설치 필수) |
+| 3 | 기본 | `ClaudeClient` | Anthropic Python SDK 사용 | `ANTHROPIC_API_KEY` |
+
+**ClaudeCliClient 특징:**
+- subprocess로 `claude` 명령어 실행 (stdin으로 프롬프트 전달)
+- JSON 응답을 stdin으로 반환받음
+- Max 구독자 무료 사용 가능
+- 네트워크 지연 최소화
 
 ### 프롬프트 시스템
 
