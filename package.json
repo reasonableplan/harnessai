@@ -2,40 +2,18 @@
   "name": "agent-orchestration",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "scripts": {
-    "dev": "pnpm -r --parallel run dev",
-    "build": "pnpm -r run build",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "db:generate": "pnpm --filter @agent/core run db:generate",
-    "db:migrate": "pnpm --filter @agent/core run db:migrate"
+    "dev:frontend": "pnpm --filter dashboard-client run dev",
+    "build:frontend": "pnpm --filter dashboard-client run build",
+    "dev:backend": "cd backend && uv run python -m src.main",
+    "test:backend": "cd backend && uv run pytest tests/ -v",
+    "db:migrate": "cd backend && uv run alembic upgrade head",
+    "db:generate": "cd backend && uv run alembic revision --autogenerate -m"
   },
   "packageManager": "pnpm@10.30.3",
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
     ]
-  },
-  "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@types/node": "^25.4.0",
-    "eslint": "^10.0.3",
-    "eslint-config-prettier": "^10.1.8",
-    "prettier": "^3.8.1",
-    "tsup": "^8.5.1",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.57.0",
-    "vitest": "^4.0.18"
-  },
-  "dependencies": {
-    "pino": "^10.3.1"
   }
 }

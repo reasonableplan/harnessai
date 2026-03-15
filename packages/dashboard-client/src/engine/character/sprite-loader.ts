@@ -5,7 +5,7 @@
  * and extracts 16×32 frames per pose and direction.
  *
  * Spritesheet layout (per character):
- *   {name}-idle.png       (64×32)  → 4 frames  (1/dir × 4 dirs: down, left, right, up)
+ *   {name}-idle.png       (64×32)  → 4 frames  (1/dir × 4 dirs: down, right, up, left)
  *   {name}-idle-anim.png  (384×32) → 24 frames (6/dir × 4 dirs)
  *   {name}-sit.png        (384×32) → 24 frames (6/dir × 4 dirs)
  *   {name}-sit2.png       (384×32) → 24 frames
@@ -18,17 +18,16 @@
 export const SPRITE_FRAME_W = 16;
 export const SPRITE_FRAME_H = 32;
 
-/** Direction offsets within 24-frame sheets (6 frames per direction) */
-const DIR_DOWN = 0;
-const DIR_LEFT = 6;
-const DIR_RIGHT = 12;
-// const DIR_UP = 18; // not used in dashboard (characters face camera)
+/** Direction offsets within 24-frame sheets (6 frames per direction).
+ *  Modern Interiors layout: RIGHT(0-5), UP(6-11), LEFT(12-17), DOWN(18-23) */
+const DIR_DOWN = 18;
+const DIR_LEFT = 12;
+const DIR_RIGHT = 0;
+const DIR_UP = 6;
 
-/** Direction offsets within 4-frame idle sheets (1 frame per direction) */
+/** Direction offsets within 4-frame idle sheets (1 frame per direction).
+ *  idle.png layout: DOWN(0), RIGHT(1), UP(2), LEFT(3) */
 const IDLE_DOWN = 0;
-// const IDLE_LEFT = 1;
-// const IDLE_RIGHT = 2;
-// const IDLE_UP = 3;
 
 // ---- Types ----
 
@@ -74,19 +73,23 @@ interface FrameRef {
   frameIndex: number;
 }
 
-/** Map agent status + animation frame to a specific spritesheet frame */
+/** Map agent status + animation frame to a specific spritesheet frame.
+ *
+ * Desk statuses (working, thinking, waiting, error) use idle-anim facing UP
+ * so characters appear at their desk looking at the computer (back to camera).
+ */
 function getFrameRef(status: string, animFrame: number): FrameRef {
   switch (status) {
     case 'idle':
       return { sheet: 'idle', frameIndex: IDLE_DOWN };
     case 'working':
-      return { sheet: 'sit', frameIndex: DIR_DOWN + (animFrame % 6) };
+      return { sheet: 'idle-anim', frameIndex: DIR_UP + (animFrame % 6) };
     case 'thinking':
-      return { sheet: 'sit2', frameIndex: DIR_DOWN + (animFrame % 6) };
+      return { sheet: 'idle-anim', frameIndex: DIR_UP + (animFrame % 6) };
     case 'error':
-      return { sheet: 'sit', frameIndex: DIR_DOWN };
+      return { sheet: 'idle-anim', frameIndex: DIR_UP };
     case 'waiting':
-      return { sheet: 'idle-anim', frameIndex: DIR_DOWN + (animFrame % 6) };
+      return { sheet: 'idle-anim', frameIndex: DIR_UP + (animFrame % 6) };
     case 'searching':
       return { sheet: 'run', frameIndex: DIR_RIGHT + (animFrame % 6) };
     case 'delivering':

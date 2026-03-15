@@ -5,7 +5,7 @@
 
 import { useRef, useEffect, useCallback } from 'react';
 import { useOfficeStore, type AgentState } from '@/stores/office-store';
-import { createBackgroundBuffer } from './tile-renderer';
+import { createBackgroundBuffer, createBackgroundBufferAsync } from './tile-renderer';
 import { prerenderCharacters, prerenderCharactersAsync, rebuildCache } from './character-renderer';
 import {
   CANVAS_W,
@@ -238,16 +238,19 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
   // Initialize buffers (no agents dependency — anim state init handled by second useEffect)
   useEffect(() => {
     ctxRef.current = canvasRef.current?.getContext('2d') ?? null;
-    bgBufferRef.current = createBackgroundBuffer();
 
-    // Try async image-based sprites first, fallback to pixel-map
-    charCacheRef.current = prerenderCharacters(); // sync fallback immediately
+    // Sync fallbacks: immediately visible while async assets load
+    bgBufferRef.current = createBackgroundBuffer();
+    charCacheRef.current = prerenderCharacters();
+
+    // Async upgrades: tileset background + image sprites
     let cancelled = false;
-    prerenderCharactersAsync().then((cache) => {
-      if (!cancelled && cache.size > 0) {
-        charCacheRef.current = cache; // upgrade to image sprites when ready
-      }
-    });
+    createBackgroundBufferAsync()
+      .then((buffer) => { if (!cancelled) bgBufferRef.current = buffer; })
+      .catch(() => { /* keep procedural fallback */ });
+    prerenderCharactersAsync()
+      .then((cache) => { if (!cancelled && cache.size > 0) charCacheRef.current = cache; })
+      .catch(() => { /* keep pixel-map fallback */ });
 
     return () => { cancelled = true; };
   }, []);
@@ -325,12 +328,14 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
           state.walkTimer = 0;
         }
 
-        // Arm animation (working)
-        if (agent.status === 'working') {
+        // Desk animation (working/thinking/waiting — 6-frame idle-anim cycle)
+        const isDeskStatus =
+          agent.status === 'working' || agent.status === 'thinking' || agent.status === 'waiting';
+        if (isDeskStatus) {
           state.armTimer += dt;
           if (state.armTimer >= ARM_FRAME_DURATION) {
             state.armTimer = 0;
-            state.armFrame = (state.armFrame + 1) % 2;
+            state.armFrame = (state.armFrame + 1) % 6;
           }
         } else {
           state.armFrame = 0;
@@ -376,8 +381,9 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
           } else {
             const walkFrames =
               agent.status === 'delivering' || agent.status === 'searching' ? 4 : 1;
-            const armFrames = agent.status === 'working' ? 2 : 1;
-            if (armFrames > 1) {
+            const deskAnim =
+              agent.status === 'working' || agent.status === 'thinking' || agent.status === 'waiting';
+            if (deskAnim) {
               frameIdx = state.armFrame;
             } else if (walkFrames > 1) {
               frameIdx = state.walkFrame % walkFrames;

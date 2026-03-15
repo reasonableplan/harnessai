@@ -6,10 +6,10 @@ export default defineConfig({
   plugins: [react()],
   resolve: { alias: { '@': path.resolve(__dirname, 'src') } },
   server: {
-    port: 3000,
+    port: 3001,
     proxy: {
-      '/api': 'http://localhost:3001',
-      '/ws': { target: 'ws://localhost:3001', ws: true },
+      '/api': 'http://localhost:3002',
+      '/ws': { target: 'ws://localhost:3002', ws: true },
     },
   },
 });

@@ -31,6 +31,8 @@ import {
   drawFridge,
 } from './draw-furniture';
 import { drawFloorCables } from './draw-cables';
+import { loadAllTilesets } from '../tilemap/tileset-loader';
+import { createTilesetBackgroundBuffer } from '../tilemap/tileset-renderer';
 
 function drawFurnitureItem(ctx: CanvasRenderingContext2D, f: FurniturePlacement) {
   const x = f.col * T;
@@ -138,7 +140,7 @@ export function renderFurnitureBehind(ctx: CanvasRenderingContext2D): void {
   drawFloorCables(ctx);
 }
 
-/** Pre-render the entire background to an offscreen canvas for performance */
+/** Pre-render the entire background to an offscreen canvas for performance (sync fallback) */
 export function createBackgroundBuffer(): HTMLCanvasElement {
   const buffer = document.createElement('canvas');
   buffer.width = CANVAS_W;
@@ -149,4 +151,19 @@ export function createBackgroundBuffer(): HTMLCanvasElement {
   renderBackground(ctx);
   renderFurnitureBehind(ctx);
   return buffer;
+}
+
+/**
+ * Async version: loads tileset images and renders background from them.
+ * Falls back to procedural rendering if tileset loading fails.
+ */
+export async function createBackgroundBufferAsync(): Promise<HTMLCanvasElement> {
+  try {
+    const cache = await loadAllTilesets();
+    const buffer = createTilesetBackgroundBuffer(cache);
+    if (buffer) return buffer;
+  } catch {
+    if (import.meta.env.DEV) console.warn('[render] Tileset load failed, using procedural fallback');
+  }
+  return createBackgroundBuffer();
 }

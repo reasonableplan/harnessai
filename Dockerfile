@@ -1,46 +1,24 @@
-# ===== Build Stage =====
-FROM node:22-alpine AS builder
+# 루트 Dockerfile — Python 백엔드 빌드
+FROM python:3.12-slim AS runtime
 
-RUN npm i -g pnpm@10
-
-WORKDIR /app
-
-# Install dependencies first (cache layer)
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-COPY packages/core/package.json packages/core/
-COPY packages/main/package.json packages/main/
-COPY packages/agent-director/package.json packages/agent-director/
-COPY packages/agent-backend/package.json packages/agent-backend/
-COPY packages/agent-frontend/package.json packages/agent-frontend/
-COPY packages/agent-docs/package.json packages/agent-docs/
-COPY packages/agent-git/package.json packages/agent-git/
-COPY packages/dashboard-server/package.json packages/dashboard-server/
-
-RUN pnpm install --frozen-lockfile
-
-# Copy source and build
-COPY tsconfig.base.json ./
-COPY packages/ packages/
-
-RUN pnpm build
-
-# ===== Runtime Stage =====
-FROM node:22-alpine AS runtime
-
-RUN npm i -g pnpm@10
+# uv 설치
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-COPY --from=builder /app/pnpm-lock.yaml /app/pnpm-workspace.yaml /app/package.json ./
-COPY --from=builder /app/packages/ packages/
-COPY --from=builder /app/node_modules/ node_modules/
+# 의존성 먼저 설치 (캐시 레이어)
+COPY backend/pyproject.toml backend/
+RUN cd backend && uv sync --no-dev --no-editable
 
-# Don't run as root
-RUN addgroup -g 1001 agent && adduser -u 1001 -G agent -s /bin/sh -D agent
+# 소스 복사
+COPY backend/ backend/
+COPY prompts/ prompts/
+
+# non-root 유저
+RUN groupadd -g 1001 agent && useradd -u 1001 -g agent -s /bin/sh -m agent
 USER agent
 
-ENV NODE_ENV=production
-
+ENV APP_ENV=production
 EXPOSE 3001
 
-CMD ["node", "packages/main/dist/index.js"]
+CMD ["uv", "run", "--project", "backend", "python", "-m", "src.main"]

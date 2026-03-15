@@ -82,8 +82,13 @@ export default function CharacterOverlay() {
       let changed = false;
       for (const agent of Object.values(agentsRef.current)) {
         if (!agent.bubble) continue; // only track agents with bubbles
-        const s = positionsRef.current.get(agent.id);
-        if (!s) continue;
+        let s = positionsRef.current.get(agent.id);
+        if (!s) {
+          // Initialize spring for dynamically added agents
+          const pos = getAgentPixelPosition(agent.slot, agent.status);
+          s = { x: pos.x, y: pos.y, vx: 0, vy: 0 };
+          positionsRef.current.set(agent.id, s);
+        }
         const target = getAgentPixelPosition(agent.slot, agent.status);
         springStep(s, target.x, target.y, dt);
         const nx = Math.round(s.x * RENDER_SCALE);
@@ -139,8 +144,12 @@ export default function CharacterOverlay() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -4, scale: 0.9 }}
               transition={{ duration: 0.25 }}
-              className="absolute -translate-x-1/2 -translate-y-full"
-              style={{ left: pos.x, top: pos.y - 48 * RENDER_SCALE }}
+              className="absolute"
+              style={{
+                left: pos.x + 24 * RENDER_SCALE,
+                top: pos.y - 80 * RENDER_SCALE,
+                transform: 'translateY(-100%)',
+              }}
             >
               {/* Bubble body */}
               <div
@@ -157,10 +166,11 @@ export default function CharacterOverlay() {
               >
                 {truncated}
               </div>
-              {/* Triangle pointer */}
+              {/* Triangle pointer — bottom-left, pointing down toward character */}
               <div
-                className="mx-auto w-0 h-0"
+                className="w-0 h-0"
                 style={{
+                  marginLeft: `${4 * RENDER_SCALE}px`,
                   borderLeft: `${5 * RENDER_SCALE}px solid transparent`,
                   borderRight: `${5 * RENDER_SCALE}px solid transparent`,
                   borderTop: `${5 * RENDER_SCALE}px solid ${style.border}`,

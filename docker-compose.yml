@@ -16,5 +16,32 @@ services:
       timeout: 3s
       retries: 5
 
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: agent-backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://agent:agent@postgres:5432/agent
+    env_file:
+      - ./backend/.env
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./workspace:/app/workspace
+
+  frontend:
+    build:
+      context: ./packages/dashboard-client
+      dockerfile: Dockerfile
+    container_name: agent-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
 volumes:
   agent-pgdata:

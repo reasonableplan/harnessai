@@ -103,8 +103,8 @@ function buildCache(
     for (const status of statuses) {
       const frames: HTMLCanvasElement[] = [];
       const walkFrames = status === 'delivering' || status === 'searching' ? 4 : 1;
-      const armFrames = status === 'working' ? 2 : 1;
-      const totalFrames = Math.max(walkFrames, armFrames);
+      const deskFrames = status === 'working' || status === 'thinking' || status === 'waiting' ? 6 : 1;
+      const totalFrames = Math.max(walkFrames, deskFrames);
 
       for (let i = 0; i < totalFrames; i++) {
         const canvas = document.createElement('canvas');
@@ -120,7 +120,7 @@ function buildCache(
         if (spriteFrame) {
           renderSpriteFrame(fCtx, spriteFrame, canvasW, canvasH);
         } else {
-          renderPixelMap(fCtx, domain, status, i % walkFrames, i % armFrames, false);
+          renderPixelMap(fCtx, domain, status, i % walkFrames, i % deskFrames, false);
         }
 
         frames.push(canvas);

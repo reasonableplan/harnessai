@@ -31,13 +31,14 @@ export default function App() {
       { id: 'frontend-2', domain: 'frontend' },
       { id: 'backend-2', domain: 'backend' },
     ];
+    // Weighted toward desk statuses; includes searching/delivering for variety
     const statuses = [
       'idle',
-      'working',
-      'thinking',
+      'working', 'working', 'working',
+      'thinking', 'thinking',
+      'reviewing',
       'searching',
       'delivering',
-      'reviewing',
     ] as const;
     const bubbles: Array<{ content: string; type: 'task' | 'thinking' | 'info' }> = [
       { content: 'Code fix!', type: 'task' },

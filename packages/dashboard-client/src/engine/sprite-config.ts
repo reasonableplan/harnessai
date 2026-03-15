@@ -111,23 +111,27 @@ export interface DeskSlot {
   idle: { x: number; y: number };
 }
 
+// Desk positions are derived from FURNITURE tile coords:
+//   desk.x = (col + w/2) * TILE_SIZE   — centered on desk
+//   desk.y = (row + h) * TILE_SIZE + 16 — in chair (south of desk), character faces up toward computer
+// Idle positions are near the sofa (col 18, row 13, 4×2).
 export const DESK_SLOTS: DeskSlot[] = [
-  // Slot 0: Director (center-top boss desk)
-  { desk: { x: 384, y: 192 }, idle: { x: 608, y: 432 } },
-  // Slot 1: Git (left)
-  { desk: { x: 96, y: 272 }, idle: { x: 576, y: 440 } },
-  // Slot 2: Frontend (center-left)
-  { desk: { x: 256, y: 320 }, idle: { x: 640, y: 432 } },
-  // Slot 3: Backend (center-right)
-  { desk: { x: 512, y: 272 }, idle: { x: 672, y: 440 } },
-  // Slot 4: Docs (right)
-  { desk: { x: 640, y: 320 }, idle: { x: 704, y: 432 } },
-  // Slot 5: Extra desk (center-lower)
-  { desk: { x: 432, y: 352 }, idle: { x: 592, y: 448 } },
-  // Slot 6: Extra desk (left-lower)
-  { desk: { x: 208, y: 416 }, idle: { x: 624, y: 448 } },
-  // Slot 7: Extra desk (right-lower)
-  { desk: { x: 560, y: 384 }, idle: { x: 656, y: 448 } },
+  // Slot 0: Director — desk tile (11, 5, 3×2)
+  { desk: { x: 400, y: 240 }, idle: { x: 600, y: 468 } },
+  // Slot 1: Git — desk tile (2, 8, 3×2)
+  { desk: { x: 112, y: 336 }, idle: { x: 624, y: 470 } },
+  // Slot 2: Frontend — desk tile (7, 9, 3×2)
+  { desk: { x: 272, y: 368 }, idle: { x: 648, y: 468 } },
+  // Slot 3: Backend — desk tile (15, 8, 3×2)
+  { desk: { x: 528, y: 336 }, idle: { x: 672, y: 470 } },
+  // Slot 4: Docs — desk tile (19, 9, 3×2)
+  { desk: { x: 656, y: 368 }, idle: { x: 696, y: 468 } },
+  // Slot 5: Extra — desk tile (12, 10, 3×2)
+  { desk: { x: 432, y: 400 }, idle: { x: 608, y: 472 } },
+  // Slot 6: Extra — desk tile (5, 12, 3×2)
+  { desk: { x: 208, y: 464 }, idle: { x: 632, y: 472 } },
+  // Slot 7: Extra — desk tile (16, 11, 3×2)
+  { desk: { x: 560, y: 432 }, idle: { x: 656, y: 472 } },
 ];
 
 export const BOOKSHELF_POS = { x: 704, y: 280 };
