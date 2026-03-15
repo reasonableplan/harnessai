@@ -15,12 +15,10 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from src.dashboard.auth import make_auth_checker
-from src.dashboard.event_mapper import EventMapper
 from src.dashboard.routes import agents, command, hooks, stats, tasks
 from src.dashboard.websocket_manager import WebSocketManager
 
 _ws_manager: WebSocketManager | None = None
-_event_mapper: EventMapper | None = None
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -61,8 +59,8 @@ def create_app(
         CORSMiddleware,
         allow_origins=cors_origins or ["http://localhost:3000", "http://localhost:5173"],
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
     )
 
     auth_check = make_auth_checker(auth_token)

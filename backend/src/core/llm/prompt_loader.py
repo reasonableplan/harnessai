@@ -37,7 +37,7 @@ class PromptLoader:
         if agent_path and agent_path.exists():
             parts.append(agent_path.read_text(encoding="utf-8"))
         else:
-            log.warn("Agent prompt file not found", agent=agent_name)
+            log.warning("Agent prompt file not found", agent=agent_name)
 
         result = "\n\n".join(parts)
         self._cache[agent_name] = result

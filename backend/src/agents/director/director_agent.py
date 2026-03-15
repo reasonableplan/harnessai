@@ -198,5 +198,5 @@ class DirectorAgent(BaseAgent):
 
     async def execute_task(self, task: Task) -> TaskResult:
         """Director는 Board 태스크를 직접 실행하지 않는다."""
-        log.warn("DirectorAgent.execute_task called — not expected", task_id=task.id)
+        log.warning("DirectorAgent.execute_task called — not expected", task_id=task.id)
         return TaskResult(success=False, error={"message": "Director does not execute tasks"}, artifacts=[])

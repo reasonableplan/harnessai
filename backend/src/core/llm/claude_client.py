@@ -44,7 +44,7 @@ class ClaudeClient:
         """
         resolved_model = model or self._default_model
         if resolved_model not in ALLOWED_MODELS:
-            log.warn("Unknown model requested, falling back to default", model=resolved_model)
+            log.warning("Unknown model requested, falling back to default", model=resolved_model)
             resolved_model = self._default_model
 
         if token_budget and self._tokens_used >= token_budget:

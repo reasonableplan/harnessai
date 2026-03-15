@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from src.core.llm.claude_client import ALLOWED_MODELS
 from src.dashboard.routes.deps import get_state_store
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -10,6 +11,13 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 class AgentConfigUpdate(BaseModel):
     claude_model: str | None = Field(None, min_length=1, max_length=100)
+
+    @field_validator("claude_model")
+    @classmethod
+    def validate_claude_model(cls, v: str | None) -> str | None:
+        if v is not None and v not in ALLOWED_MODELS:
+            raise ValueError(f"Unknown model. Allowed: {sorted(ALLOWED_MODELS)}")
+        return v
     max_tokens: int | None = Field(None, ge=256, le=32768)
     temperature: float | None = Field(None, ge=0.0, le=2.0)
     token_budget: int | None = Field(None, ge=1000)

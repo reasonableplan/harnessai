@@ -143,7 +143,7 @@ class GitService:
             )
         except Exception as e:
             # non-fatal
-            log.warn("Failed to add comment", issue=issue_number, err=str(e))
+            log.warning("Failed to add comment", issue=issue_number, err=str(e))
 
     # ===== Board =====
 
@@ -221,12 +221,12 @@ class GitService:
 
         option_id = self._status_options.get(column)
         if not option_id:
-            log.warn("Column not found in project status options", column=column, available=list(self._status_options))
+            log.warning("Column not found in project status options", column=column, available=list(self._status_options))
             return
 
         item_id = await self._get_project_item_id(issue_number)
         if not item_id:
-            log.warn("Issue not found as project item", issue=issue_number)
+            log.warning("Issue not found as project item", issue=issue_number)
             return
 
         await self._graphql(

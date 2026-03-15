@@ -185,6 +185,17 @@ async def shutdown(ctx: SystemContext) -> None:
     # BoardWatcher 중지
     await ctx.board_watcher.stop()
 
+    # LLM 클라이언트 / GitService HTTP 연결 종료
+    if hasattr(ctx.llm_client, "close"):
+        try:
+            await ctx.llm_client.close()
+        except Exception as e:
+            log.error("LLM client close error", err=str(e))
+    try:
+        await ctx.git_service.close()
+    except Exception as e:
+        log.error("GitService close error", err=str(e))
+
     # DB 연결 종료
     await close_engine()
     log.info("Shutdown complete")

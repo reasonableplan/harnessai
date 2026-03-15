@@ -33,7 +33,7 @@ async def with_retry(
             delay_ms = min(base_delay_ms * (2 ** attempt), max_delay_ms)
             jitter_ms = delay_ms * (0.5 + random.random() * 0.5)
 
-            log.warn(
+            log.warning(
                 "Retrying after error",
                 attempt=attempt + 1,
                 max_retries=max_retries,
