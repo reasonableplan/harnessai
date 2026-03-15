@@ -90,6 +90,10 @@ def create_app(
                 if data == "ping":
                     await ws.send_text('{"type":"pong"}')
         except WebSocketDisconnect:
+            pass
+        except Exception:
+            pass
+        finally:
             _ws_manager.disconnect(ws)
 
     # 정적 파일 (빌드된 프론트엔드)

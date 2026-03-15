@@ -177,15 +177,24 @@ class DirectorAgent(BaseAgent):
             return
 
         success = result.get("success", False) if isinstance(result, dict) else False
-        if success:
-            await self._state_store.update_task(task_id, {"status": "done", "board_column": "Done"})
-            log.info("Task approved", task_id=task_id)
-        else:
-            await self._state_store.update_task(
-                task_id,
-                {"status": "ready", "board_column": "Ready", "retry_count_increment": 1},
-            )
-            log.info("Task sent back to Ready", task_id=task_id)
+        target_column = "Done" if success else "Ready"
+        target_status = "done" if success else "ready"
+
+        task = await self._state_store.get_task(task_id)
+        if task and task.github_issue_number:
+            try:
+                await self._git_service.move_issue_to_column(
+                    task.github_issue_number, target_column
+                )
+            except Exception as e:
+                log.error("Review: Board move failed", task_id=task_id, err=str(e))
+                return
+
+        updates: dict = {"status": target_status, "board_column": target_column}
+        if not success:
+            updates["retry_count_increment"] = 1
+        await self._state_store.update_task(task_id, updates)
+        log.info("Task review processed", task_id=task_id, approved=success)
 
     async def execute_task(self, task: Task) -> TaskResult:
         """Director는 Board 태스크를 직접 실행하지 않는다."""

@@ -72,12 +72,17 @@ class BoardWatcher:
         new_column = item.column
         old_column = self._column_cache.get(issue_number)
 
+        # 첫 sync이거나 컬럼이 변하지 않은 경우 캐시만 갱신하고 조기 반환
+        if old_column is None or old_column == new_column:
+            self._column_cache[issue_number] = new_column
+            return
+
         # DB에서 현재 태스크 조회
-        tasks = await self._state_store.get_tasks_by_column(old_column or "")
+        tasks = await self._state_store.get_tasks_by_column(old_column)
         task = next((t for t in tasks if t.github_issue_number == issue_number), None)
 
-        if task and old_column and old_column != new_column:
-            # Board에서 컬럼이 바뀐 경우 DB 업데이트 + 메시지 발행
+        if task:
+            # Board에서 컬럼이 바뀐 경우 DB 업데이트 + 메시지 발행 (old_column != new_column은 위에서 보장)
             status_map = {
                 "Backlog": "backlog",
                 "Ready": "ready",

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 from datetime import datetime, timezone
 from typing import Any
@@ -49,7 +50,8 @@ class WebSocketManager:
             await ws.close(code=4001)
             return False
 
-        if msg.get("type") != "auth" or msg.get("token") != auth_token:
+        token = msg.get("token") or ""
+        if msg.get("type") != "auth" or not hmac.compare_digest(token.encode(), auth_token.encode()):
             log.warning("WS auth failed — invalid token")
             await ws.close(code=4001)
             return False

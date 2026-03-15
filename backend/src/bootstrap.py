@@ -62,7 +62,7 @@ async def bootstrap(config: AppConfig) -> SystemContext:
     await register_builtin_hooks(hook_registry, state_store)
 
     # 7. OrphanCleaner
-    orphan_cleaner = OrphanCleaner(state_store)
+    orphan_cleaner = OrphanCleaner(state_store, git_service)
 
     # 8. 에이전트 생성
     agents = _create_agents(config, message_bus, state_store, git_service, llm_client)

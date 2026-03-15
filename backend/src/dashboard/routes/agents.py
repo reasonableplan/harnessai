@@ -50,6 +50,9 @@ async def get_agent_config(agent_id: str, store=Depends(get_state_store)):
 async def update_agent_config(
     agent_id: str, body: AgentConfigUpdate, store=Depends(get_state_store)
 ):
+    agents = await store.get_all_agents()
+    if not any(a.id == agent_id for a in agents):
+        raise HTTPException(status_code=404, detail="Agent not found")
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No valid fields to update")

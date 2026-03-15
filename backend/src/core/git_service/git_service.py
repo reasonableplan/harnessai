@@ -35,6 +35,10 @@ class GitService:
         self._item_id_cache: dict[int, str] = {}   # issue_number → project item ID
         self._owner_gql_type: str = "user"         # "user" or "organization" — detected at startup
 
+    @property
+    def work_dir(self) -> str:
+        return self._work_dir
+
     async def close(self) -> None:
         await self._client.aclose()
 
