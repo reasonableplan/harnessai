@@ -79,15 +79,13 @@ def create_app(
     _ws_manager = WebSocketManager()
 
     @app.websocket("/ws")
-    async def websocket_endpoint(ws: WebSocket, token: str | None = None):
-        # WS 토큰 검증
-        if auth_token and token != auth_token:
-            await ws.close(code=4001)
+    async def websocket_endpoint(ws: WebSocket):
+        # 첫 메시지 기반 인증 (auth_token이 None이면 dev 모드 — 즉시 승인)
+        ok = await _ws_manager.authenticate(ws, auth_token)
+        if not ok:
             return
-        await _ws_manager.connect(ws)
         try:
             while True:
-                # 클라이언트 메시지 수신 (ping 등)
                 data = await ws.receive_text()
                 if data == "ping":
                     await ws.send_text('{"type":"pong"}')
