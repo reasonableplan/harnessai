@@ -27,8 +27,8 @@ class AgentModel(Base):
     level: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     status: Mapped[str] = mapped_column(String, nullable=False, default="idle")
     parent_id: Mapped[str | None] = mapped_column(String, ForeignKey("agents.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
-    last_heartbeat: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+    last_heartbeat: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     tasks: Mapped[list["TaskModel"]] = relationship("TaskModel", back_populates="agent", lazy="noload")
     config: Mapped["AgentConfigModel | None"] = relationship("AgentConfigModel", back_populates="agent", lazy="noload", uselist=False)
@@ -43,8 +43,8 @@ class EpicModel(Base):
     status: Mapped[str] = mapped_column(String, nullable=False, default="draft")
     github_milestone_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     progress: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),nullable=False, default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True),nullable=True)
 
     tasks: Mapped[list["TaskModel"]] = relationship("TaskModel", back_populates="epic", lazy="noload")
 
@@ -72,9 +72,9 @@ class TaskModel(Base):
     dependencies: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     labels: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
-    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),nullable=False, default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True),nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True),nullable=True)
     review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     epic: Mapped["EpicModel | None"] = relationship("EpicModel", back_populates="tasks", lazy="noload")
@@ -95,8 +95,8 @@ class MessageModel(Base):
     to_agent: Mapped[str | None] = mapped_column(String, nullable=True)
     payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     trace_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
-    acked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),nullable=False, default=func.now())
+    acked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True),nullable=True)
 
 
 class AgentConfigModel(Base):
@@ -109,7 +109,7 @@ class AgentConfigModel(Base):
     token_budget: Mapped[int] = mapped_column(Integer, nullable=False, default=10_000_000)
     task_timeout_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=300_000)
     poll_interval_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=10_000)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),nullable=False, default=func.now())
 
     agent: Mapped["AgentModel"] = relationship("AgentModel", back_populates="config", lazy="noload")
 
@@ -122,7 +122,7 @@ class HookModel(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),nullable=False, default=func.now())
 
 
 class ArtifactModel(Base):
@@ -133,6 +133,6 @@ class ArtifactModel(Base):
     file_path: Mapped[str] = mapped_column(String, nullable=False)
     content_hash: Mapped[str] = mapped_column(String, nullable=False)
     created_by: Mapped[str] = mapped_column(String, ForeignKey("agents.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),nullable=False, default=func.now())
 
     task: Mapped["TaskModel"] = relationship("TaskModel", back_populates="artifacts", lazy="noload")

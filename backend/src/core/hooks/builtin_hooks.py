@@ -44,7 +44,7 @@ def _log_task_complete(payload: dict[str, Any]) -> None:
 
 
 def _toast_on_failure(payload: dict[str, Any]) -> None:
-    log.warn("Hook: task failed", task_id=payload.get("taskId"), reason=payload.get("reason"))
+    log.warning("Hook: task failed", task_id=payload.get("taskId"), reason=payload.get("reason"))
 
 
 def _log_agent_error(payload: dict[str, Any]) -> None:

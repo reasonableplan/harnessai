@@ -15,12 +15,10 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from src.dashboard.auth import make_auth_checker
-from src.dashboard.event_mapper import EventMapper
-from src.dashboard.routes import agents, hooks, stats, tasks
+from src.dashboard.routes import agents, command, hooks, stats, tasks
 from src.dashboard.websocket_manager import WebSocketManager
 
 _ws_manager: WebSocketManager | None = None
-_event_mapper: EventMapper | None = None
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -61,8 +59,8 @@ def create_app(
         CORSMiddleware,
         allow_origins=cors_origins or ["http://localhost:3000", "http://localhost:5173"],
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
     )
 
     auth_check = make_auth_checker(auth_token)
@@ -72,25 +70,28 @@ def create_app(
     app.include_router(tasks.router, dependencies=[Depends(auth_check)])
     app.include_router(hooks.router, dependencies=[Depends(auth_check)])
     app.include_router(stats.router, dependencies=[Depends(auth_check)])
+    app.include_router(command.router, dependencies=[Depends(auth_check)])
 
     # WebSocket
     global _ws_manager
     _ws_manager = WebSocketManager()
 
     @app.websocket("/ws")
-    async def websocket_endpoint(ws: WebSocket, token: str | None = None):
-        # WS 토큰 검증
-        if auth_token and token != auth_token:
-            await ws.close(code=4001)
+    async def websocket_endpoint(ws: WebSocket):
+        # 첫 메시지 기반 인증 (auth_token이 None이면 dev 모드 — 즉시 승인)
+        ok = await _ws_manager.authenticate(ws, auth_token)
+        if not ok:
             return
-        await _ws_manager.connect(ws)
         try:
             while True:
-                # 클라이언트 메시지 수신 (ping 등)
                 data = await ws.receive_text()
                 if data == "ping":
                     await ws.send_text('{"type":"pong"}')
         except WebSocketDisconnect:
+            pass
+        except Exception:
+            pass
+        finally:
             _ws_manager.disconnect(ws)
 
     # 정적 파일 (빌드된 프론트엔드)

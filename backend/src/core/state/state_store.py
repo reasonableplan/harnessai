@@ -89,13 +89,13 @@ class StateStore:
                 )
                 row = result.scalar_one_or_none()
                 if row is None:
-                    log.warn("update_task: task not found", task_id=task_id)
+                    log.warning("update_task: task not found", task_id=task_id)
                     return
 
                 from_status = TaskStatus(row)
                 to_status = TaskStatus(values["status"])
                 if not is_valid_transition(from_status, to_status):
-                    log.warn(
+                    log.warning(
                         "Invalid task status transition, skipping",
                         task_id=task_id,
                         from_status=from_status,

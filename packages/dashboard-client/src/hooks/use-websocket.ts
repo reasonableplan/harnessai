@@ -147,6 +147,10 @@ export function useWebSocket() {
         break;
       }
 
+      case 'auth.ok':
+        // 서버 인증 확인 — 별도 처리 불필요
+        break;
+
       default: {
         const result = defaultFallbackSchema.safeParse(payload);
         addMessage({
@@ -190,20 +194,18 @@ export function useWebSocket() {
 
   const connect = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    let wsUrl = import.meta.env.VITE_WS_URL ?? `${protocol}//${window.location.host}/ws`;
-
-    // Append auth token as query parameter if configured
-    const authToken = import.meta.env.VITE_DASHBOARD_AUTH_TOKEN;
-    if (authToken) {
-      const separator = wsUrl.includes('?') ? '&' : '?';
-      wsUrl = `${wsUrl}${separator}token=${encodeURIComponent(authToken)}`;
-    }
+    const wsUrl = import.meta.env.VITE_WS_URL ?? `${protocol}//${window.location.host}/ws`;
+    const authToken = import.meta.env.VITE_DASHBOARD_AUTH_TOKEN as string | undefined;
 
     try {
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
+        // 토큰이 설정된 경우 URL 대신 첫 메시지로 인증 — URL/로그에 토큰 노출 방지
+        if (authToken) {
+          ws.send(JSON.stringify({ type: 'auth', token: authToken }));
+        }
         reconnectAttemptRef.current = 0;
         useOfficeStore.getState().addToast({
           id: `toast-connected-${Date.now()}`,

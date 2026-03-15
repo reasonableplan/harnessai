@@ -234,7 +234,7 @@ class BaseAgent(ABC):
                         row.github_issue_number, "In Progress"
                     )
                 except Exception as e:
-                    self._log.warn(
+                    self._log.warning(
                         "Failed to sync Board after claim, rolling back",
                         err=str(e),
                         task_id=row.id,
@@ -281,7 +281,7 @@ class BaseAgent(ABC):
                     task.github_issue_number, new_column
                 )
             except Exception as e:
-                self._log.warn(
+                self._log.warning(
                     "Failed to sync Board column after task complete",
                     err=str(e),
                     task_id=task.id,

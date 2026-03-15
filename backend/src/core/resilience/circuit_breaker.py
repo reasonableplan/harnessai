@@ -82,11 +82,11 @@ class CircuitBreaker:
         if self._state == CircuitState.HALF_OPEN:
             self._last_failure_time = time.monotonic()
             self._state = CircuitState.OPEN
-            log.warn("Circuit re-opened (half-open probe failed)", circuit=self.name)
+            log.warning("Circuit re-opened (half-open probe failed)", circuit=self.name)
         elif self._failures >= self._failure_threshold:
             self._last_failure_time = time.monotonic()
             self._state = CircuitState.OPEN
-            log.warn("Circuit opened", circuit=self.name, failures=self._failures)
+            log.warning("Circuit opened", circuit=self.name, failures=self._failures)
 
     def reset(self) -> None:
         """수동 리셋 (테스트/관리용)."""

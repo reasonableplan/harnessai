@@ -21,8 +21,8 @@ erDiagram
         integer level "NOT NULL DEFAULT 2 — 계층 (0=Director, 1=Manager, 2=Worker)"
         text status "NOT NULL DEFAULT 'idle' — idle | busy | paused | error"
         text parent_id FK "NULLABLE — 상위 에이전트 (self-reference)"
-        timestamp created_at "NOT NULL DEFAULT now()"
-        timestamp last_heartbeat "NULLABLE — 마지막 heartbeat"
+        timestamp created_at "NOT NULL DEFAULT now() — timezone-aware"
+        timestamp last_heartbeat "NULLABLE — 마지막 heartbeat, timezone-aware"
     }
 
     epics {
@@ -32,8 +32,8 @@ erDiagram
         text status "NOT NULL DEFAULT 'draft' — draft | active | completed | cancelled"
         integer github_milestone_number "NULLABLE — GitHub Milestone 번호"
         real progress "NOT NULL DEFAULT 0.0 — 진행률 (0.0 ~ 1.0)"
-        timestamp created_at "NOT NULL DEFAULT now()"
-        timestamp completed_at "NULLABLE — 완료 시각"
+        timestamp created_at "NOT NULL DEFAULT now() — timezone-aware"
+        timestamp completed_at "NULLABLE — 완료 시각, timezone-aware"
     }
 
     tasks {
@@ -50,9 +50,9 @@ erDiagram
         jsonb dependencies "DEFAULT [] — 의존 태스크 ID 배열"
         jsonb labels "DEFAULT [] — GitHub 라벨 배열"
         integer retry_count "NOT NULL DEFAULT 0"
-        timestamp created_at "NOT NULL DEFAULT now()"
-        timestamp started_at "NULLABLE"
-        timestamp completed_at "NULLABLE"
+        timestamp created_at "NOT NULL DEFAULT now() — timezone-aware"
+        timestamp started_at "NULLABLE — timezone-aware"
+        timestamp completed_at "NULLABLE — timezone-aware"
         text review_note "NULLABLE — 리뷰 피드백"
     }
 
@@ -63,8 +63,8 @@ erDiagram
         text to_agent "NULLABLE — 수신 에이전트 (null=broadcast)"
         jsonb payload "NOT NULL DEFAULT {} — 메시지 페이로드"
         text trace_id "NULLABLE — 추적 ID (Epic 단위)"
-        timestamp created_at "NOT NULL DEFAULT now()"
-        timestamp acked_at "NULLABLE — 수신 확인 시각"
+        timestamp created_at "NOT NULL DEFAULT now() — timezone-aware"
+        timestamp acked_at "NULLABLE — 수신 확인 시각, timezone-aware"
     }
 
     artifacts {
@@ -73,18 +73,18 @@ erDiagram
         text file_path "NOT NULL — 파일 경로"
         text content_hash "NOT NULL — 내용 해시 (SHA-256)"
         text created_by FK "NOT NULL — 생성 에이전트"
-        timestamp created_at "NOT NULL DEFAULT now()"
+        timestamp created_at "NOT NULL DEFAULT now() — timezone-aware"
     }
 
     agent_config {
         text agent_id PK_FK "에이전트 ID → agents.id"
-        text claude_model "NOT NULL DEFAULT 'claude-sonnet-4-20250514'"
+        text claude_model "NOT NULL DEFAULT 'claude-sonnet-4-20250514' — 화이트리스트: claude-opus-4-1, claude-sonnet-4-20250514, claude-haiku-4-5"
         integer max_tokens "NOT NULL DEFAULT 4096"
         real temperature "NOT NULL DEFAULT 0.7"
         integer token_budget "NOT NULL DEFAULT 10000000"
         integer task_timeout_ms "NOT NULL DEFAULT 300000 (5분)"
         integer poll_interval_ms "NOT NULL DEFAULT 10000 (10초)"
-        timestamp updated_at "NOT NULL DEFAULT now()"
+        timestamp updated_at "NOT NULL DEFAULT now() — timezone-aware"
     }
 
     hooks {
@@ -93,7 +93,7 @@ erDiagram
         text name "NOT NULL — 훅 이름"
         text description "NULLABLE — 설명"
         boolean enabled "NOT NULL DEFAULT true"
-        timestamp created_at "NOT NULL DEFAULT now()"
+        timestamp created_at "NOT NULL DEFAULT now() — timezone-aware"
     }
 ```
 

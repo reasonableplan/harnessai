@@ -33,7 +33,7 @@ async def main() -> None:
 
     # EventMapper: MessageBus → WebSocket 브로드캐스트
     ws_manager = get_ws_manager()
-    EventMapper(ctx.message_bus, ws_manager)
+    event_mapper = EventMapper(ctx.message_bus, ws_manager)
 
     # BoardWatcher + OrphanCleaner 시작
     ctx.board_watcher.start()
@@ -78,6 +78,7 @@ async def main() -> None:
     # Shutdown
     server.should_exit = True
     await server_task
+    event_mapper.dispose()
     await shutdown(ctx)
 
 

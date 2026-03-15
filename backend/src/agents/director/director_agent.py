@@ -1,6 +1,7 @@
 """Director Agent (Level 0) — 사용자 입력을 에픽/태스크로 변환하고 리뷰를 처리."""
 from __future__ import annotations
 
+import re
 import uuid
 import xml.sax.saxutils as saxutils
 from datetime import datetime, timezone
@@ -22,6 +23,32 @@ from src.core.types import (
 )
 
 log = get_logger("DirectorAgent")
+
+_VALID_AGENTS = {"director", "agent-git", "agent-backend", "agent-frontend", "agent-docs"}
+_AGENT_KEYWORDS: dict[str, str] = {
+    "git": "agent-git",
+    "backend": "agent-backend",
+    "frontend": "agent-frontend",
+    "docs": "agent-docs",
+    "documentation": "agent-docs",
+    "api": "agent-backend",
+    "database": "agent-backend",
+    "ui": "agent-frontend",
+    "ux": "agent-frontend",
+}
+
+
+def _resolve_agent_id(raw: str) -> str | None:
+    """LLM이 반환한 에이전트 이름을 실제 에이전트 ID로 변환한다."""
+    if not raw:
+        return None
+    normalized = raw.strip().lower()
+    if normalized in _VALID_AGENTS:
+        return normalized
+    for keyword, agent_id in _AGENT_KEYWORDS.items():
+        if keyword in normalized:
+            return agent_id
+    return None  # unassigned
 
 
 class DirectorAgent(BaseAgent):
@@ -68,10 +95,14 @@ class DirectorAgent(BaseAgent):
             max_tokens=10,
             temperature=0.0,
         )
-        result = text.strip().lower()
-        if result not in {"create_epic", "status_query", "clarify"}:
-            return "clarify"
-        return result
+        # 응답이 길거나 마크다운을 포함해도 키워드 추출
+        lower = text.strip().lower()
+        log.info("Classification raw response", text=repr(text[:100]))
+        if "create_epic" in lower:
+            return "create_epic"
+        if "status_query" in lower:
+            return "status_query"
+        return "clarify"
 
     async def _create_epic(self, content: str) -> None:
         prompt = (
@@ -103,16 +134,25 @@ class DirectorAgent(BaseAgent):
                     labels=["agent-task"],
                 )
             )
+            _PRIORITY_MAP = {"critical": 0, "high": 1, "medium": 3, "low": 5}
+            raw_priority = task_spec.get("priority", 3)
+            priority = (
+                _PRIORITY_MAP.get(str(raw_priority).lower(), 3)
+                if isinstance(raw_priority, str)
+                else int(raw_priority)
+            )
+            raw_agent = task_spec.get("agent") or ""
+            assigned = _resolve_agent_id(raw_agent)
             await self._state_store.create_task({
                 "id": task_id,
                 "epic_id": epic_id,
                 "title": task_spec.get("title", ""),
                 "description": task_spec.get("description", ""),
-                "assigned_agent": task_spec.get("agent"),
+                "assigned_agent": assigned,
                 "status": "backlog",
                 "board_column": "Backlog",
                 "github_issue_number": issue_number,
-                "priority": task_spec.get("priority", 3),
+                "priority": priority,
             })
 
         log.info("Epic created", epic_id=epic_id, task_count=len(data.get("tasks", [])))
@@ -137,17 +177,26 @@ class DirectorAgent(BaseAgent):
             return
 
         success = result.get("success", False) if isinstance(result, dict) else False
-        if success:
-            await self._state_store.update_task(task_id, {"status": "done", "board_column": "Done"})
-            log.info("Task approved", task_id=task_id)
-        else:
-            await self._state_store.update_task(
-                task_id,
-                {"status": "ready", "board_column": "Ready", "retry_count_increment": 1},
-            )
-            log.info("Task sent back to Ready", task_id=task_id)
+        target_column = "Done" if success else "Ready"
+        target_status = "done" if success else "ready"
+
+        task = await self._state_store.get_task(task_id)
+        if task and task.github_issue_number:
+            try:
+                await self._git_service.move_issue_to_column(
+                    task.github_issue_number, target_column
+                )
+            except Exception as e:
+                log.error("Review: Board move failed", task_id=task_id, err=str(e))
+                return
+
+        updates: dict = {"status": target_status, "board_column": target_column}
+        if not success:
+            updates["retry_count_increment"] = 1
+        await self._state_store.update_task(task_id, updates)
+        log.info("Task review processed", task_id=task_id, approved=success)
 
     async def execute_task(self, task: Task) -> TaskResult:
         """Director는 Board 태스크를 직접 실행하지 않는다."""
-        log.warn("DirectorAgent.execute_task called — not expected", task_id=task.id)
+        log.warning("DirectorAgent.execute_task called — not expected", task_id=task.id)
         return TaskResult(success=False, error={"message": "Director does not execute tasks"}, artifacts=[])

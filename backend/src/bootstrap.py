@@ -62,7 +62,7 @@ async def bootstrap(config: AppConfig) -> SystemContext:
     await register_builtin_hooks(hook_registry, state_store)
 
     # 7. OrphanCleaner
-    orphan_cleaner = OrphanCleaner(state_store)
+    orphan_cleaner = OrphanCleaner(state_store, git_service)
 
     # 8. 에이전트 생성
     agents = _create_agents(config, message_bus, state_store, git_service, llm_client)
@@ -100,7 +100,12 @@ def _create_llm_client(config: AppConfig) -> Any:
             model=config.local_model_name,
             api_key=config.local_model_api_key,
         )
+    if config.use_cli:
+        from src.core.llm.claude_cli_client import ClaudeCliClient
+        log.info("LLM backend: claude CLI subprocess")
+        return ClaudeCliClient()
     from src.core.llm.claude_client import ClaudeClient
+    log.info("LLM backend: Anthropic API")
     return ClaudeClient(api_key=config.anthropic_api_key)
 
 
@@ -179,6 +184,17 @@ async def shutdown(ctx: SystemContext) -> None:
 
     # BoardWatcher 중지
     await ctx.board_watcher.stop()
+
+    # LLM 클라이언트 / GitService HTTP 연결 종료
+    if hasattr(ctx.llm_client, "close"):
+        try:
+            await ctx.llm_client.close()
+        except Exception as e:
+            log.error("LLM client close error", err=str(e))
+    try:
+        await ctx.git_service.close()
+    except Exception as e:
+        log.error("GitService close error", err=str(e))
 
     # DB 연결 종료
     await close_engine()

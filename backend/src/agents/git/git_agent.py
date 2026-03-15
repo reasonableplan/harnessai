@@ -61,11 +61,14 @@ class GitAgent(BaseAgent):
         return TaskResult(success=True, data={"branch": branch_name}, artifacts=[])
 
     async def _handle_commit(self, task: Task) -> TaskResult:
-        work_dir = self._git_service._work_dir
+        work_dir = self._git_service.work_dir
+        # 커밋 메시지: 250자 초과 시 자름
+        commit_msg = task.title[:250].strip() or f"chore: task {task.id[:8]}"
         try:
-            subprocess.run(["git", "-C", work_dir, "add", "-A"], check=True, capture_output=True)
+            # -u: 이미 추적 중인 파일만 스테이징 (.env 등 미추적 파일 제외)
+            subprocess.run(["git", "-C", work_dir, "add", "-u"], check=True, capture_output=True)
             subprocess.run(
-                ["git", "-C", work_dir, "commit", "-m", task.title],
+                ["git", "-C", work_dir, "commit", "-m", commit_msg],
                 check=True, capture_output=True, text=True,
             )
         except subprocess.CalledProcessError as e:
