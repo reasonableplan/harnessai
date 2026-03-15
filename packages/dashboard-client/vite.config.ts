@@ -12,4 +12,13 @@ export default defineConfig({
       '/ws': { target: 'ws://localhost:3002', ws: true },
     },
   },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
+    coverage: {
+      reporter: ['text', 'lcov'],
+    },
+  },
 });
