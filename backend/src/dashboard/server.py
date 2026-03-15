@@ -10,6 +10,9 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 from src.dashboard.auth import make_auth_checker
 from src.dashboard.event_mapper import EventMapper
@@ -18,6 +21,26 @@ from src.dashboard.websocket_manager import WebSocketManager
 
 _ws_manager: WebSocketManager | None = None
 _event_mapper: EventMapper | None = None
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """OWASP 권고 보안 헤더를 모든 응답에 추가한다."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self' ws: wss:;"
+        )
+        return response
 
 
 def create_app(
@@ -29,6 +52,9 @@ def create_app(
     app = FastAPI(title="Agent Orchestration Dashboard", version="1.0.0")
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+    # 보안 헤더 (CORS보다 먼저 등록 → 모든 응답에 적용)
+    app.add_middleware(SecurityHeadersMiddleware)
 
     # CORS
     app.add_middleware(
