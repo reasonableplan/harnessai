@@ -132,16 +132,8 @@ export function createTilesetBackgroundBuffer(cache: TilesetCache): HTMLCanvasEl
   // 2. Walls
   renderWalls(ctx, cache.roomBuilder);
 
-  // 3. Rugs
-  for (const f of FURNITURE) {
-    if (f.type === 'rug') renderFurnitureItem(ctx, cache, f);
-  }
-
-  // 4. Wall-mounted
-  renderFurnitureGroup(ctx, cache, WALL_MOUNTED);
-
-  // 5. Furniture behind characters
-  renderFurnitureGroup(ctx, cache, BEHIND_CHARS);
+  // Furniture is rendered by the procedural renderer (draw-*.ts) for accuracy.
+  // Tileset furniture coordinates are unreliable — procedural code is detailed and correct.
 
   return buffer;
 }

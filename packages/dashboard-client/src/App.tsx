@@ -9,19 +9,44 @@ import StatsPanel from '@/components/StatsPanel';
 import CommandBar from '@/components/CommandBar';
 import AgentDetailPanel from '@/components/AgentDetailPanel';
 import AgentSettingsModal from '@/components/AgentSettingsModal';
-import CharacterSelectModal from '@/components/CharacterSelectModal';
 import BoardExpandedView from '@/components/BoardExpandedView';
 import ToastContainer from '@/components/ToastContainer';
+import ChatPanel from '@/components/ChatPanel';
 
 type SidePanel = 'activity' | 'tokens' | 'stats';
 
 export default function App() {
-  const { sendCommand } = useWebSocket();
+  const { sendCommand, sendChat } = useWebSocket();
   const updateAgent = useOfficeStore((s) => s.updateAgent);
   const addMessage = useOfficeStore((s) => s.addMessage);
   const updateTokenUsage = useOfficeStore((s) => s.updateTokenUsage);
   const selectedAgent = useOfficeStore((s) => s.selectedAgent);
   const [sidePanel, setSidePanel] = useState<SidePanel>('activity');
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatTarget, setChatTarget] = useState<string | null>(null);
+
+  const handleOpenChat = useCallback((agentId: string) => {
+    setChatTarget(agentId);
+    setChatOpen(true);
+  }, []);
+
+  const handleCloseChat = useCallback(() => {
+    setChatOpen(false);
+  }, []);
+
+  const handleSendChat = useCallback(
+    (content: string) => {
+      sendChat(content);
+      const { addChatMessage } = useOfficeStore.getState();
+      addChatMessage({
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content,
+        timestamp: new Date().toISOString(),
+      });
+    },
+    [sendChat],
+  );
 
   // Demo mode: simulate agent activity when there is no real server
   const startDemo = useCallback(() => {
@@ -162,7 +187,7 @@ export default function App() {
         {/* Right sidebar: agent detail OR tabs */}
         <div className="w-64 flex-shrink-0 hidden lg:flex flex-col">
           {selectedAgent ? (
-            <AgentDetailPanel />
+            <AgentDetailPanel onOpenChat={handleOpenChat} />
           ) : (
             <>
               {/* Tab buttons */}
@@ -215,8 +240,16 @@ export default function App() {
       {/* Overlays */}
       <BoardExpandedView />
       <AgentSettingsModal />
-      <CharacterSelectModal />
       <ToastContainer />
+
+      {/* Chat Panel */}
+      {chatOpen && (
+        <ChatPanel
+          targetAgent={chatTarget}
+          onClose={handleCloseChat}
+          onSend={handleSendChat}
+        />
+      )}
     </div>
   );
 }

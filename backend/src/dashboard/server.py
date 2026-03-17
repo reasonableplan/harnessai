@@ -1,7 +1,8 @@
 """FastAPI 대시보드 서버 — REST + WebSocket."""
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
+import asyncio
+import json
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
@@ -14,9 +15,14 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from src.core.logging.logger import get_logger
+from src.core.types import UserInput
 from src.dashboard.auth import make_auth_checker
 from src.dashboard.routes import agents, command, hooks, stats, tasks
+from src.dashboard.routes.deps import get_agent_by_id, get_all_agents, get_director
 from src.dashboard.websocket_manager import WebSocketManager
+
+_log = get_logger("DashboardServer")
 
 _ws_manager: WebSocketManager | None = None
 
@@ -76,6 +82,9 @@ def create_app(
     global _ws_manager
     _ws_manager = WebSocketManager()
 
+    # 진행 중인 WS 백그라운드 태스크 — GC 방지
+    _ws_bg_tasks: set[asyncio.Task] = set()
+
     @app.websocket("/ws")
     async def websocket_endpoint(ws: WebSocket):
         # 첫 메시지 기반 인증 (auth_token이 None이면 dev 모드 — 즉시 승인)
@@ -84,9 +93,80 @@ def create_app(
             return
         try:
             while True:
-                data = await ws.receive_text()
-                if data == "ping":
+                raw = await ws.receive_text()
+                if raw == "ping":
                     await ws.send_text('{"type":"pong"}')
+                    continue
+
+                try:
+                    msg = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+
+                msg_type = msg.get("type", "")
+
+                if msg_type == "chat":
+                    content = msg.get("content", "").strip()
+                    if not content:
+                        continue
+                    try:
+                        director = get_director()
+                    except RuntimeError:
+                        _log.error("DirectorAgent not available for chat")
+                        continue
+                    user_input = UserInput(source="dashboard", content=content)
+                    task = asyncio.create_task(director.handle_user_input(user_input))
+                    _ws_bg_tasks.add(task)
+                    task.add_done_callback(_ws_bg_tasks.discard)
+
+                elif msg_type in ("plan.approve", "plan.revise", "plan.commit"):
+                    action = msg_type.split(".")[1]  # "approve" / "revise" / "commit"
+                    content = msg.get("content", "")
+                    try:
+                        director = get_director()
+                    except RuntimeError:
+                        _log.error("DirectorAgent not available for plan action")
+                        continue
+                    task = asyncio.create_task(
+                        director.handle_plan_action(action, content)
+                    )
+                    _ws_bg_tasks.add(task)
+                    task.add_done_callback(_ws_bg_tasks.discard)
+
+                elif msg_type == "agent-pause":
+                    payload = msg.get("payload", {})
+                    agent_id = payload.get("agentId", "")
+                    agent = get_agent_by_id(agent_id)
+                    if agent:
+                        task = asyncio.create_task(agent.pause())
+                        _ws_bg_tasks.add(task)
+                        task.add_done_callback(_ws_bg_tasks.discard)
+                        _log.info("Agent pause requested", agent_id=agent_id)
+
+                elif msg_type == "agent-resume":
+                    payload = msg.get("payload", {})
+                    agent_id = payload.get("agentId", "")
+                    agent = get_agent_by_id(agent_id)
+                    if agent:
+                        task = asyncio.create_task(agent.resume())
+                        _ws_bg_tasks.add(task)
+                        task.add_done_callback(_ws_bg_tasks.discard)
+                        _log.info("Agent resume requested", agent_id=agent_id)
+
+                elif msg_type == "system-pause":
+                    for agent in get_all_agents():
+                        task = asyncio.create_task(agent.pause())
+                        _ws_bg_tasks.add(task)
+                        task.add_done_callback(_ws_bg_tasks.discard)
+                    _log.info("System pause requested")
+
+                elif msg_type == "system-resume":
+                    for agent in get_all_agents():
+                        task = asyncio.create_task(agent.resume())
+                        _ws_bg_tasks.add(task)
+                        task.add_done_callback(_ws_bg_tasks.discard)
+                    _log.info("System resume requested")
+
         except WebSocketDisconnect:
             pass
         except Exception:

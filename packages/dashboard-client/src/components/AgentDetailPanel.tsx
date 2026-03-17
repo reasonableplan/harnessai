@@ -21,10 +21,11 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   delivering: { label: 'DELIVERING', color: 'text-purple-400' },
   reviewing: { label: 'REVIEWING', color: 'text-amber-400' },
   waiting: { label: 'WAITING', color: 'text-orange-400' },
+  paused: { label: 'PAUSED', color: 'text-gray-500' },
   error: { label: 'ERROR', color: 'text-red-400' },
 };
 
-export default function AgentDetailPanel() {
+export default function AgentDetailPanel({ onOpenChat }: { onOpenChat?: (agentId: string) => void }) {
   const selectedAgent = useOfficeStore((s) => s.selectedAgent);
   const agents = useOfficeStore((s) => s.agents);
   const tasks = useOfficeStore((s) => s.tasks);
@@ -33,13 +34,14 @@ export default function AgentDetailPanel() {
   const tokenBudget = useOfficeStore((s) => s.tokenBudget);
   const selectAgent = useOfficeStore((s) => s.selectAgent);
   const openSettingsModal = useOfficeStore((s) => s.openSettingsModal);
-  const openCharacterModal = useOfficeStore((s) => s.openCharacterModal);
 
   const [stats, setStats] = useState<AgentStatsState | null>(null);
+  const [showLog, setShowLog] = useState(false);
 
   useEffect(() => {
     if (!selectedAgent) {
       setStats(null);
+      setShowLog(false);
       return;
     }
     let cancelled = false;
@@ -64,21 +66,26 @@ export default function AgentDetailPanel() {
   }, [selectedAgent]);
 
   const agent = selectedAgent ? agents[selectedAgent] : null;
-
   const agentTasks = agent ? Object.values(tasks).filter((t) => t.assignedAgent === agent.id) : [];
-
-  const agentMessages = agent ? messages.filter((m) => m.from === agent.id).slice(0, 10) : [];
-
+  const agentMessages = agent ? messages.filter((m) => m.from === agent.id) : [];
   const statusInfo = agent
     ? (STATUS_LABELS[agent.status] ?? STATUS_LABELS.idle)
     : STATUS_LABELS.idle;
-
   const agentTokens = agent ? tokenUsage[agent.id] : null;
   const totalUsed = agent ? Object.values(tokenUsage).reduce((sum, t) => sum + t.totalTokens, 0) : 0;
   const agentPercent =
     agentTokens && totalUsed > 0 ? (agentTokens.totalTokens / totalUsed) * 100 : 0;
   const budgetPercent =
     agentTokens && tokenBudget > 0 ? (agentTokens.totalTokens / tokenBudget) * 100 : 0;
+  const isAgentPaused = agent?.status === 'paused';
+
+  const handleTogglePause = () => {
+    if (!agent) return;
+    const wsMsg = isAgentPaused
+      ? { type: 'agent-resume', payload: { agentId: agent.id } }
+      : { type: 'agent-pause', payload: { agentId: agent.id } };
+    window.dispatchEvent(new CustomEvent('ws-send', { detail: wsMsg }));
+  };
 
   return (
     <AnimatePresence>
@@ -89,8 +96,8 @@ export default function AgentDetailPanel() {
           exit={{ opacity: 0 }}
           className="h-full bg-[#3A2410] border-l-2 border-[#5C3A1A] flex flex-col"
         >
-          {/* Header */}
-          <div className="flex items-center justify-between px-3 py-3 border-b border-[#5C3A1A]">
+          {/* Header — agent name + STOP toggle + close */}
+          <div className="flex items-center justify-between px-3 py-2 border-b border-[#5C3A1A]">
             <div className="flex items-center gap-2">
               <div
                 className="w-3 h-3"
@@ -100,12 +107,25 @@ export default function AgentDetailPanel() {
                 {DOMAIN_TITLES[agent.domain] ?? agent.domain}
               </span>
             </div>
-            <button
-              onClick={() => selectAgent(null)}
-              className="font-pixel text-[10px] text-gray-500 hover:text-gray-200 px-1"
-            >
-              X
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handleTogglePause}
+                className={`font-pixel text-[5px] px-1.5 py-0.5 border transition-colors ${
+                  isAgentPaused
+                    ? 'border-green-600 text-green-400 hover:bg-green-900/30'
+                    : 'border-red-600 text-red-400 hover:bg-red-900/30'
+                }`}
+                title={isAgentPaused ? 'Resume agent' : 'Stop agent'}
+              >
+                {isAgentPaused ? 'START' : 'STOP'}
+              </button>
+              <button
+                onClick={() => selectAgent(null)}
+                className="font-pixel text-[10px] text-gray-500 hover:text-gray-200 px-1"
+              >
+                X
+              </button>
+            </div>
           </div>
 
           {/* Status */}
@@ -137,11 +157,10 @@ export default function AgentDetailPanel() {
           </div>
 
           {/* Token Usage */}
-          {agentTokens && (
+          {agentTokens && !showLog && (
             <div className="px-3 py-2 border-b border-[#5C3A1A]/50">
               <span className="font-pixel text-[6px] text-gray-500">TOKEN USAGE</span>
               <div className="mt-1.5 space-y-1">
-                {/* Total bar */}
                 <div className="flex items-center justify-between">
                   <span className="font-pixel text-[5px] text-gray-400">TOTAL</span>
                   <span
@@ -161,7 +180,6 @@ export default function AgentDetailPanel() {
                     }}
                   />
                 </div>
-                {/* I/O breakdown */}
                 <div className="flex items-center gap-3">
                   <div>
                     <span className="font-pixel text-[5px] text-blue-400">IN: </span>
@@ -176,7 +194,6 @@ export default function AgentDetailPanel() {
                     </span>
                   </div>
                 </div>
-                {/* Percentages */}
                 <div className="flex items-center justify-between">
                   <span className="font-pixel text-[5px] text-gray-500">
                     {agentPercent.toFixed(1)}% of total
@@ -201,8 +218,8 @@ export default function AgentDetailPanel() {
             </div>
           )}
 
-          {/* Agent Stats */}
-          {stats && (
+          {/* Agent Stats (hidden when log is shown) */}
+          {stats && !showLog && (
             <div className="px-3 py-2 border-b border-[#5C3A1A]/50">
               <span className="font-pixel text-[6px] text-gray-500">PERFORMANCE</span>
               <div className="mt-1 space-y-1">
@@ -226,88 +243,115 @@ export default function AgentDetailPanel() {
                     avg: {formatDuration(stats.avgDurationMs)}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  {stats.failedTasks > 0 && (
-                    <span className="font-pixel text-[5px] text-red-400">
-                      {stats.failedTasks} failed
-                    </span>
-                  )}
-                  {stats.totalRetries > 0 && (
-                    <span className="font-pixel text-[5px] text-yellow-400">
-                      {stats.totalRetries} retries
-                    </span>
-                  )}
-                </div>
               </div>
             </div>
           )}
 
-          {/* Tasks */}
-          <div className="px-3 py-2 border-b border-[#5C3A1A]/50">
-            <span className="font-pixel text-[6px] text-gray-500">
-              ASSIGNED TASKS ({agentTasks.length})
-            </span>
-            <div className="mt-1 space-y-1 max-h-32 overflow-y-auto">
-              {agentTasks.length === 0 && (
-                <span className="font-pixel text-[5px] text-gray-600">No tasks</span>
-              )}
-              {agentTasks.map((task) => {
-                const colColor =
-                  task.boardColumn === 'Done'
-                    ? 'bg-green-600'
-                    : task.boardColumn === 'In Progress'
-                      ? 'bg-yellow-600'
-                      : task.boardColumn === 'Failed'
-                        ? 'bg-red-600'
-                        : task.boardColumn === 'Review'
-                          ? 'bg-purple-600'
-                          : 'bg-gray-600';
-                return (
-                  <div key={task.id} className="flex items-center gap-1 px-1 py-0.5 bg-[#2D1B0E]">
-                    <div className={`w-1.5 h-1.5 ${colColor} flex-shrink-0`} />
-                    <span className="font-pixel text-[5px] text-gray-300 truncate">
-                      {task.title || task.id}
+          {/* Tasks (hidden when log is shown) */}
+          {!showLog && (
+            <div className="px-3 py-2 border-b border-[#5C3A1A]/50">
+              <span className="font-pixel text-[6px] text-gray-500">
+                ASSIGNED TASKS ({agentTasks.length})
+              </span>
+              <div className="mt-1 space-y-1 max-h-32 overflow-y-auto">
+                {agentTasks.length === 0 && (
+                  <span className="font-pixel text-[5px] text-gray-600">No tasks</span>
+                )}
+                {agentTasks.map((task) => {
+                  const colColor =
+                    task.boardColumn === 'Done'
+                      ? 'bg-green-600'
+                      : task.boardColumn === 'In Progress'
+                        ? 'bg-yellow-600'
+                        : task.boardColumn === 'Failed'
+                          ? 'bg-red-600'
+                          : task.boardColumn === 'Review'
+                            ? 'bg-purple-600'
+                            : 'bg-gray-600';
+                  return (
+                    <div key={task.id} className="flex items-center gap-1 px-1 py-0.5 bg-[#2D1B0E]">
+                      <div className={`w-1.5 h-1.5 ${colColor} flex-shrink-0`} />
+                      <span className="font-pixel text-[5px] text-gray-300 truncate">
+                        {task.title || task.id}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Agent Log (shown when LOG is active) */}
+          {showLog ? (
+            <div className="flex-1 px-3 py-2 overflow-y-auto">
+              <span className="font-pixel text-[6px] text-gray-500">
+                AGENT LOG ({agentMessages.length})
+              </span>
+              <div className="mt-1 space-y-1">
+                {agentMessages.length === 0 && (
+                  <span className="font-pixel text-[5px] text-gray-600">No log entries</span>
+                )}
+                {agentMessages.map((msg) => (
+                  <div key={msg.id} className="px-1 py-0.5 border-b border-[#3A2410]/30">
+                    <div className="flex items-center justify-between">
+                      <span className="font-pixel text-[4px] text-gray-500">{msg.type}</span>
+                      <span className="font-pixel text-[4px] text-gray-600">
+                        {new Date(msg.timestamp).toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <span className="font-pixel text-[5px] text-gray-300 break-all">
+                      {typeof msg.content === 'string'
+                        ? msg.content.slice(0, 120)
+                        : JSON.stringify(msg.content).slice(0, 120)}
                     </span>
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
-          </div>
-
-          {/* Recent messages from this agent */}
-          <div className="flex-1 px-3 py-2 overflow-y-auto">
-            <span className="font-pixel text-[6px] text-gray-500">RECENT ACTIVITY</span>
-            <div className="mt-1 space-y-1">
-              {agentMessages.length === 0 && (
-                <span className="font-pixel text-[5px] text-gray-600">No recent activity</span>
-              )}
-              {agentMessages.map((msg) => (
-                <div key={msg.id} className="px-1 py-0.5 border-b border-[#3A2410]/30">
-                  <span className="font-pixel text-[5px] text-gray-300 break-all">
-                    {typeof msg.content === 'string'
-                      ? msg.content.slice(0, 80)
-                      : JSON.stringify(msg.content).slice(0, 80)}
-                  </span>
-                </div>
-              ))}
+          ) : (
+            /* Recent Activity (compact, when log is hidden) */
+            <div className="flex-1 px-3 py-2 overflow-y-auto">
+              <span className="font-pixel text-[6px] text-gray-500">RECENT ACTIVITY</span>
+              <div className="mt-1 space-y-1">
+                {agentMessages.slice(0, 5).length === 0 && (
+                  <span className="font-pixel text-[5px] text-gray-600">No recent activity</span>
+                )}
+                {agentMessages.slice(0, 5).map((msg) => (
+                  <div key={msg.id} className="px-1 py-0.5 border-b border-[#3A2410]/30">
+                    <span className="font-pixel text-[5px] text-gray-300 break-all">
+                      {typeof msg.content === 'string'
+                        ? msg.content.slice(0, 80)
+                        : JSON.stringify(msg.content).slice(0, 80)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Controls */}
-          <div className="px-3 py-2 border-t border-[#5C3A1A] flex gap-2 flex-wrap">
-            <button className="pixel-btn text-[6px] flex-1">FOCUS</button>
-            <button className="pixel-btn text-[6px] flex-1">RESTART</button>
+          {/* Bottom Controls */}
+          <div className="px-3 py-2 border-t border-[#5C3A1A] flex gap-2">
+            <button
+              className="pixel-btn text-[6px] flex-1 !bg-blue-800 hover:!bg-blue-700"
+              onClick={() => agent && onOpenChat?.(agent.id)}
+            >
+              CHAT
+            </button>
+            <button
+              className={`pixel-btn text-[6px] flex-1 ${
+                showLog
+                  ? '!bg-amber-700 hover:!bg-amber-600'
+                  : '!bg-gray-700 hover:!bg-gray-600'
+              }`}
+              onClick={() => setShowLog(!showLog)}
+            >
+              {showLog ? 'INFO' : 'LOG'}
+            </button>
             <button
               className="pixel-btn text-[6px] flex-1"
               onClick={() => agent && openSettingsModal(agent.id)}
             >
               SETTINGS
-            </button>
-            <button
-              className="pixel-btn text-[6px] flex-1"
-              onClick={() => agent && openCharacterModal(agent.id)}
-            >
-              CHARACTER
             </button>
           </div>
         </motion.div>

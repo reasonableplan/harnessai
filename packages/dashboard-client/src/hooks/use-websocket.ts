@@ -147,6 +147,43 @@ export function useWebSocket() {
         break;
       }
 
+      case 'director.message': {
+        const content = (payload as Record<string, unknown>).content;
+        addMessage({
+          id: `dir-msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          type: 'director.message',
+          from: 'director',
+          content: typeof content === 'string' ? content : JSON.stringify(content),
+          timestamp: new Date().toISOString(),
+        });
+        const { addChatMessage } = useOfficeStore.getState();
+        addChatMessage({
+          id: `dir-msg-${Date.now()}`,
+          role: 'assistant',
+          content: typeof content === 'string' ? content : JSON.stringify(content),
+          timestamp: new Date().toISOString(),
+        });
+        break;
+      }
+
+      case 'director.plan': {
+        const { setActivePlan } = useOfficeStore.getState();
+        setActivePlan(payload as Record<string, unknown>);
+        break;
+      }
+
+      case 'director.committed': {
+        const commitPayload = payload as Record<string, unknown>;
+        const issueCount = Array.isArray(commitPayload.issues) ? commitPayload.issues.length : 0;
+        addToast({
+          id: `toast-committed-${Date.now()}`,
+          type: 'success',
+          title: 'Epic Created',
+          message: `${commitPayload.epicTitle ?? 'Epic'}: ${issueCount} issues created`,
+        });
+        break;
+      }
+
       case 'auth.ok':
         // 서버 인증 확인 — 별도 처리 불필요
         break;
@@ -251,17 +288,36 @@ export function useWebSocket() {
     wsRef.current.send(JSON.stringify(msg));
   }, []);
 
+  const sendChat = useCallback((content: string) => {
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({ type: 'chat', content }));
+  }, []);
+
+  const sendRaw = useCallback((msg: Record<string, unknown>) => {
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify(msg));
+  }, []);
+
   useEffect(() => {
     connect();
+
+    // Listen for ws-send custom events from UI components (buttons)
+    const handleWsSend = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail) sendRaw(detail);
+    };
+    window.addEventListener('ws-send', handleWsSend);
+
     return () => {
+      window.removeEventListener('ws-send', handleWsSend);
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
       wsRef.current?.close();
     };
-  }, [connect]);
+  }, [connect, sendRaw]);
 
-  return { sendCommand };
+  return { sendCommand, sendChat, sendRaw };
 }
 
 /**

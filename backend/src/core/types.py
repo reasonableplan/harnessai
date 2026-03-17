@@ -80,6 +80,61 @@ class MessageType:
     USER_INPUT = "user.input"
     SYSTEM_COMMAND = "system.command"
     AGENT_CONFIG_UPDATED = "agent.config.updated"
+    # Director 대화형 워크플로우
+    DIRECTOR_MESSAGE = "director.message"
+    DIRECTOR_PLAN = "director.plan"
+    DIRECTOR_COMMITTED = "director.committed"
+
+
+# ===== Plan Types (Director 대화형 워크플로우) =====
+
+class PlanStage(str, Enum):
+    GATHERING = "gathering"
+    STRUCTURING = "structuring"
+    CONFIRMING = "confirming"
+    COMMITTED = "committed"
+
+
+class TechStack(BaseModel):
+    frontend: list[str] = Field(default_factory=list)
+    backend: list[str] = Field(default_factory=list)
+    database: list[str] = Field(default_factory=list)
+    infra: list[str] = Field(default_factory=list)
+    etc: list[str] = Field(default_factory=list)
+
+
+class ProjectContext(BaseModel):
+    topic: str = ""
+    purpose: str = ""
+    target_users: str = ""
+    scope: str = ""
+    tech_stack: TechStack = Field(default_factory=TechStack)
+    existing_system: str = ""
+    constraints: list[str] = Field(default_factory=list)
+    non_goals: list[str] = Field(default_factory=list)
+
+
+class TaskDraft(BaseModel):
+    temp_id: str
+    title: str
+    description: str = ""
+    agent: str | None = None
+    priority: int = 3
+    complexity: str = "medium"
+    dependencies: list[str] = Field(default_factory=list)
+
+
+class EpicPlan(BaseModel):
+    session_id: str
+    stage: PlanStage = PlanStage.GATHERING
+    goal: str = ""
+    project: ProjectContext = Field(default_factory=ProjectContext)
+    decisions: list[str] = Field(default_factory=list)
+    epic_title: str = ""
+    epic_description: str = ""
+    tasks: list[TaskDraft] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ===== Domain Models =====

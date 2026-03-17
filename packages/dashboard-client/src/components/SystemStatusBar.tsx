@@ -142,13 +142,23 @@ export default function SystemStatusBar() {
         <span className="text-amber-300 tabular-nums">{formatTime(elapsedTime)}</span>
       </div>
 
-      {/* Pause/Resume */}
+      {/* Stop All / Start All */}
       <button
-        onClick={togglePause}
-        className="pixel-btn text-[7px] px-2 py-1"
-        title={isPaused ? 'Resume' : 'Pause'}
+        onClick={() => {
+          togglePause();
+          const msg = isPaused
+            ? { type: 'system-resume', payload: {} }
+            : { type: 'system-pause', payload: {} };
+          window.dispatchEvent(new CustomEvent('ws-send', { detail: msg }));
+        }}
+        className={`pixel-btn text-[7px] px-2 py-1 ${
+          isPaused
+            ? '!bg-green-800 hover:!bg-green-700'
+            : '!bg-red-800 hover:!bg-red-700'
+        }`}
+        title={isPaused ? 'Start all agents' : 'Stop all agents'}
       >
-        {isPaused ? 'RESUME' : 'PAUSE'}
+        {isPaused ? 'START ALL' : 'STOP ALL'}
       </button>
     </div>
   );

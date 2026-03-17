@@ -1,9 +1,9 @@
 """MessageBus 메시지 → WebSocket 이벤트 변환."""
 from __future__ import annotations
 
+from src.core.logging.logger import get_logger
 from src.core.messaging.message_bus import MessageBus
 from src.core.types import Message, MessageType
-from src.core.logging.logger import get_logger
 
 log = get_logger("EventMapper")
 
@@ -47,4 +47,16 @@ class EventMapper:
             }
         if msg.type == MessageType.EPIC_PROGRESS:
             return "epic.progress", payload
+        if msg.type == MessageType.DIRECTOR_MESSAGE:
+            return "director.message", {
+                "content": payload.get("content", ""),
+            }
+        if msg.type == MessageType.DIRECTOR_PLAN:
+            return "director.plan", payload
+        if msg.type == MessageType.DIRECTOR_COMMITTED:
+            return "director.committed", {
+                "epicId": payload.get("epicId"),
+                "epicTitle": payload.get("epicTitle"),
+                "issues": payload.get("issues", []),
+            }
         return None, {}

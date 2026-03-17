@@ -28,22 +28,20 @@ export interface WallTileRow {
  *  room-builder cols 0-1: cream/light, cols 2-3: orange, cols 4-5: red, cols 6-7: dark red, cols 8-9: brown wood
  *  Wall rows run from ~row 2 (top) to ~row 10 (wainscoting) */
 export const WALL_TILE_ROWS: WallTileRow[] = [
-  { col: 0, row: 2 },  // wall row 0: top cap
-  { col: 0, row: 3 },  // wall row 1: upper wall
-  { col: 0, row: 4 },  // wall row 2: mid wall
-  { col: 0, row: 5 },  // wall row 3: lower wall
-  { col: 0, row: 7 },  // wall row 4: wainscoting
+  { col: 6, row: 2 },  // wall row 0: top cap (brown/warm wood)
+  { col: 6, row: 3 },  // wall row 1: upper wall
+  { col: 6, row: 4 },  // wall row 2: mid wall
+  { col: 6, row: 5 },  // wall row 3: lower wall
+  { col: 6, row: 7 },  // wall row 4: wainscoting
 ];
 
-/** Floor tile variants from room-builder (honey wood — cols 4-5, rows 11-14).
- *  Multiple variants for visual variety via seeded random. */
+/** Floor tile variants from room-builder (warm brown wood planks — col 6-7, rows 11-13).
+ *  Dark warm wood, no white/light tiles. */
 export const FLOOR_TILE_VARIANTS: Array<{ col: number; row: number }> = [
-  { col: 4, row: 11 },
-  { col: 5, row: 11 },
-  { col: 4, row: 12 },
-  { col: 5, row: 12 },
-  { col: 4, row: 13 },
-  { col: 5, row: 13 },
+  { col: 6, row: 11 },
+  { col: 7, row: 11 },
+  { col: 6, row: 12 },
+  { col: 7, row: 12 },
 ];
 
 // ---- Furniture sprite references (modern-interiors / kitchen) ----

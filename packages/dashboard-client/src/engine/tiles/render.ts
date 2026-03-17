@@ -154,14 +154,36 @@ export function createBackgroundBuffer(): HTMLCanvasElement {
 }
 
 /**
- * Async version: loads tileset images and renders background from them.
- * Falls back to procedural rendering if tileset loading fails.
+ * Async version: loads tileset images for floor/walls, then overlays procedural furniture.
+ * Falls back to fully procedural rendering if tileset loading fails.
  */
 export async function createBackgroundBufferAsync(): Promise<HTMLCanvasElement> {
   try {
     const cache = await loadAllTilesets();
     const buffer = createTilesetBackgroundBuffer(cache);
-    if (buffer) return buffer;
+    if (buffer) {
+      // Tileset provides floor + walls only.
+      // Overlay procedural furniture on top for accurate rendering.
+      const ctx = buffer.getContext('2d')!;
+      ctx.imageSmoothingEnabled = false;
+      // Reset transform (tileset renderer already applied scale) then re-apply
+      ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
+
+      // Rugs first (behind everything)
+      for (const f of FURNITURE) {
+        if (f.type === 'rug') drawFurnitureItem(ctx, f);
+      }
+      // Wall-mounted items
+      for (const f of FURNITURE) {
+        if (['window', 'whiteboard', 'poster-indie', 'poster-jam'].includes(f.type)) {
+          drawFurnitureItem(ctx, f);
+        }
+      }
+      // Furniture behind characters
+      renderFurnitureBehind(ctx);
+
+      return buffer;
+    }
   } catch {
     if (import.meta.env.DEV) console.warn('[render] Tileset load failed, using procedural fallback');
   }

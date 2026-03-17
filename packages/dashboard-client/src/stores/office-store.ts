@@ -76,6 +76,13 @@ export interface HookState {
   enabled: boolean;
 }
 
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
+
 export interface OfficeStore {
   agents: Record<string, AgentState>;
   tasks: Record<string, TaskState>;
@@ -97,6 +104,10 @@ export interface OfficeStore {
   characterVersion: number;
   /** true when a real server has sent an init event */
   connected: boolean;
+  /** Director 대화 메시지 */
+  chatMessages: ChatMessage[];
+  /** Director의 현재 EpicPlan */
+  activePlan: Record<string, unknown> | null;
 
   setInitialState(data: {
     agents?: Record<string, AgentState>;
@@ -126,6 +137,8 @@ export interface OfficeStore {
   openCharacterModal(agentId: string): void;
   closeCharacterModal(): void;
   bumpCharacterVersion(): void;
+  addChatMessage(msg: ChatMessage): void;
+  setActivePlan(plan: Record<string, unknown> | null): void;
 }
 
 const DEFAULT_AGENTS: Record<string, AgentState> = {
@@ -193,6 +206,8 @@ export const useOfficeStore = create<OfficeStore>((set) => ({
   characterModalAgent: null,
   characterVersion: 0,
   connected: false,
+  chatMessages: [],
+  activePlan: null,
 
   setInitialState: (data) =>
     set((state) => {
@@ -349,4 +364,11 @@ export const useOfficeStore = create<OfficeStore>((set) => ({
   closeCharacterModal: () => set({ characterModalAgent: null }),
 
   bumpCharacterVersion: () => set((state) => ({ characterVersion: state.characterVersion + 1 })),
+
+  addChatMessage: (msg) =>
+    set((state) => ({
+      chatMessages: [...state.chatMessages, msg].slice(-100),
+    })),
+
+  setActivePlan: (plan) => set({ activePlan: plan }),
 }));
