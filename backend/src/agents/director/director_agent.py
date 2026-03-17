@@ -123,9 +123,23 @@ class DirectorAgent(BaseAgent):
         # 활성 플랜이 있으면 Stage별 처리
         plan = self._active_plan
         if plan.stage == PlanStage.COMMITTED:
-            # 이미 확정된 플랜 — 새 세션 시작 가능
+            # 이미 확정된 플랜 — 새 세션으로 리셋 후 재분류 (재귀 방지)
             self._active_plan = None
-            await self.handle_user_input(user_input)
+            self._conversation.clear()
+            action = await self._classify_input(safe_content)
+            log.info("User input classified (post-commit)", action=action)
+            if action == "create_epic":
+                self._active_plan = EpicPlan(
+                    session_id=str(uuid.uuid4()),
+                    goal=safe_content,
+                )
+                await self._handle_gathering(safe_content)
+            elif action == "status_query":
+                await self._handle_status_query(safe_content)
+            else:
+                await self._broadcast_director_message(
+                    "요청을 좀 더 구체적으로 말씀해주시겠어요?"
+                )
             return
 
         self._append_conversation("user", safe_content)
@@ -335,7 +349,7 @@ class DirectorAgent(BaseAgent):
     # ===== Commit (GitHub Issues 생성) =====
 
     async def _commit_plan(self) -> None:
-        """확정된 플랜을 DB + GitHub Issues로 변환한다."""
+        """확정된 플랜을 GitHub Issues(Board) 먼저 → DB 나중으로 변환한다."""
         plan = self._active_plan
         if plan is None:
             return
@@ -344,41 +358,20 @@ class DirectorAgent(BaseAgent):
             await self._broadcast_director_message("태스크가 없어서 생성할 수 없습니다.")
             return
 
-        epic_id = str(uuid.uuid4())
-
-        # Board-first: Epic 생성
-        await self._state_store.create_epic({
-            "id": epic_id,
-            "title": plan.epic_title or plan.project.topic or "Untitled Epic",
-            "description": plan.epic_description or plan.project.purpose or "",
-            "status": "active",
-        })
-
         # temp_id → 실제 task_id 매핑 (의존성 해소용)
         temp_to_real: dict[str, str] = {}
-        created_issues: list[dict[str, Any]] = []
-
         for draft in plan.tasks:
-            task_id = str(uuid.uuid4())
-            temp_to_real[draft.temp_id] = task_id
+            temp_to_real[draft.temp_id] = str(uuid.uuid4())
 
+        # ---- Phase 1: Board-first — GitHub Issues 모두 생성 ----
+        issue_results: list[dict[str, Any]] = []
         for draft in plan.tasks:
-            task_id = temp_to_real[draft.temp_id]
-
-            # 의존성: temp_id → github_issue_number (나중에 해소)
-            dep_labels = []
-            for dep_temp_id in draft.dependencies:
-                dep_task_id = temp_to_real.get(dep_temp_id)
-                if dep_task_id:
-                    dep_labels.append(f"depends-on:{dep_temp_id}")
-
             body_parts = [draft.description]
             if draft.dependencies:
                 body_parts.append(
                     "\n\n**Dependencies:** " + ", ".join(draft.dependencies)
                 )
 
-            # GitHub Issue 생성
             try:
                 issue_number = await self._git_service.create_issue(
                     IssueSpec(
@@ -388,33 +381,66 @@ class DirectorAgent(BaseAgent):
                     )
                 )
             except Exception as e:
-                log.error("Failed to create issue", title=draft.title, err=str(e))
-                issue_number = None
+                log.error("Failed to create issue, aborting commit", title=draft.title, err=str(e))
+                # 롤백: 이미 생성된 Issues를 close
+                for created in issue_results:
+                    try:
+                        await self._git_service.close_issue(created["issue_number"])
+                    except Exception as rollback_err:
+                        log.warning("Rollback: failed to close issue",
+                                    issue=created["issue_number"], err=str(rollback_err))
+                await self._broadcast_director_message(
+                    f"GitHub Issue 생성 실패: {draft.title}. "
+                    f"이미 생성된 {len(issue_results)}개 Issue를 정리했습니다."
+                )
+                return
 
-            assigned = _resolve_agent_id(draft.agent or "")
+            issue_results.append({
+                "temp_id": draft.temp_id,
+                "issue_number": issue_number,
+                "title": draft.title,
+                "agent": draft.agent,
+                "priority": draft.priority,
+                "complexity": draft.complexity,
+                "description": draft.description,
+                "dependencies": draft.dependencies,
+            })
 
-            # DB 태스크 생성
+        # ---- Phase 2: DB — Epic + Tasks 생성 (Board 성공 후) ----
+        epic_id = str(uuid.uuid4())
+        await self._state_store.create_epic({
+            "id": epic_id,
+            "title": plan.epic_title or plan.project.topic or "Untitled Epic",
+            "description": plan.epic_description or plan.project.purpose or "",
+            "status": "active",
+        })
+
+        created_issues: list[dict[str, Any]] = []
+        for item in issue_results:
+            task_id = temp_to_real[item["temp_id"]]
+            assigned = _resolve_agent_id(item["agent"] or "")
+
             await self._state_store.create_task({
                 "id": task_id,
                 "epic_id": epic_id,
-                "title": draft.title,
-                "description": draft.description,
+                "title": item["title"],
+                "description": item["description"],
                 "assigned_agent": assigned,
                 "status": "backlog",
                 "board_column": "Backlog",
-                "github_issue_number": issue_number,
-                "priority": draft.priority,
-                "complexity": draft.complexity,
+                "github_issue_number": item["issue_number"],
+                "priority": item["priority"],
+                "complexity": item["complexity"],
                 "dependencies": [
-                    temp_to_real[d] for d in draft.dependencies if d in temp_to_real
+                    temp_to_real[d] for d in item["dependencies"] if d in temp_to_real
                 ],
             })
 
             created_issues.append({
                 "task_id": task_id,
-                "title": draft.title,
+                "title": item["title"],
                 "agent": assigned,
-                "issue_number": issue_number,
+                "issue_number": item["issue_number"],
             })
 
         plan.stage = PlanStage.COMMITTED

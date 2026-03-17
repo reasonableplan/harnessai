@@ -82,6 +82,11 @@ class GitService:
         except Exception as e:
             raise GitServiceError("GraphQL", cause=e) from e
 
+    async def check_rate_limit(self) -> int:
+        """GitHub API rate limit 잔여 횟수를 반환한다."""
+        data = await self._rest("GET", "/rate_limit")
+        return data.get("rate", {}).get("remaining", 0)
+
     def _project_owner_field(self) -> str:
         """GraphQL 쿼리에서 owner 타입 필드명을 반환한다 (user 또는 organization)."""
         return self._owner_gql_type

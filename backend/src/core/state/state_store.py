@@ -34,6 +34,14 @@ class StateStore:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 
+    # ===== Health =====
+
+    async def check_db_connection(self) -> bool:
+        """DB 연결 상태를 확인한다. 정상이면 True, 실패 시 예외를 raise한다."""
+        async with self._session_factory() as session:
+            await session.execute(text("SELECT 1"))
+        return True
+
     # ===== Agent =====
 
     async def register_agent(self, agent_data: dict[str, Any]) -> None:

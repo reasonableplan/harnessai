@@ -76,7 +76,7 @@ class WebSocketManager:
             return
         payload = json.dumps({
             "type": event_type,
-            "data": data,
+            "payload": data,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
         dead: list[WebSocket] = []

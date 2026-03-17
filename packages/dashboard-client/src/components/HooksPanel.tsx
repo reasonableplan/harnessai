@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useOfficeStore } from '@/stores/office-store';
+import { apiGet, apiPut } from '@/utils/api';
 
 export default function HooksPanel() {
   const hooksList = useOfficeStore((s) => s.hooksList);
@@ -8,8 +9,7 @@ export default function HooksPanel() {
   const addToast = useOfficeStore((s) => s.addToast);
 
   useEffect(() => {
-    const baseUrl = import.meta.env.VITE_API_URL ?? '';
-    fetch(`${baseUrl}/api/hooks`)
+    apiGet('/api/hooks')
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -27,12 +27,7 @@ export default function HooksPanel() {
     updateHookEnabled(hookId, enabled);
 
     try {
-      const baseUrl = import.meta.env.VITE_API_URL ?? '';
-      const res = await fetch(`${baseUrl}/api/hooks/${hookId}/toggle`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled }),
-      });
+      const res = await apiPut(`/api/hooks/${hookId}/toggle`, { enabled });
       if (!res.ok) throw new Error();
     } catch {
       // Revert

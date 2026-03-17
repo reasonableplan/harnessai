@@ -18,7 +18,7 @@ from starlette.responses import Response
 from src.core.logging.logger import get_logger
 from src.core.types import UserInput
 from src.dashboard.auth import make_auth_checker
-from src.dashboard.routes import agents, command, hooks, stats, tasks
+from src.dashboard.routes import agents, command, health, hooks, stats, tasks
 from src.dashboard.routes.deps import get_agent_by_id, get_all_agents, get_director
 from src.dashboard.websocket_manager import WebSocketManager
 
@@ -71,6 +71,9 @@ def create_app(
 
     auth_check = make_auth_checker(auth_token)
 
+    # 인증 불필요 라우터
+    app.include_router(health.router)
+
     # REST 라우터 등록
     app.include_router(agents.router, dependencies=[Depends(auth_check)])
     app.include_router(tasks.router, dependencies=[Depends(auth_check)])
@@ -106,7 +109,7 @@ def create_app(
                 msg_type = msg.get("type", "")
 
                 if msg_type == "chat":
-                    content = msg.get("content", "").strip()
+                    content = msg.get("content", "").strip()[:4096]
                     if not content:
                         continue
                     try:
@@ -169,8 +172,8 @@ def create_app(
 
         except WebSocketDisconnect:
             pass
-        except Exception:
-            pass
+        except Exception as e:
+            _log.error("WS connection error", err=str(e))
         finally:
             _ws_manager.disconnect(ws)
 

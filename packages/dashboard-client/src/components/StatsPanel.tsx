@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useOfficeStore } from '@/stores/office-store';
 import { formatDuration, DOMAIN_COLORS } from '@/utils/format';
+import { apiGet } from '@/utils/api';
 import HooksPanel from './HooksPanel';
 
 interface SystemSummary {
@@ -31,8 +32,7 @@ export default function StatsPanel() {
     async function fetchStats() {
       setLoading(true);
       try {
-        const baseUrl = import.meta.env.VITE_API_URL ?? '';
-        const res = await fetch(`${baseUrl}/api/stats/summary`);
+        const res = await apiGet('/api/stats/summary');
         if (!res.ok) {
           if (!cancelled) setError('Failed to load stats');
         } else if (!cancelled) {

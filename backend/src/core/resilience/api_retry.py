@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import random
-import re
 from typing import Awaitable, Callable, TypeVar, Union
+
+import httpx
 
 from src.core.logging.logger import get_logger
 
@@ -46,23 +47,39 @@ async def with_retry(
     raise RuntimeError("Exhausted retries")
 
 
+# HTTP status codes that are safe to retry
+_RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+
+# HTTP status codes that should NOT be retried (client errors)
+_NON_RETRYABLE_STATUS_CODES = frozenset({400, 401, 403, 404, 409, 422})
+
+
 def _is_retryable(error: Exception) -> bool:
-    msg = str(error).lower()
+    """httpx 타입 기반으로 재시도 가능 여부를 판단한다."""
 
-    # 네트워크/서버 에러
-    if any(k in msg for k in ("econnreset", "socket", "timeout", "network", "connection")):
+    # httpx HTTP status errors — status code로 직접 판단
+    if isinstance(error, httpx.HTTPStatusError):
+        status = error.response.status_code
+        if status in _RETRYABLE_STATUS_CODES:
+            return True
+        if status in _NON_RETRYABLE_STATUS_CODES:
+            return False
+        # 그 외 5xx는 재시도
+        return status >= 500
+
+    # httpx 네트워크/타임아웃 에러 — 항상 재시도
+    if isinstance(error, (httpx.ConnectError, httpx.ReadError, httpx.WriteError, httpx.PoolTimeout)):
+        return True
+    if isinstance(error, httpx.TimeoutException):
         return True
 
-    # HTTP 5xx
-    if re.search(r"\b5\d{2}\b", msg):
+    # asyncio 타임아웃
+    if isinstance(error, (asyncio.TimeoutError, TimeoutError)):
         return True
 
-    # Rate limit
-    if any(k in msg for k in ("rate limit", "429", "secondary rate")):
+    # ConnectionError (stdlib)
+    if isinstance(error, (ConnectionError, OSError)):
         return True
 
-    # 인증/권한 에러는 재시도 불가
-    if any(k in msg for k in ("401", "403", "404")):
-        return False
-
+    # 그 외는 재시도하지 않음
     return False

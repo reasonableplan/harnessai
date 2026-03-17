@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useOfficeStore } from '@/stores/office-store';
 import type { AgentStatsState } from '@/stores/office-store';
 import { formatTokens, formatDuration, DOMAIN_COLORS } from '@/utils/format';
+import { apiGet } from '@/utils/api';
 
 const DOMAIN_TITLES: Record<string, string> = {
   director: 'Director Agent',
@@ -46,8 +47,7 @@ export default function AgentDetailPanel({ onOpenChat }: { onOpenChat?: (agentId
     }
     let cancelled = false;
     const fetchStats = () => {
-      const baseUrl = import.meta.env.VITE_API_URL ?? '';
-      fetch(`${baseUrl}/api/agents/${selectedAgent}/stats`)
+      apiGet(`/api/agents/${selectedAgent}/stats`)
         .then((r) => {
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
           return r.json();

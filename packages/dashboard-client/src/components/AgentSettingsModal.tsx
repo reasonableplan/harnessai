@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useOfficeStore } from '@/stores/office-store';
+import { apiGet, apiPut } from '@/utils/api';
 import {
   getCharacterCatalog,
   saveAssignments,
@@ -67,8 +68,7 @@ export default function AgentSettingsModal() {
     setForm(DEFAULTS);
 
     let cancelled = false;
-    const baseUrl = import.meta.env.VITE_API_URL ?? '';
-    fetch(`${baseUrl}/api/agents/${agentId}/config`)
+    apiGet(`/api/agents/${agentId}/config`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -133,12 +133,7 @@ export default function AgentSettingsModal() {
     if (!agentId) return;
     setSaving(true);
     try {
-      const baseUrl = import.meta.env.VITE_API_URL ?? '';
-      const res = await fetch(`${baseUrl}/api/agents/${agentId}/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
+      const res = await apiPut(`/api/agents/${agentId}/config`, form);
       if (res.ok) {
         addToast({
           id: `toast-config-${Date.now()}`,
