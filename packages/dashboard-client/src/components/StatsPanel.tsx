@@ -37,7 +37,7 @@ export default function StatsPanel() {
           if (!cancelled) setError('Failed to load stats');
         } else if (!cancelled) {
           const data = await res.json();
-          setSummary(data.summary);
+          setSummary(data);
           setError(null);
         }
       } catch {

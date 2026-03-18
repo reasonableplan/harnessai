@@ -81,5 +81,14 @@ def _is_retryable(error: Exception) -> bool:
     if isinstance(error, (ConnectionError, OSError)):
         return True
 
+    # Anthropic SDK rate limit error
+    try:
+        import anthropic as _anthropic
+
+        if isinstance(error, _anthropic.RateLimitError):
+            return True
+    except ImportError:
+        pass
+
     # 그 외는 재시도하지 않음
     return False

@@ -53,7 +53,7 @@ export default function AgentDetailPanel({ onOpenChat }: { onOpenChat?: (agentId
           return r.json();
         })
         .then((data) => {
-          if (!cancelled && data.stats) setStats(data.stats);
+          if (!cancelled && data) setStats(data);
         })
         .catch(() => { /* stats polling failure is non-critical */ });
     };

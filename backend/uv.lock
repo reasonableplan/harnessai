@@ -24,18 +24,13 @@ dependencies = [
     { name = "websockets" },
 ]
 
-[package.optional-dependencies]
-dev = [
-    { name = "anyio" },
-    { name = "httpx" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-]
-
 [package.dev-dependencies]
 dev = [
     { name = "aiosqlite" },
+    { name = "anyio" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
     { name = "ruff" },
 ]
 
@@ -43,18 +38,13 @@ dev = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.14.0" },
     { name = "anthropic", specifier = ">=0.40.0" },
-    { name = "anyio", marker = "extra == 'dev'", specifier = ">=4.6.0" },
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "gitpython", specifier = ">=3.1.0" },
     { name = "httpx", specifier = ">=0.28.0" },
-    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.0" },
     { name = "pydantic", specifier = ">=2.8.0" },
     { name = "pydantic-settings", specifier = ">=2.4.0" },
     { name = "pygithub", specifier = ">=2.4.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "slowapi", specifier = ">=0.1.9" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.0" },
@@ -62,12 +52,15 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.0" },
     { name = "websockets", specifier = ">=13.0" },
 ]
-provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "aiosqlite", specifier = ">=0.22.1" },
-    { name = "ruff", specifier = ">=0.15.6" },
+    { name = "anyio", specifier = ">=4.6.0" },
+    { name = "pytest", specifier = ">=8.3.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24.0" },
+    { name = "pytest-cov", specifier = ">=5.0.0" },
+    { name = "ruff", specifier = ">=0.8.0" },
 ]
 
 [[package]]

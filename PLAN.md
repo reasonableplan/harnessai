@@ -64,10 +64,10 @@
 
 | # | 작업 | 상태 |
 |---|------|------|
-| 2.1 | GitHub Actions에 Docker PostgreSQL + E2E 파이프라인 테스트 추가 | ⬜ |
-| 2.2 | `_is_retryable` — 문자열 매칭 → httpx 타입 기반 수정 (M2) | ⬜ |
-| 2.3 | 헬스체크 엔드포인트 `GET /health` (DB + GitHub 연결 상태) | ⬜ |
-| 2.4 | 구조화 로깅 개선 — 요청 trace_id 전파, 에러 컨텍스트 강화 | ⬜ |
+| 2.1 | GitHub Actions에 Docker PostgreSQL + E2E 파이프라인 테스트 추가 | ✅ |
+| 2.2 | `_is_retryable` — 문자열 매칭 → httpx 타입 기반 수정 (M2) | ✅ |
+| 2.3 | 헬스체크 엔드포인트 `GET /health` (DB + GitHub 연결 상태) | ✅ |
+| 2.4 | 구조화 로깅 개선 — 요청 request_id 전파, 에러 컨텍스트 강화 | ✅ |
 
 ---
 

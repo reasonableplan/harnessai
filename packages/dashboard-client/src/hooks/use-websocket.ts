@@ -158,7 +158,7 @@ export function useWebSocket() {
         });
         const { addChatMessage } = useOfficeStore.getState();
         addChatMessage({
-          id: `dir-msg-${Date.now()}`,
+          id: `dir-chat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           role: 'assistant',
           content: typeof content === 'string' ? content : JSON.stringify(content),
           timestamp: new Date().toISOString(),

@@ -1,7 +1,6 @@
 """에이전트 프롬프트 마크다운 파일 로더 (싱글톤)."""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from src.core.logging.logger import get_logger
@@ -47,7 +46,7 @@ class PromptLoader:
         """Path traversal 방지: prompts/ 디렉토리 밖 접근 차단."""
         resolved = (self._prompts_dir / filename).resolve()
         prompts_resolved = self._prompts_dir.resolve()
-        if not str(resolved).startswith(str(prompts_resolved)):
+        if not resolved.is_relative_to(prompts_resolved):
             log.error("Path traversal attempt blocked", filename=filename)
             return None
         return resolved

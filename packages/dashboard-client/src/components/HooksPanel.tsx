@@ -9,18 +9,20 @@ export default function HooksPanel() {
   const addToast = useOfficeStore((s) => s.addToast);
 
   useEffect(() => {
+    let cancelled = false;
     apiGet('/api/hooks')
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
       .then((data) => {
-        if (data.hooks) setHooks(data.hooks);
+        if (!cancelled && data.hooks) setHooks(data.hooks);
       })
       .catch(() => {
         // silently fail — hooks are optional
       });
-  }, []);
+    return () => { cancelled = true; };
+  }, [setHooks]);
 
   const handleToggle = async (hookId: string, enabled: boolean) => {
     // Optimistic update

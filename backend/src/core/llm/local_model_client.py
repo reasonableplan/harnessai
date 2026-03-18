@@ -56,6 +56,7 @@ class LocalModelClient:
         system: str | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.7,
+        token_budget: int | None = None,
     ) -> tuple[str, int, int]:
         """
         OpenAI-compatible /v1/chat/completions 호출.
@@ -104,8 +105,10 @@ class LocalModelClient:
         system: str | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.7,
+        token_budget: int | None = None,
     ) -> tuple[dict | list, int, int]:
         text, input_tokens, output_tokens = await self.chat(
-            messages=messages, system=system, max_tokens=max_tokens, temperature=temperature
+            messages=messages, system=system, max_tokens=max_tokens, temperature=temperature,
+            token_budget=token_budget,
         )
         return parse_json_response(text), input_tokens, output_tokens

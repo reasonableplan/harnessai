@@ -79,7 +79,7 @@ class BaseCodeGeneratorAgent(BaseAgent):
             )
         except Exception as e:
             self._log.error("Code generation failed", task_id=task.id, err=str(e))
-            return TaskResult(success=False, error={"message": str(e)}, artifacts=[])
+            return TaskResult(success=False, error={"message": "Code generation failed"}, artifacts=[])
 
     @abstractmethod
     def _build_prompt(self, task: Task) -> str:
@@ -89,6 +89,6 @@ class BaseCodeGeneratorAgent(BaseAgent):
     def _safe_resolve(self, rel_path: str) -> Path:
         """Sandbox escape 방지: work_dir 밖 경로 차단."""
         resolved = (self._work_dir / rel_path).resolve()
-        if not str(resolved).startswith(str(self._work_dir)):
+        if not resolved.is_relative_to(self._work_dir):
             raise SandboxEscapeError(rel_path, str(self._work_dir))
         return resolved

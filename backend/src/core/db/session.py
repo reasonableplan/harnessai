@@ -1,6 +1,11 @@
 from collections.abc import AsyncGenerator
 
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from src.core.db.schema import Base
 
@@ -37,7 +42,11 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI Depends용 세션 제공자."""
     factory = get_session_factory()
     async with factory() as session:
-        yield session
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
 
 
 async def create_tables() -> None:

@@ -1,7 +1,6 @@
 """GitAgent 테스트 — commit 메시지 처리, work_dir 접근."""
 from __future__ import annotations
 
-import subprocess
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -51,60 +50,75 @@ def agent(git_service):
     )
 
 
+def _make_mock_process(returncode: int = 0, stdout: bytes = b"", stderr: bytes = b""):
+    proc = MagicMock()
+    proc.returncode = returncode
+    proc.communicate = AsyncMock(return_value=(stdout, stderr))
+    return proc
+
+
 class TestHandleCommit:
     async def test_uses_public_work_dir_property(self, agent, git_service):
         """_work_dir private 접근 대신 work_dir property를 사용한다."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0)
+        mock_proc = _make_mock_process()
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc) as mock_exec:
             await agent._handle_commit(make_task())
 
-        calls = mock_run.call_args_list
+        calls = mock_exec.call_args_list
         for call in calls:
-            assert "/tmp/workspace" in call[0][0]
+            assert "/tmp/workspace" in call[0]
 
     async def test_uses_git_add_u_not_A(self, agent, git_service):
         """`git add -u` 를 사용한다 (미추적 파일 포함 -A 금지)."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0)
+        mock_proc = _make_mock_process()
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc) as mock_exec:
             await agent._handle_commit(make_task())
 
-        add_call = mock_run.call_args_list[0][0][0]
+        add_call = mock_exec.call_args_list[0][0]
         assert "-u" in add_call
         assert "-A" not in add_call
 
     async def test_commit_message_truncated_at_250(self, agent, git_service):
         """커밋 메시지가 250자를 초과하면 잘린다."""
         long_title = "x" * 300
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0)
+        mock_proc = _make_mock_process()
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc) as mock_exec:
             await agent._handle_commit(make_task(title=long_title))
 
-        commit_call = mock_run.call_args_list[1][0][0]
-        msg_index = commit_call.index("-m") + 1
+        commit_call = mock_exec.call_args_list[1][0]
+        msg_index = list(commit_call).index("-m") + 1
         assert len(commit_call[msg_index]) <= 250
 
     async def test_empty_title_uses_fallback(self, agent, git_service):
         """빈 제목은 fallback 커밋 메시지를 사용한다."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0)
+        mock_proc = _make_mock_process()
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc) as mock_exec:
             task = make_task(title="   ")
             await agent._handle_commit(task)
 
-        commit_call = mock_run.call_args_list[1][0][0]
-        msg_index = commit_call.index("-m") + 1
+        commit_call = mock_exec.call_args_list[1][0]
+        msg_index = list(commit_call).index("-m") + 1
         assert commit_call[msg_index].startswith("chore: task")
 
     async def test_subprocess_error_raises_runtime_error(self, agent, git_service):
         """subprocess 실패 시 RuntimeError를 발생시킨다."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = subprocess.CalledProcessError(1, "git", stderr="error")
-            with pytest.raises(RuntimeError):
-                await agent._handle_commit(make_task())
+        mock_proc = _make_mock_process(returncode=1, stderr=b"fatal: error")
+        with (
+            patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc),
+            pytest.raises(RuntimeError, match="fatal: error"),
+        ):
+            await agent._handle_commit(make_task())
 
     async def test_returns_success_result(self, agent, git_service):
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0)
+        mock_proc = _make_mock_process()
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
             result = await agent._handle_commit(make_task())
 
         assert result.success is True
         assert result.data == {"committed": True}
+
+    async def test_work_dir_none_raises(self, agent, git_service):
+        """work_dir가 None이면 RuntimeError를 발생시킨다."""
+        git_service.work_dir = None
+        with pytest.raises(RuntimeError, match="not configured"):
+            await agent._handle_commit(make_task())

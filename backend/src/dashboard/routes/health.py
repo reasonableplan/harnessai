@@ -29,8 +29,8 @@ async def health_check(store=Depends(get_state_store)):
     # GitHub 확인
     try:
         ctx = get_system_context()
-        remaining = await ctx.git_service.check_rate_limit()
-        checks["github"] = {"status": "ok", "rateLimit": remaining}
+        await ctx.git_service.check_rate_limit()
+        checks["github"] = {"status": "ok"}
     except Exception as e:
         log.error("Health: GitHub check failed", err=str(e))
         checks["github"] = {"status": "error"}
@@ -38,8 +38,7 @@ async def health_check(store=Depends(get_state_store)):
     # 에이전트 상태 요약
     try:
         agents = await store.get_all_agents()
-        agent_summary = {a.id: a.status for a in agents}
-        checks["agents"] = {"status": "ok", "agents": agent_summary}
+        checks["agents"] = {"status": "ok", "count": len(agents)}
     except Exception as e:
         log.error("Health: agents check failed", err=str(e))
         checks["agents"] = {"status": "error"}

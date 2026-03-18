@@ -9,6 +9,7 @@ import tempfile
 
 from src.core.llm.json_extract import parse_json_response
 from src.core.logging.logger import get_logger
+from src.core.resilience.api_retry import with_retry
 
 log = get_logger("ClaudeCliClient")
 
@@ -81,32 +82,35 @@ class ClaudeCliClient:
         prompt = _build_prompt(messages, system)
         log.debug("ClaudeCliClient calling claude CLI", prompt_len=len(prompt))
 
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *self._cli_args, "-p", prompt,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=tempfile.gettempdir(),  # 프로젝트 CLAUDE.md 컨텍스트 차단
-            )
-        except FileNotFoundError as e:
-            raise RuntimeError(
-                f"claude CLI not found ({self._cli_args[0]}). "
-                "Install Claude Code or set USE_CLAUDE_CLI=false."
-            ) from e
+        async def _call() -> str:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *self._cli_args, "-p", prompt,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=tempfile.gettempdir(),  # 프로젝트 CLAUDE.md 컨텍스트 차단
+                )
+            except FileNotFoundError as e:
+                raise RuntimeError(
+                    f"claude CLI not found ({self._cli_args[0]}). "
+                    "Install Claude Code or set USE_CLAUDE_CLI=false."
+                ) from e
 
-        try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=_CLI_TIMEOUT_S
-            )
-        except asyncio.TimeoutError as e:
-            proc.kill()
-            raise RuntimeError(f"claude CLI timed out after {_CLI_TIMEOUT_S}s") from e
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    proc.communicate(), timeout=_CLI_TIMEOUT_S
+                )
+            except asyncio.TimeoutError as e:
+                proc.kill()
+                raise RuntimeError(f"claude CLI timed out after {_CLI_TIMEOUT_S}s") from e
 
-        if proc.returncode != 0:
-            err = stderr.decode(errors="replace").strip()
-            raise RuntimeError(f"claude CLI exited with code {proc.returncode}: {err}")
+            if proc.returncode != 0:
+                err = stderr.decode(errors="replace").strip()
+                raise RuntimeError(f"claude CLI exited with code {proc.returncode}: {err}")
 
-        text = stdout.decode(errors="replace").strip()
+            return stdout.decode(errors="replace").strip()
+
+        text = await with_retry(_call, max_retries=2, label="ClaudeCLI")
         return text, 0, 0
 
     async def chat_json(

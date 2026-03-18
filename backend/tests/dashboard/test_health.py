@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import ASGITransport, AsyncClient
 
 from src.dashboard.routes.deps import get_state_store
@@ -53,8 +52,8 @@ class TestHealthEndpoint:
         assert data["status"] == "ok"
         assert data["checks"]["database"]["status"] == "ok"
         assert data["checks"]["github"]["status"] == "ok"
-        assert data["checks"]["github"]["rateLimit"] == 4999
-        assert data["checks"]["agents"]["agents"]["director"] == "idle"
+        assert data["checks"]["agents"]["status"] == "ok"
+        assert data["checks"]["agents"]["count"] == 1
 
     async def test_health_returns_503_when_db_down(self):
         """DB 실패 시 503 + status=degraded."""

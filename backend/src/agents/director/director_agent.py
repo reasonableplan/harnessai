@@ -1,6 +1,7 @@
 """Director Agent (Level 0) — 사용자와 대화하며 에픽/태스크를 설계하고 리뷰를 처리."""
 from __future__ import annotations
 
+import asyncio
 import uuid
 import xml.sax.saxutils as saxutils
 from datetime import datetime, timezone
@@ -74,6 +75,7 @@ class DirectorAgent(BaseAgent):
         self._llm = llm_client
         self._active_plan: EpicPlan | None = None
         self._conversation: list[dict[str, str]] = []
+        self._plan_lock = asyncio.Lock()
 
         async def _on_review(msg: Message) -> None:
             await self._handle_review(msg)
@@ -88,15 +90,16 @@ class DirectorAgent(BaseAgent):
 
     async def handle_user_input(self, user_input: UserInput) -> None:
         """사용자 메시지를 받아 현재 Stage에 맞게 처리한다."""
-        safe_content = saxutils.escape(user_input.content)
+        async with self._plan_lock:
+            safe_content = saxutils.escape(user_input.content)
 
-        try:
-            await self._route_input(safe_content, user_input)
-        except Exception as e:
-            log.error("handle_user_input failed", err=str(e))
-            await self._broadcast_director_message(
-                f"처리 중 오류가 발생했습니다: {str(e)[:200]}"
-            )
+            try:
+                await self._route_input(safe_content, user_input)
+            except Exception as e:
+                log.error("handle_user_input failed", err=str(e), exc_info=True)
+                await self._broadcast_director_message(
+                    "처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+                )
 
     async def _route_input(self, safe_content: str, user_input: UserInput) -> None:
         """분류 → Stage 라우팅. handle_user_input에서 호출."""
@@ -326,11 +329,12 @@ class DirectorAgent(BaseAgent):
         plan_json = plan.model_dump(
             include={"epic_title", "epic_description", "tasks", "project", "decisions"},
         )
+        safe_feedback = saxutils.escape(feedback)
         system = REVISING_SYSTEM_PROMPT.format(
-            plan_json=plan_json, user_feedback=feedback,
+            plan_json=plan_json, user_feedback=safe_feedback,
         )
         messages = [
-            {"role": "user", "content": f"<user_message>{feedback}</user_message>"},
+            {"role": "user", "content": f"<user_message>{safe_feedback}</user_message>"},
         ]
 
         data, input_tokens, output_tokens = await self._llm.chat_json(
@@ -539,8 +543,10 @@ class DirectorAgent(BaseAgent):
                     task.github_issue_number, target_column
                 )
             except Exception as e:
-                log.error("Review: Board move failed", task_id=task_id, err=str(e))
-                return
+                log.error(
+                    "Review: Board move failed, proceeding with DB update",
+                    task_id=task_id, err=str(e),
+                )
 
         updates: dict[str, Any] = {"status": target_status, "board_column": target_column}
         if not success:
@@ -608,13 +614,13 @@ class DirectorAgent(BaseAgent):
             self._conversation = self._conversation[-_MAX_CONVERSATION_TURNS * 2:]
 
     def _format_conversation(self) -> str:
-        """대화 기록을 텍스트로 포맷."""
+        """대화 기록을 텍스트로 포맷. 각 turn content를 XML escape 처리."""
         if not self._conversation:
             return "(no previous conversation)"
         lines = []
         for turn in self._conversation:
             prefix = "User" if turn["role"] == "user" else "Director"
-            lines.append(f"{prefix}: {turn['content']}")
+            lines.append(f"{prefix}: {saxutils.escape(turn['content'])}")
         return "\n".join(lines)
 
     async def _broadcast_director_message(self, content: str) -> None:

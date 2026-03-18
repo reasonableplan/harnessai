@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from enum import Enum
 from typing import Awaitable, Callable, TypeVar, Union
@@ -40,32 +41,33 @@ class CircuitBreaker:
         self._failures = 0
         self._last_failure_time: float = 0.0
         self._half_open_successes = 0
+        self._lock = asyncio.Lock()
 
     @property
     def state(self) -> CircuitState:
         return self._state
 
     async def execute(self, fn: Callable[[], Union[Awaitable[T], T]]) -> T:
-        if self._state == CircuitState.OPEN:
-            elapsed_ms = (time.monotonic() - self._last_failure_time) * 1000
-            if elapsed_ms >= self._reset_timeout_ms:
-                self._state = CircuitState.HALF_OPEN
-                self._half_open_successes = 0
-                self._failures = 0
-                log.info("Circuit half-open, allowing probe request", circuit=self.name)
-            else:
-                raise CircuitBreakerError(self.name)
+        async with self._lock:
+            if self._state == CircuitState.OPEN:
+                elapsed_ms = (time.monotonic() - self._last_failure_time) * 1000
+                if elapsed_ms >= self._reset_timeout_ms:
+                    self._state = CircuitState.HALF_OPEN
+                    self._half_open_successes = 0
+                    self._failures = 0
+                    log.info("Circuit half-open, allowing probe request", circuit=self.name)
+                else:
+                    raise CircuitBreakerError(self.name)
 
-        try:
-            import asyncio
-            result = fn()
-            if asyncio.iscoroutine(result):
-                result = await result
-            self._on_success()
-            return result
-        except Exception:
-            self._on_failure()
-            raise
+            try:
+                result = fn()
+                if asyncio.iscoroutine(result):
+                    result = await result
+                self._on_success()
+                return result
+            except Exception:
+                self._on_failure()
+                raise
 
     def _on_success(self) -> None:
         if self._state == CircuitState.HALF_OPEN:

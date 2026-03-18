@@ -143,9 +143,13 @@ class BaseAgent(ABC):
     async def resume(self, interval_ms: int = 10_000) -> None:
         if self._poll_task and not self._poll_task.done():
             try:
-                await self._poll_task
-            except (asyncio.CancelledError, Exception):
+                await asyncio.wait_for(asyncio.shield(self._poll_task), timeout=5.0)
+            except asyncio.CancelledError:
                 pass
+            except asyncio.TimeoutError:
+                self._log.warning("Previous poll task did not finish in time, proceeding")
+            except Exception as e:
+                self._log.error("Previous poll task error during resume", err=str(e))
         self._poll_task = None
         await self._set_status(AgentStatus.IDLE)
         self.start_polling(interval_ms)

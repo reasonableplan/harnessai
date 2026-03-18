@@ -12,11 +12,12 @@ class EventMapper:
     def __init__(self, message_bus: MessageBus, ws_manager) -> None:
         self._ws = ws_manager
         self._message_bus = message_bus
-        message_bus.subscribe_all(self._on_message)
+        self._handler = self._on_message
+        message_bus.subscribe_all(self._handler)
 
     def dispose(self) -> None:
         """MessageBus 구독 해제 — 셧다운 시 호출."""
-        self._message_bus.unsubscribe_all(self._on_message)
+        self._message_bus.unsubscribe_all(self._handler)
 
     async def _on_message(self, msg: Message) -> None:
         event_type, data = self._map(msg)

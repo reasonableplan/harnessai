@@ -168,8 +168,15 @@ def _create_agents(
     return [director, git_agent, backend, frontend, docs]
 
 
+_shutting_down = False
+
+
 async def shutdown(ctx: SystemContext) -> None:
     """Graceful shutdown — 에이전트 drain → watcher → DB."""
+    global _shutting_down
+    if _shutting_down:
+        return
+    _shutting_down = True
     log.info("Shutting down...")
 
     # 에이전트 중지
@@ -180,7 +187,7 @@ async def shutdown(ctx: SystemContext) -> None:
             log.error("Agent drain error", agent=agent.id, err=str(e))
 
     # OrphanCleaner 중지
-    ctx.orphan_cleaner.stop()
+    await ctx.orphan_cleaner.stop()
 
     # BoardWatcher 중지
     await ctx.board_watcher.stop()

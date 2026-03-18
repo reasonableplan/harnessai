@@ -56,8 +56,8 @@ async def main() -> None:
         try:
             loop.add_signal_handler(sig, _handle_signal)
         except NotImplementedError:
-            # Windows에서는 signal handler 미지원
-            pass
+            # Windows: asyncio signal handler 미지원 → stdlib signal 사용
+            signal.signal(sig, lambda _s, _f: _handle_signal())
 
     # uvicorn 서버 (별도 태스크로 실행)
     server_config = uvicorn.Config(

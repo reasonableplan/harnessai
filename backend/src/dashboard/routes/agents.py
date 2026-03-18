@@ -11,6 +11,11 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 class AgentConfigUpdate(BaseModel):
     claude_model: str | None = Field(None, min_length=1, max_length=100)
+    max_tokens: int | None = Field(None, ge=256, le=32768)
+    temperature: float | None = Field(None, ge=0.0, le=2.0)
+    token_budget: int | None = Field(None, ge=1000)
+    task_timeout_ms: int | None = Field(None, ge=1000)
+    poll_interval_ms: int | None = Field(None, ge=500)
 
     @field_validator("claude_model")
     @classmethod
@@ -18,11 +23,6 @@ class AgentConfigUpdate(BaseModel):
         if v is not None and v not in ALLOWED_MODELS:
             raise ValueError(f"Unknown model. Allowed: {sorted(ALLOWED_MODELS)}")
         return v
-    max_tokens: int | None = Field(None, ge=256, le=32768)
-    temperature: float | None = Field(None, ge=0.0, le=2.0)
-    token_budget: int | None = Field(None, ge=1000)
-    task_timeout_ms: int | None = Field(None, ge=1000)
-    poll_interval_ms: int | None = Field(None, ge=500)
 
 
 @router.get("")

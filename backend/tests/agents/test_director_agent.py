@@ -98,8 +98,8 @@ class TestHandleReview:
 
         assert call_order == ["board", "db"]
 
-    async def test_board_failure_skips_db_update(self, director, state_store, git_service):
-        """Board 이동 실패 시 DB 업데이트를 건너뛴다."""
+    async def test_board_failure_still_updates_db(self, director, state_store, git_service):
+        """Board 이동 실패해도 DB 업데이트는 계속 진행한다."""
         git_service.move_issue_to_column = AsyncMock(side_effect=RuntimeError("GitHub down"))
         task = MagicMock()
         task.github_issue_number = 1
@@ -107,7 +107,9 @@ class TestHandleReview:
 
         await director._handle_review(make_review_message("t1", success=True))
 
-        state_store.update_task.assert_not_called()
+        state_store.update_task.assert_called_once()
+        call_args = state_store.update_task.call_args[0][1]
+        assert call_args["status"] == "done"
 
     async def test_approved_sets_done_status(self, director, state_store, git_service):
         state_store.get_task = AsyncMock(return_value=MagicMock(github_issue_number=None))
