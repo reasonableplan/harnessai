@@ -1,7 +1,7 @@
 """GitHub API 기반 GitService — issues, board, git ops."""
 from __future__ import annotations
 
-import subprocess
+import asyncio
 from typing import Any
 
 import httpx
@@ -342,12 +342,16 @@ class GitService:
         if not re.match(r'^[\w\-./]+$', branch_name):
             raise GitServiceError(f"Invalid branch name: {branch_name!r}")
         try:
-            subprocess.run(
-                ["git", "-C", self._work_dir, "checkout", "-b", branch_name, f"origin/{base_branch}"],
-                check=True, capture_output=True, text=True,
+            proc = await asyncio.create_subprocess_exec(
+                "git", "-C", self._work_dir, "checkout", "-b", branch_name, f"origin/{base_branch}",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-        except subprocess.CalledProcessError as e:
-            raise GitServiceError(f"create_branch {branch_name}", cause=RuntimeError(e.stderr)) from e
+            _, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                raise RuntimeError(stderr.decode().strip())
+        except RuntimeError as e:
+            raise GitServiceError(f"create_branch {branch_name}", cause=e) from e
 
     async def create_pr(
         self,

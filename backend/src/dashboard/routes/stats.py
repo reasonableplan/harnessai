@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
@@ -17,17 +19,20 @@ class SystemSummary(BaseModel):
 
 @router.get("/summary", response_model=SystemSummary)
 async def get_summary(store=Depends(get_state_store)):
-    agents = await store.get_all_agents()
-    tasks = await store.get_all_tasks()
-    epics = await store.get_all_epics()
+    # 3개 독립 쿼리를 병렬 실행
+    agents_result, tasks_result, epics_result = await asyncio.gather(
+        store.get_all_agents(),
+        store.get_all_tasks(),
+        store.get_all_epics(),
+    )
 
     status_counts: dict[str, int] = {}
-    for t in tasks:
+    for t in tasks_result:
         status_counts[t.status] = status_counts.get(t.status, 0) + 1
 
     return SystemSummary(
-        totalAgents=len(agents),
-        totalTasks=len(tasks),
-        totalEpics=len(epics),
+        totalAgents=len(agents_result),
+        totalTasks=len(tasks_result),
+        totalEpics=len(epics_result),
         tasksByStatus=status_counts,
     )

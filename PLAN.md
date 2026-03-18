@@ -90,7 +90,7 @@
 | 4.1 | Rate limiting / backpressure — max_concurrent_tasks + dashboard_host 설정 | ✅ |
 | 4.2 | Dockerfile 최적화 (multi-stage, non-root, HEALTHCHECK) | ✅ |
 | 4.3 | Docker Compose healthcheck + prompts 볼륨 마운트 | ✅ |
-| 4.4 | 성능 프로파일링 — DB N+1 쿼리, 이벤트 루프 블로킹 탐지 | ⬜ |
+| 4.4 | 성능 프로파일링 — N+1 병렬화, subprocess async, 파일 IO async | ✅ |
 
 ---
 

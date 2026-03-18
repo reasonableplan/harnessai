@@ -1,6 +1,7 @@
 """시스템 컨텍스트 초기화 및 부트스트랩."""
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -72,14 +73,16 @@ async def bootstrap(config: AppConfig) -> SystemContext:
         config, message_bus, state_store, git_service, llm_client, code_search, memory_store,
     )
 
-    # 9. 에이전트 DB 등록
-    for agent in agents:
-        await state_store.register_agent({
+    # 10. 에이전트 DB 등록 (병렬)
+    await asyncio.gather(*(
+        state_store.register_agent({
             "id": agent.id,
             "domain": agent.domain,
             "level": agent.config.level.value,
             "status": "idle",
         })
+        for agent in agents
+    ))
 
     ctx = SystemContext(
         config=config,
