@@ -87,9 +87,9 @@
 
 | # | 작업 | 상태 |
 |---|------|------|
-| 4.1 | Rate limiting / backpressure — 에이전트 동시 태스크 제한 | ⬜ |
-| 4.2 | Dockerfile 최적화 (multi-stage, non-root user) | ⬜ |
-| 4.3 | Kubernetes-ready 구조 (readiness/liveness probe) | ⬜ |
+| 4.1 | Rate limiting / backpressure — max_concurrent_tasks + dashboard_host 설정 | ✅ |
+| 4.2 | Dockerfile 최적화 (multi-stage, non-root, HEALTHCHECK) | ✅ |
+| 4.3 | Docker Compose healthcheck + prompts 볼륨 마운트 | ✅ |
 | 4.4 | 성능 프로파일링 — DB N+1 쿼리, 이벤트 루프 블로킹 탐지 | ⬜ |
 
 ---

@@ -62,7 +62,7 @@ async def main() -> None:
     # uvicorn 서버 (별도 태스크로 실행)
     server_config = uvicorn.Config(
         app,
-        host="0.0.0.0",
+        host=config.dashboard_host,
         port=config.dashboard_port,
         log_level=config.log_level.lower(),
         loop="none",

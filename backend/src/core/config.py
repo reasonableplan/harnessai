@@ -38,8 +38,12 @@ class AppConfig(BaseSettings):
 
     # Dashboard
     dashboard_port: int = 3001
+    dashboard_host: str = "127.0.0.1"
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
     dashboard_auth_token: str | None = None
+
+    # Backpressure
+    max_concurrent_tasks: int = 5
 
     # Logging
     log_level: str = "info"
