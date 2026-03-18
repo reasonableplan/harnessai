@@ -76,10 +76,10 @@
 | # | 작업 | 상태 |
 |---|------|------|
 | 3.1 | 타일맵 좌표 정밀 매핑 (가구 타일셋 활용) | ⬜ |
-| 3.2 | API response model 전체 Pydantic 화 (dict 반환 혼재 제거) | ⬜ |
-| 3.3 | AgentError 서브클래스 기반 에러 분류 정리 | ⬜ |
+| 3.2 | API response model 전체 Pydantic 화 (dict 반환 혼재 제거) | ✅ |
+| 3.3 | AgentError 서브클래스 기반 에러 분류 정리 | ✅ |
 | 3.4 | CSP unsafe-inline 제거 (nonce 기반, M3) | ⬜ |
-| 3.5 | `command.py` REST → WS 전용으로 정리 | ⬜ |
+| 3.5 | `command.py` 백그라운드 태스크 예외 로깅 추가 | ✅ |
 
 ---
 

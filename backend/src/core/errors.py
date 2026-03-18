@@ -22,6 +22,10 @@ class AgentError(Exception):
         self.code = code
         self.cause = cause
 
+    @property
+    def retryable(self) -> bool:
+        return False
+
 
 class ConfigError(AgentError):
     def __init__(self, message: str, cause: Exception | None = None) -> None:
@@ -78,10 +82,6 @@ class ApiError(AgentError):
     ) -> None:
         super().__init__(message, code, cause)
         self.status_code = status_code
-
-    @property
-    def retryable(self) -> bool:
-        return False
 
 
 class RateLimitError(ApiError):

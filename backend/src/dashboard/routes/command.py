@@ -5,13 +5,22 @@ import asyncio
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from src.core.logging.logger import get_logger
 from src.core.types import UserInput
 from src.dashboard.routes.deps import get_director
+
+_log = get_logger("CommandRoute")
 
 router = APIRouter(prefix="/api/command", tags=["command"])
 
 # 진행 중인 백그라운드 태스크 참조 유지 — GC 조기 수집 및 예외 무음 손실 방지
 _background_tasks: set[asyncio.Task] = set()
+
+
+def _on_task_done(task: asyncio.Task) -> None:
+    _background_tasks.discard(task)
+    if not task.cancelled() and task.exception():
+        _log.error("Command background task failed", exc_info=task.exception())
 
 
 class CommandRequest(BaseModel):
@@ -24,5 +33,5 @@ async def send_command(body: CommandRequest, director=Depends(get_director)):
     user_input = UserInput(source="dashboard", content=body.content)
     task = asyncio.create_task(director.handle_user_input(user_input))
     _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    task.add_done_callback(_on_task_done)
     return {"status": "accepted"}

@@ -9,6 +9,14 @@ from src.dashboard.routes.deps import get_state_store
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 
+class AgentSummary(BaseModel):
+    id: str
+    domain: str
+    level: str
+    status: str
+    lastHeartbeat: str | None = None
+
+
 class AgentConfigUpdate(BaseModel):
     claude_model: str | None = Field(None, min_length=1, max_length=100)
     max_tokens: int | None = Field(None, ge=256, le=32768)
@@ -25,17 +33,17 @@ class AgentConfigUpdate(BaseModel):
         return v
 
 
-@router.get("")
+@router.get("", response_model=list[AgentSummary])
 async def list_agents(store=Depends(get_state_store)):
     agents = await store.get_all_agents()
     return [
-        {
-            "id": a.id,
-            "domain": a.domain,
-            "level": a.level,
-            "status": a.status,
-            "lastHeartbeat": a.last_heartbeat.isoformat() if a.last_heartbeat else None,
-        }
+        AgentSummary(
+            id=a.id,
+            domain=a.domain,
+            level=a.level,
+            status=a.status,
+            lastHeartbeat=a.last_heartbeat.isoformat() if a.last_heartbeat else None,
+        )
         for a in agents
     ]
 
