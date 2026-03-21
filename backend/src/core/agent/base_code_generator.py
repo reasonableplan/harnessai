@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import uuid
-from abc import abstractmethod
+import xml.sax.saxutils as saxutils
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +40,24 @@ class BaseCodeGeneratorAgent(BaseAgent):
         self._work_dir = Path(work_dir).resolve()
         self._temperature = temperature
         self._code_search = code_search
+
+    # 서브클래스에서 오버라이드할 role description
+    _role_description: str = "You are a code generation assistant."
+
+    def _build_prompt(self, task: Task, context: str = "") -> str:
+        """공통 프롬프트 템플릿. 서브클래스는 _role_description만 설정하면 된다."""
+        ctx_section = ""
+        if context:
+            ctx_section = (
+                "\n## Existing codebase (follow these patterns and conventions)\n"
+                f"<existing_code>\n{saxutils.escape(context)}\n</existing_code>\n\n"
+            )
+        return (
+            f"{self._role_description}\n"
+            'Respond with JSON: {"files": [{"path": str, "content": str, "action": str}], "summary": str}\n\n'
+            f"{ctx_section}"
+            f"<task>\nTitle: {saxutils.escape(task.title)}\nDescription: {saxutils.escape(task.description)}\n</task>"
+        )
 
     async def execute_task(self, task: Task) -> TaskResult:
         try:
@@ -111,10 +129,7 @@ class BaseCodeGeneratorAgent(BaseAgent):
             self._log.warning("Code search failed, proceeding without context", err=str(e))
             return ""
 
-    @abstractmethod
-    def _build_prompt(self, task: Task, context: str = "") -> str:
-        """에이전트별 시스템 프롬프트 생성. context는 RAG 검색 결과."""
-        ...
+    # _build_prompt는 위에서 기본 구현 제공. 서브클래스는 _role_description만 설정하면 됨.
 
     def _safe_resolve(self, rel_path: str) -> Path:
         """Sandbox escape 방지: work_dir 밖 경로 차단."""

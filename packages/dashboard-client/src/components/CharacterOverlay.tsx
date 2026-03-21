@@ -7,34 +7,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useOfficeStore } from '@/stores/office-store';
 import { CANVAS_W, CANVAS_H, RENDER_SCALE, getAgentPixelPosition } from '@/engine/sprite-config';
-// Position lookup now uses agent.slot instead of agent.domain
-
-// Spring state mirror (same logic as OfficeCanvas for position sync)
-interface PosState {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-}
-
-const STIFFNESS = 0.04;
-const DAMPING = 0.82;
-
-function springStep(s: PosState, tx: number, ty: number, dt: number) {
-  const f = Math.min(dt / 16, 3);
-  const dx = tx - s.x;
-  const dy = ty - s.y;
-  s.vx = (s.vx + dx * STIFFNESS * f) * DAMPING;
-  s.vy = (s.vy + dy * STIFFNESS * f) * DAMPING;
-  s.x += s.vx * f;
-  s.y += s.vy * f;
-  if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(s.vx) < 0.5 && Math.abs(s.vy) < 0.5) {
-    s.x = tx;
-    s.y = ty;
-    s.vx = 0;
-    s.vy = 0;
-  }
-}
+import { updateSpring, type SpringState } from '@/engine/spring';
 
 // Bubble type colors
 const BUBBLE_STYLES: Record<string, { bg: string; border: string; text: string }> = {
@@ -51,7 +24,7 @@ export default function CharacterOverlay() {
   const agentsRef = useRef(agents);
   agentsRef.current = agents;
 
-  const positionsRef = useRef<Map<string, PosState>>(new Map());
+  const positionsRef = useRef<Map<string, SpringState>>(new Map());
   const [positions, setPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
   const renderedPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const rafRef = useRef<number>(0);
@@ -90,7 +63,7 @@ export default function CharacterOverlay() {
           positionsRef.current.set(agent.id, s);
         }
         const target = getAgentPixelPosition(agent.slot, agent.status);
-        springStep(s, target.x, target.y, dt);
+        updateSpring(s, target.x, target.y, dt);
         const nx = Math.round(s.x * RENDER_SCALE);
         const ny = Math.round(s.y * RENDER_SCALE);
         newPositions.set(agent.id, { x: nx, y: ny });

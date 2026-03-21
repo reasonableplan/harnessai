@@ -70,6 +70,7 @@ class ClaudeClient:
                 label=f"Claude {resolved_model}",
             )
         except anthropic.RateLimitError as e:
+            # RateLimitError는 APIError의 서브클래스 — 반드시 먼저 catch
             raise RateLimitError("Claude API", cause=e) from e
         except anthropic.AuthenticationError as e:
             raise AuthError("Claude API", cause=e) from e

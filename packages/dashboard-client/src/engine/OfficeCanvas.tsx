@@ -18,46 +18,17 @@ import {
   getAgentLabel,
 } from './sprite-config';
 
-// ---- Spring physics for smooth movement ----
-interface SpringState {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
+import { updateSpring, type SpringState } from './spring';
+
+// ---- Spring state with target for character movement ----
+interface AgentSpringState extends SpringState {
   targetX: number;
   targetY: number;
 }
 
-const SPRING_STIFFNESS = 0.04;
-const SPRING_DAMPING = 0.82;
-const SNAP_THRESHOLD = 0.5;
-
-function updateSpring(s: SpringState, dt: number): void {
-  const factor = Math.min(dt / 16, 3); // normalize to ~60fps, cap at 3x
-  const dx = s.targetX - s.x;
-  const dy = s.targetY - s.y;
-  s.vx = (s.vx + dx * SPRING_STIFFNESS * factor) * SPRING_DAMPING;
-  s.vy = (s.vy + dy * SPRING_STIFFNESS * factor) * SPRING_DAMPING;
-  s.x += s.vx * factor;
-  s.y += s.vy * factor;
-
-  // Snap when close enough
-  if (
-    Math.abs(dx) < SNAP_THRESHOLD &&
-    Math.abs(dy) < SNAP_THRESHOLD &&
-    Math.abs(s.vx) < SNAP_THRESHOLD &&
-    Math.abs(s.vy) < SNAP_THRESHOLD
-  ) {
-    s.x = s.targetX;
-    s.y = s.targetY;
-    s.vx = 0;
-    s.vy = 0;
-  }
-}
-
 // ---- Animation state per agent ----
 interface AgentAnimState {
-  spring: SpringState;
+  spring: AgentSpringState;
   walkFrame: number;
   walkTimer: number;
   armFrame: number;
@@ -274,8 +245,10 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
   // deps는 의도적으로 비어있음 — 모든 동적 값은 ref를 통해 접근
   useEffect(() => {
     let lastTime = 0;
+    let mounted = true;
 
     const loop = (time: number) => {
+      if (!mounted) return;
       const dt = lastTime === 0 ? 16 : time - lastTime;
       lastTime = time;
 
@@ -283,7 +256,7 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
       if (!ctx || !bgBufferRef.current || !charCacheRef.current) {
         // Retry after a short delay to avoid CPU spike during initialization
         retryTimerRef.current = window.setTimeout(() => {
-          if (rafRef.current === 0) {
+          if (mounted && rafRef.current === 0) {
             rafRef.current = requestAnimationFrame(loop);
           }
         }, 100);
@@ -311,7 +284,7 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
         const target = getAgentPixelPosition(agent.slot, agent.status);
         state.spring.targetX = target.x;
         state.spring.targetY = target.y;
-        updateSpring(state.spring, dt);
+        updateSpring(state.spring, state.spring.targetX, state.spring.targetY, dt);
 
         const isMoving = Math.abs(state.spring.vx) > 1 || Math.abs(state.spring.vy) > 1;
         const isWalkStatus = agent.status === 'delivering' || agent.status === 'searching';
@@ -415,6 +388,7 @@ export default function OfficeCanvas({ onAgentClick }: OfficeCanvasProps) {
 
     rafRef.current = requestAnimationFrame(loop);
     return () => {
+      mounted = false;
       cancelAnimationFrame(rafRef.current);
       clearTimeout(retryTimerRef.current);
     };
