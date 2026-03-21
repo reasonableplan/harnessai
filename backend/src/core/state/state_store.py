@@ -108,6 +108,7 @@ class StateStore:
                         task_id=task_id,
                         from_status=from_status,
                         to_status=to_status,
+                        dropped_retry_increment=retry_increment or 0,
                     )
                     return
 
@@ -229,19 +230,19 @@ class StateStore:
 
     # ===== Dashboard Queries =====
 
-    async def get_all_agents(self) -> list[AgentModel]:
+    async def get_all_agents(self, limit: int = 200, offset: int = 0) -> list[AgentModel]:
         async with self._session_factory() as session:
-            result = await session.execute(select(AgentModel))
+            result = await session.execute(select(AgentModel).limit(limit).offset(offset))
             return list(result.scalars().all())
 
-    async def get_all_tasks(self) -> list[TaskModel]:
+    async def get_all_tasks(self, limit: int = 500, offset: int = 0) -> list[TaskModel]:
         async with self._session_factory() as session:
-            result = await session.execute(select(TaskModel))
+            result = await session.execute(select(TaskModel).limit(limit).offset(offset))
             return list(result.scalars().all())
 
-    async def get_all_epics(self) -> list[EpicModel]:
+    async def get_all_epics(self, limit: int = 200, offset: int = 0) -> list[EpicModel]:
         async with self._session_factory() as session:
-            result = await session.execute(select(EpicModel))
+            result = await session.execute(select(EpicModel).limit(limit).offset(offset))
             return list(result.scalars().all())
 
     async def get_recent_messages(self, limit: int) -> list[Message]:

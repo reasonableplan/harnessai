@@ -168,19 +168,24 @@ export function useWebSocket() {
 
       case 'director.plan': {
         const { setActivePlan } = useOfficeStore.getState();
-        setActivePlan(payload as Record<string, unknown>);
+        if (payload && typeof payload === 'object') {
+          setActivePlan(payload as Record<string, unknown>);
+        }
         break;
       }
 
       case 'director.committed': {
-        const commitPayload = payload as Record<string, unknown>;
-        const issueCount = Array.isArray(commitPayload.issues) ? commitPayload.issues.length : 0;
-        addToast({
-          id: `toast-committed-${Date.now()}`,
-          type: 'success',
-          title: 'Epic Created',
-          message: `${commitPayload.epicTitle ?? 'Epic'}: ${issueCount} issues created`,
-        });
+        if (payload && typeof payload === 'object') {
+          const commitPayload = payload as Record<string, unknown>;
+          const issueCount = Array.isArray(commitPayload.issues) ? commitPayload.issues.length : 0;
+          const epicTitle = typeof commitPayload.epicTitle === 'string' ? commitPayload.epicTitle : 'Epic';
+          addToast({
+            id: `toast-committed-${Date.now()}`,
+            type: 'success',
+            title: 'Epic Created',
+            message: `${epicTitle}: ${issueCount} issues created`,
+          });
+        }
         break;
       }
 

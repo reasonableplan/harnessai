@@ -82,16 +82,15 @@ class LocalModelClient:
                 headers=self._headers(),
                 json=body,
             )
-            if resp.status_code == 401:
-                raise AuthError("LocalModel")
-            # 429 등 retryable 에러는 raise_for_status()가 httpx.HTTPStatusError를
-            # 발생시키도록 하여 with_retry의 _is_retryable이 올바르게 인식하게 한다.
+            # 모든 HTTP 에러를 raise_for_status()로 통일 — 외부 except에서 분류
             resp.raise_for_status()
             return resp.json()
 
         try:
             data = await with_retry(_call, max_retries=3, label="LocalModel")
         except httpx.HTTPStatusError as e:
+            if e.response.status_code == 401:
+                raise AuthError("LocalModel", cause=e) from e
             if e.response.status_code == 429:
                 raise RateLimitError("LocalModel", cause=e) from e
             raise NetworkError(f"LocalModel HTTP {e.response.status_code}", cause=e) from e

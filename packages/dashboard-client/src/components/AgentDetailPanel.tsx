@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useOfficeStore } from '@/stores/office-store';
 import type { AgentStatsState } from '@/stores/office-store';
@@ -67,7 +67,10 @@ export default function AgentDetailPanel({ onOpenChat }: { onOpenChat?: (agentId
 
   const agent = selectedAgent ? agents[selectedAgent] : null;
   const agentTasks = agent ? Object.values(tasks).filter((t) => t.assignedAgent === agent.id) : [];
-  const agentMessages = agent ? messages.filter((m) => m.from === agent.id) : [];
+  const agentMessages = useMemo(
+    () => (agent ? messages.filter((m) => m.from === agent.id) : []),
+    [messages, agent],
+  );
   const statusInfo = agent
     ? (STATUS_LABELS[agent.status] ?? STATUS_LABELS.idle)
     : STATUS_LABELS.idle;
