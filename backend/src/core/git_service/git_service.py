@@ -58,7 +58,11 @@ class GitService:
             if resp.status_code == 422:
                 body = resp.json()
                 errors = body.get("errors", [])
-                if any("already_exists" in str(e.get("message", "")) for e in errors):
+                if any(
+                    "already_exists" in str(e.get("message", ""))
+                    or e.get("code") == "already_exists"
+                    for e in errors
+                ):
                     return body  # already exists — not an error
                 resp.raise_for_status()  # 실제 validation 에러는 전파
             resp.raise_for_status()
@@ -347,6 +351,116 @@ class GitService:
 
     async def get_epic_issues(self, epic_id: str) -> list[BoardIssue]:
         return await self.get_issues_by_label(f"epic:{epic_id}")
+
+    # ===== Project Board Management =====
+
+    async def add_issue_to_project(self, issue_number: int, column: str = "Backlog") -> str:
+        """이슈를 Project V2에 추가하고 지정 컬럼으로 이동한다. item_id를 반환한다."""
+        await self._ensure_project_field_cache()
+
+        # 이슈의 node ID 조회
+        data = await self._graphql(
+            """
+            query($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) {
+                issue(number: $number) { id }
+              }
+            }
+            """,
+            {"owner": self._owner, "repo": self._repo, "number": issue_number},
+        )
+        content_id = (
+            data.get("data", {}).get("repository", {}).get("issue", {}).get("id")
+        )
+        if not content_id:
+            raise GitServiceError(f"Issue #{issue_number} not found in repository")
+
+        # 프로젝트에 추가
+        result = await self._graphql(
+            """
+            mutation($projectId: ID!, $contentId: ID!) {
+              addProjectV2ItemById(input: {
+                projectId: $projectId, contentId: $contentId
+              }) { item { id } }
+            }
+            """,
+            {"projectId": self._project_id, "contentId": content_id},
+        )
+        item_id = result.get("data", {}).get("addProjectV2ItemById", {}).get("item", {}).get("id", "")
+        if not item_id:
+            raise GitServiceError(f"Failed to add issue #{issue_number} to project")
+
+        self._item_id_cache[issue_number] = item_id
+
+        # 컬럼 설정
+        option_id = self._status_options.get(column)
+        if option_id:
+            await self._graphql(
+                """
+                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                  updateProjectV2ItemFieldValue(input: {
+                    projectId: $projectId, itemId: $itemId, fieldId: $fieldId,
+                    value: { singleSelectOptionId: $optionId }
+                  }) { projectV2Item { id } }
+                }
+                """,
+                {
+                    "projectId": self._project_id,
+                    "itemId": item_id,
+                    "fieldId": self._status_field_id,
+                    "optionId": option_id,
+                },
+            )
+        log.info("Added issue to project", issue=issue_number, column=column)
+        return item_id
+
+    async def link_sub_issue(self, parent_issue_number: int, child_issue_number: int) -> None:
+        """자식 이슈를 부모 이슈의 서브이슈로 연결한다."""
+        # 부모/자식 node ID 조회
+        data = await self._graphql(
+            """
+            query($owner: String!, $repo: String!, $parent: Int!, $child: Int!) {
+              repository(owner: $owner, name: $repo) {
+                parent: issue(number: $parent) { id }
+                child: issue(number: $child) { id }
+              }
+            }
+            """,
+            {
+                "owner": self._owner, "repo": self._repo,
+                "parent": parent_issue_number, "child": child_issue_number,
+            },
+        )
+        repo = data.get("data", {}).get("repository", {})
+        parent_id = repo.get("parent", {}).get("id")
+        child_id = repo.get("child", {}).get("id")
+        if not parent_id or not child_id:
+            log.warning("Sub-issue link: issue not found",
+                        parent=parent_issue_number, child=child_issue_number)
+            return
+
+        await self._graphql(
+            """
+            mutation($parentId: ID!, $childId: ID!) {
+              addSubIssue(input: { issueId: $parentId, subIssueId: $childId }) {
+                issue { id }
+              }
+            }
+            """,
+            {"parentId": parent_id, "childId": child_id},
+        )
+        log.debug("Linked sub-issue", parent=parent_issue_number, child=child_issue_number)
+
+    async def ensure_label(self, label: str, color: str = "ededed") -> None:
+        """라벨이 없으면 생성한다. 이미 있으면 무시."""
+        try:
+            await self._rest(
+                "POST",
+                f"/repos/{self._owner}/{self._repo}/labels",
+                json={"name": label, "color": color},
+            )
+        except Exception:
+            pass  # 422 already_exists는 _rest에서 처리됨
 
     # ===== Git Operations =====
 

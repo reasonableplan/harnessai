@@ -198,7 +198,7 @@ def create_app(
                     _ws_bg_tasks.add(task)
                     task.add_done_callback(_on_bg_task_done)
 
-                elif msg_type in ("plan.approve", "plan.revise", "plan.commit"):
+                elif msg_type in ("plan.approve", "plan.revise", "plan.commit", "plan.start"):
                     action = msg_type.split(".")[1]  # "approve" / "revise" / "commit"
                     content = msg.get("content", "")
                     try:

@@ -36,6 +36,10 @@ def _make_director(state_store=None, git_service=None, llm_client=None):
         state_store.get_agent_config = AsyncMock(return_value=None)
     if git_service is None:
         git_service = MagicMock()
+        git_service.ensure_label = AsyncMock()
+        git_service.add_issue_to_project = AsyncMock(return_value="item-id")
+        git_service.link_sub_issue = AsyncMock()
+        git_service.close_issue = AsyncMock()
     if llm_client is None:
         llm_client = _make_llm()
 
@@ -67,6 +71,10 @@ def git_service():
     svc = MagicMock()
     svc.create_issue = AsyncMock(return_value=1)
     svc.move_issue_to_column = AsyncMock()
+    svc.ensure_label = AsyncMock()
+    svc.add_issue_to_project = AsyncMock(return_value="item-id")
+    svc.link_sub_issue = AsyncMock()
+    svc.close_issue = AsyncMock()
     return svc
 
 
@@ -297,7 +305,8 @@ class TestPlanAction:
         assert director.active_plan.stage == PlanStage.COMMITTED
         assert state_store.create_epic.call_count == 1
         assert state_store.create_task.call_count == 3
-        assert git_service.create_issue.call_count == 3
+        # 3개 서브이슈 + 1개 Epic 이슈 = 4번 호출
+        assert git_service.create_issue.call_count == 4
 
         # 의존성이 temp_id에서 실제 task_id로 변환되었는지 확인
         third_call = state_store.create_task.call_args_list[2][0][0]

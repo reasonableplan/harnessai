@@ -14,6 +14,7 @@ from src.core.db.schema import (
     EpicModel,
     HookModel,
     MessageModel,
+    PlanModel,
     TaskModel,
 )
 from src.core.logging.logger import get_logger
@@ -227,6 +228,52 @@ class StateStore:
         async with self._session_factory() as session:
             session.add(ArtifactModel(**artifact_data))
             await session.commit()
+
+    # ===== Plan Persistence =====
+
+    async def save_plan(self, plan_data: dict[str, Any]) -> None:
+        """EpicPlan 세션을 DB에 저장(upsert)한다."""
+        async with self._session_factory() as session:
+            existing = await session.get(PlanModel, plan_data["session_id"])
+            if existing:
+                for key, val in plan_data.items():
+                    if key != "session_id":
+                        setattr(existing, key, val)
+            else:
+                session.add(PlanModel(**plan_data))
+            await session.commit()
+
+    async def get_active_plan(self) -> PlanModel | None:
+        """COMMITTED/EXECUTING 이전의 활성 플랜을 반환한다. 없으면 None."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(PlanModel)
+                .where(PlanModel.stage.notin_(["executing", "committed"]))
+                .order_by(desc(PlanModel.updated_at))
+                .limit(1)
+            )
+            return result.scalar_one_or_none()
+
+    async def get_plan(self, session_id: str) -> PlanModel | None:
+        """session_id로 플랜을 조회한다."""
+        async with self._session_factory() as session:
+            return await session.get(PlanModel, session_id)
+
+    async def get_latest_plan(self) -> PlanModel | None:
+        """가장 최근 플랜을 반환한다 (상태 무관)."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(PlanModel).order_by(desc(PlanModel.updated_at)).limit(1)
+            )
+            return result.scalar_one_or_none()
+
+    async def delete_plan(self, session_id: str) -> None:
+        """플랜을 삭제한다."""
+        async with self._session_factory() as session:
+            plan = await session.get(PlanModel, session_id)
+            if plan:
+                await session.delete(plan)
+                await session.commit()
 
     # ===== Dashboard Queries =====
 

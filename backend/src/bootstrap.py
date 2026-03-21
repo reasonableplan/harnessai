@@ -74,6 +74,13 @@ async def bootstrap(config: AppConfig) -> SystemContext:
         config, message_bus, state_store, git_service, llm_client, code_search, memory_store,
     )
 
+    # 9.5. Director 플랜 복원 (서버 재시작 시 이전 세션 이어가기)
+    from src.agents.director.director_agent import DirectorAgent
+    for agent in agents:
+        if isinstance(agent, DirectorAgent):
+            await agent.restore_plan_from_db()
+            break
+
     # 10. 에이전트 DB 등록 (병렬, 개별 실패 허용)
     results = await asyncio.gather(*(
         state_store.register_agent({
@@ -191,6 +198,7 @@ def _create_agents(
         llm_client=llm_client,
         memory_store=memory_store,
     )
+
     git_agent = GitAgent(
         config=make_config("agent-git", "git", AgentLevel.WORKER),
         message_bus=message_bus,

@@ -83,9 +83,12 @@ class ClaudeCliClient:
         log.debug("ClaudeCliClient calling claude CLI", prompt_len=len(prompt))
 
         async def _call() -> str:
+            # stdin으로 프롬프트 전달 — Windows에서 긴 유니코드
+            # command-line 인자가 프로세스를 멈추는 문제 방지
             try:
                 proc = await asyncio.create_subprocess_exec(
-                    *self._cli_args, "-p", "--", prompt,
+                    *self._cli_args, "-p",
+                    stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     cwd=tempfile.gettempdir(),  # 프로젝트 CLAUDE.md 컨텍스트 차단
@@ -98,7 +101,8 @@ class ClaudeCliClient:
 
             try:
                 stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(), timeout=_CLI_TIMEOUT_S
+                    proc.communicate(input=prompt.encode("utf-8")),
+                    timeout=_CLI_TIMEOUT_S,
                 )
             except asyncio.TimeoutError as e:
                 proc.kill()

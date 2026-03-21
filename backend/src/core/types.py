@@ -92,7 +92,8 @@ class PlanStage(str, Enum):
     GATHERING = "gathering"
     STRUCTURING = "structuring"
     CONFIRMING = "confirming"
-    COMMITTED = "committed"
+    COMMITTED = "committed"      # 이슈 생성 완료 — 업무 시작 대기
+    EXECUTING = "executing"      # 사용자 허가 후 에이전트 업무 진행 중
 
 
 class TechStack(BaseModel):
@@ -122,6 +123,15 @@ class TaskDraft(BaseModel):
     priority: int = 3
     complexity: str = "medium"
     dependencies: list[str] = Field(default_factory=list)
+    story_id: str = ""  # 소속 Story temp_id (빈 문자열이면 Story 미지정)
+
+
+class StoryDraft(BaseModel):
+    """Story — Epic과 Sub-task 사이의 중간 계층 (기능 단위 그룹)."""
+    temp_id: str
+    title: str
+    description: str = ""
+    tasks: list[str] = Field(default_factory=list)  # 소속 TaskDraft temp_id 목록
 
 
 class EpicPlan(BaseModel):
@@ -132,6 +142,7 @@ class EpicPlan(BaseModel):
     decisions: list[str] = Field(default_factory=list)
     epic_title: str = ""
     epic_description: str = ""
+    stories: list[StoryDraft] = Field(default_factory=list)
     tasks: list[TaskDraft] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

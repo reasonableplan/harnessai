@@ -125,6 +125,24 @@ class HookModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),nullable=False, default=func.now())
 
 
+class PlanModel(Base):
+    """Director의 EpicPlan 세션 상태를 DB에 persist한다."""
+    __tablename__ = "plans"
+
+    session_id: Mapped[str] = mapped_column(String, primary_key=True)
+    stage: Mapped[str] = mapped_column(String, nullable=False, default="gathering")
+    goal: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    epic_title: Mapped[str] = mapped_column(String, nullable=False, default="")
+    epic_description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    project_context: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    decisions: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    stories: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    tasks: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    conversation: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+
+
 class ArtifactModel(Base):
     __tablename__ = "artifacts"
 
