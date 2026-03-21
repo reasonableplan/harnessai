@@ -152,7 +152,11 @@ class CodebaseIndexer:
         """청크 리스트를 Qdrant PointStruct 리스트로 변환한다."""
         # 임베딩 텍스트: context + content
         texts = [f"{c.context}\n{c.content}" for c in chunks]
-        embeddings = list(self._embed(texts))
+        try:
+            embeddings = list(self._embed(texts))
+        except Exception as e:
+            log.error("Embedding failed", chunk_count=len(texts), err=str(e))
+            return []
 
         points = []
         for chunk, vector in zip(chunks, embeddings):

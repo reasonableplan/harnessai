@@ -82,6 +82,16 @@ class BaseCodeGeneratorAgent(BaseAgent):
                 data={"files": artifact_paths, "summary": summary},
                 artifacts=artifact_paths,
             )
+        except SandboxEscapeError as e:
+            self._log.error(
+                "SECURITY: sandbox escape attempted",
+                task_id=task.id, path=e.path, sandbox=e.sandbox,
+            )
+            return TaskResult(
+                success=False,
+                error={"message": "Security violation: path outside workspace"},
+                artifacts=[],
+            )
         except Exception as e:
             self._log.error("Code generation failed", task_id=task.id, err=str(e))
             return TaskResult(

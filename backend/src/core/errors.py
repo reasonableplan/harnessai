@@ -58,6 +58,8 @@ class SandboxEscapeError(AgentError):
             f"Path escapes sandbox: {path} (workDir: {work_dir})",
             "SANDBOX_ESCAPE",
         )
+        self.path = path
+        self.sandbox = work_dir
 
 
 class SyntaxValidationError(AgentError):

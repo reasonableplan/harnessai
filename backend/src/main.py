@@ -3,17 +3,28 @@ from __future__ import annotations
 
 import asyncio
 import signal
-import sys
 
 import uvicorn
 
-from src.bootstrap import bootstrap, get_system_context, shutdown
+from src.bootstrap import bootstrap, shutdown
 from src.core.config import get_config
 from src.core.logging.logger import configure_logging, get_logger
 from src.dashboard.event_mapper import EventMapper
 from src.dashboard.server import cancel_background_tasks, create_app, get_ws_manager
 
 log = get_logger("Main")
+
+
+async def _wait_for_startup(server: uvicorn.Server, server_task: asyncio.Task) -> None:
+    """서버가 started 상태가 되거나 바인드 실패로 태스크가 종료될 때까지 대기한다."""
+    while not server.started:
+        if server_task.done():
+            # 서버가 시작 전에 종료됨 — 바인드 실패 등
+            exc = server_task.exception()
+            if exc:
+                raise exc
+            raise RuntimeError("Server exited before startup completed")
+        await asyncio.sleep(0.05)
 
 
 async def main() -> None:
@@ -72,6 +83,16 @@ async def main() -> None:
     )
     server = uvicorn.Server(server_config)
     server_task = asyncio.create_task(server.serve())
+
+    # 바인드 실패 조기 감지 — startup 완료 또는 태스크 예외를 기다림
+    startup_wait = asyncio.create_task(_wait_for_startup(server, server_task))
+    try:
+        await startup_wait
+    except Exception as e:
+        log.error("Server failed to start", err=str(e))
+        event_mapper.dispose()
+        await shutdown(ctx)
+        raise SystemExit(1) from e
 
     log.info("Dashboard server started", port=config.dashboard_port)
 

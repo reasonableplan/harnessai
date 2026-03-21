@@ -34,6 +34,8 @@ log = get_logger("DirectorAgent")
 
 _MAX_DECISIONS = 10
 _MAX_CONVERSATION_TURNS = 5
+_MAX_TURN_CONTENT_LEN = 8000
+_MAX_FORMATTED_CONVERSATION_LEN = 16000
 
 _VALID_AGENTS = {"director", "agent-git", "agent-backend", "agent-frontend", "agent-docs"}
 _AGENT_KEYWORDS: dict[str, str] = {
@@ -129,24 +131,8 @@ class DirectorAgent(BaseAgent):
         # 활성 플랜이 있으면 Stage별 처리
         plan = self._active_plan
         if plan.stage == PlanStage.COMMITTED:
-            # 이미 확정된 플랜 — 새 세션으로 리셋 후 재분류 (재귀 방지)
-            self._active_plan = None
-            self._conversation.clear()
-            action = await self._classify_input(safe_content)
-            log.info("User input classified (post-commit)", action=action)
-            if action == "create_epic":
-                self._active_plan = EpicPlan(
-                    session_id=str(uuid.uuid4()),
-                    goal=safe_content,
-                )
-                self._append_conversation("user", safe_content)
-                await self._handle_gathering(safe_content)
-            elif action == "status_query":
-                await self._handle_status_query(safe_content)
-            else:
-                await self._broadcast_director_message(
-                    "요청을 좀 더 구체적으로 말씀해주시겠어요?"
-                )
+            self._reset_session()
+            await self._route_input(safe_content, user_input)
             return
 
         self._append_conversation("user", safe_content)
@@ -633,20 +619,32 @@ class DirectorAgent(BaseAgent):
             ]
 
     def _append_conversation(self, role: str, content: str) -> None:
-        """Sliding window 대화 기록 추가."""
-        self._conversation.append({"role": role, "content": content})
+        """Sliding window 대화 기록 추가. 각 turn content는 최대 _MAX_TURN_CONTENT_LEN자로 제한."""
+        truncated = content[:_MAX_TURN_CONTENT_LEN]
+        self._conversation.append({"role": role, "content": truncated})
         if len(self._conversation) > _MAX_CONVERSATION_TURNS * 2:
             self._conversation = self._conversation[-_MAX_CONVERSATION_TURNS * 2:]
 
     def _format_conversation(self) -> str:
-        """대화 기록을 텍스트로 포맷. content는 저장 시 이미 escape 처리됨."""
+        """대화 기록을 텍스트로 포맷. 총 길이를 _MAX_FORMATTED_CONVERSATION_LEN으로 제한한다."""
         if not self._conversation:
             return "(no previous conversation)"
         lines = []
+        total = 0
         for turn in self._conversation:
             prefix = "User" if turn["role"] == "user" else "Director"
-            lines.append(f"{prefix}: {turn['content']}")
+            line = f"{prefix}: {turn['content']}"
+            total += len(line)
+            if total > _MAX_FORMATTED_CONVERSATION_LEN:
+                lines.append("... (earlier turns truncated)")
+                break
+            lines.append(line)
         return "\n".join(lines)
+
+    def _reset_session(self) -> None:
+        """확정된 플랜을 초기화하고 새 세션을 준비한다."""
+        self._active_plan = None
+        self._conversation.clear()
 
     async def _recall_memories(self, query: str) -> str:
         """장기 기억에서 관련 정보를 검색하여 프롬프트 섹션으로 반환한다."""

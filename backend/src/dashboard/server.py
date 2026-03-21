@@ -288,7 +288,7 @@ def create_app(
                     task.add_done_callback(_on_bg_task_done)
 
         except WebSocketDisconnect:
-            pass
+            _log.debug("WebSocket client disconnected", ws_id=id(ws))
         except Exception as e:
             _log.error("WS connection error", err=str(e))
         finally:

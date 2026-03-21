@@ -50,6 +50,9 @@ async def list_agents(store=Depends(get_state_store)):
 
 @router.get("/{agent_id}/stats")
 async def get_agent_stats(agent_id: str, store=Depends(get_state_store)):
+    agents = await store.get_all_agents()
+    if not any(a.id == agent_id for a in agents):
+        raise HTTPException(status_code=404, detail="Agent not found")
     stats = await store.get_agent_stats(agent_id)
     return stats.model_dump()
 
