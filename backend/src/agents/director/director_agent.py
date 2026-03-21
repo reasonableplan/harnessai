@@ -14,6 +14,14 @@ from src.agents.director.prompts import (
     STRUCTURING_SYSTEM_PROMPT,
 )
 from src.core.agent.base_agent import BaseAgent
+
+
+def _safe_int(val: Any, default: int = 3) -> int:
+    """LLM 출력의 priority 등 정수 변환. 실패 시 기본값 반환."""
+    try:
+        return max(1, min(5, int(val)))
+    except (ValueError, TypeError):
+        return default
 from src.core.logging.logger import get_logger
 from src.core.messaging.message_bus import MessageBus
 from src.core.state.state_store import StateStore
@@ -132,7 +140,9 @@ class DirectorAgent(BaseAgent):
         plan = self._active_plan
         if plan.stage == PlanStage.COMMITTED:
             self._reset_session()
-            await self._route_input(safe_content, user_input)
+            # _active_plan이 None이 되었으므로 위의 분기에서 새 세션으로 처리됨 (재귀 방지)
+            if self._active_plan is None:
+                await self._route_input(safe_content, user_input)
             return
 
         self._append_conversation("user", safe_content)
@@ -547,7 +557,10 @@ class DirectorAgent(BaseAgent):
         target_status = "done" if success else "ready"
 
         task = await self._state_store.get_task(task_id)
-        if task and task.github_issue_number:
+        if task is None:
+            log.warning("Review for unknown task, ignoring", task_id=task_id)
+            return
+        if task.github_issue_number:
             try:
                 await self._git_service.move_issue_to_column(
                     task.github_issue_number, target_column
@@ -611,7 +624,7 @@ class DirectorAgent(BaseAgent):
                     title=t.get("title", ""),
                     description=t.get("description", ""),
                     agent=t.get("agent"),
-                    priority=int(t.get("priority", 3)),
+                    priority=_safe_int(t.get("priority", 3)),
                     complexity=t.get("complexity", "medium"),
                     dependencies=list(t.get("dependencies", [])),
                 )
@@ -626,19 +639,21 @@ class DirectorAgent(BaseAgent):
             self._conversation = self._conversation[-_MAX_CONVERSATION_TURNS * 2:]
 
     def _format_conversation(self) -> str:
-        """대화 기록을 텍스트로 포맷. 총 길이를 _MAX_FORMATTED_CONVERSATION_LEN으로 제한한다."""
+        """대화 기록을 텍스트로 포맷. 총 길이를 _MAX_FORMATTED_CONVERSATION_LEN으로 제한한다.
+        최신 턴을 우선 보존하고 오래된 턴을 잘라낸다."""
         if not self._conversation:
             return "(no previous conversation)"
-        lines = []
+        lines: list[str] = []
         total = 0
-        for turn in self._conversation:
+        for turn in reversed(self._conversation):
             prefix = "User" if turn["role"] == "user" else "Director"
             line = f"{prefix}: {turn['content']}"
-            total += len(line)
-            if total > _MAX_FORMATTED_CONVERSATION_LEN:
+            if total + len(line) > _MAX_FORMATTED_CONVERSATION_LEN:
                 lines.append("... (earlier turns truncated)")
                 break
+            total += len(line)
             lines.append(line)
+        lines.reverse()
         return "\n".join(lines)
 
     def _reset_session(self) -> None:

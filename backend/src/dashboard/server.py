@@ -82,7 +82,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data:; "
-            "connect-src 'self' ws: wss:;"
+            "connect-src 'self' ws://localhost:* wss://localhost:*;"
         )
         return response
 
@@ -139,6 +139,10 @@ def create_app(
     # 진행 중인 WS 백그라운드 태스크 — GC 방지
     _ws_bg_tasks: set[asyncio.Task] = set()
     register_bg_task_set(_ws_bg_tasks)
+
+    # command route의 백그라운드 태스크도 shutdown 시 정리되도록 등록
+    from src.dashboard.routes.command import _background_tasks as cmd_bg_tasks
+    register_bg_task_set(cmd_bg_tasks)
 
     # WS 메시지 rate limiting (LLM API 비용 보호)
     _ws_msg_times: dict[int, list[float]] = {}
@@ -209,7 +213,9 @@ def create_app(
 
                 elif msg_type == "agent-pause":
                     payload = msg.get("payload", {})
-                    agent_id = payload.get("agentId", "")
+                    agent_id = str(payload.get("agentId", ""))[:64]
+                    if not agent_id:
+                        continue
                     agent = get_agent_by_id(agent_id)
                     if agent:
                         task = asyncio.create_task(agent.pause())
@@ -219,7 +225,9 @@ def create_app(
 
                 elif msg_type == "agent-resume":
                     payload = msg.get("payload", {})
-                    agent_id = payload.get("agentId", "")
+                    agent_id = str(payload.get("agentId", ""))[:64]
+                    if not agent_id:
+                        continue
                     agent = get_agent_by_id(agent_id)
                     if agent:
                         task = asyncio.create_task(agent.resume())

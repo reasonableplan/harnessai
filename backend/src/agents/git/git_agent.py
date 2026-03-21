@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any
 
 from src.core.agent.base_agent import BaseAgent
@@ -44,14 +45,17 @@ class GitAgent(BaseAgent):
             log.error("Git task failed", task_id=task.id, err=str(e))
             return TaskResult(success=False, error={"message": "Git task failed"}, artifacts=[])
 
+    _TYPE_PATTERNS = {
+        "branch": re.compile(r'\bbranch\b'),
+        "commit": re.compile(r'\bcommit\b'),
+        "pr": re.compile(r'\bpr\b|\bpull\s+request\b'),
+    }
+
     def _detect_type(self, labels: list[str], title: str) -> str:
         combined = " ".join(labels).lower() + " " + title.lower()
-        if "branch" in combined:
-            return "branch"
-        if "commit" in combined:
-            return "commit"
-        if "pr" in combined or "pull request" in combined:
-            return "pr"
+        for task_type, pattern in self._TYPE_PATTERNS.items():
+            if pattern.search(combined):
+                return task_type
         return "unknown"
 
     async def _handle_branch(self, task: Task) -> TaskResult:
@@ -64,8 +68,8 @@ class GitAgent(BaseAgent):
         work_dir = self._git_service.work_dir
         if not work_dir:
             raise RuntimeError("git_service.work_dir is not configured")
-        # 커밋 메시지: 250자 초과 시 자름
-        commit_msg = task.title[:250].strip() or f"chore: task {task.id[:8]}"
+        # 커밋 메시지: 제어문자 제거 + 250자 초과 시 자름
+        commit_msg = re.sub(r'[\x00-\x1f]', ' ', task.title[:250]).strip() or f"chore: task {task.id[:8]}"
 
         # -u: 이미 추적 중인 파일만 스테이징 (.env 등 미추적 파일 제외)
         await self._run_git(work_dir, "add", "-u")

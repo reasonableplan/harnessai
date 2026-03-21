@@ -230,6 +230,11 @@ export function useWebSocket() {
   }, []);
 
   const connect = useCallback(() => {
+    // StrictMode 이중 마운트 방지 — 이미 연결 중이면 스킵
+    if (wsRef.current && (wsRef.current.readyState === WebSocket.CONNECTING || wsRef.current.readyState === WebSocket.OPEN)) {
+      return;
+    }
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = import.meta.env.VITE_WS_URL ?? `${protocol}//${window.location.host}/ws`;
     const authToken = import.meta.env.VITE_DASHBOARD_AUTH_TOKEN as string | undefined;
@@ -302,9 +307,13 @@ export function useWebSocket() {
     connect();
 
     // Listen for ws-send custom events from UI components (buttons)
+    const ALLOWED_WS_TYPES = new Set([
+      'agent-pause', 'agent-resume', 'system-pause', 'system-resume',
+      'plan.approve', 'plan.commit', 'plan.revise', 'task-retry', 'user-input',
+    ]);
     const handleWsSend = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail) sendRaw(detail);
+      if (detail && ALLOWED_WS_TYPES.has(detail.type)) sendRaw(detail);
     };
     window.addEventListener('ws-send', handleWsSend);
 

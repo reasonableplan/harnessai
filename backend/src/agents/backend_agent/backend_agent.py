@@ -13,7 +13,7 @@ class BackendAgent(BaseCodeGeneratorAgent):
         if context:
             ctx_section = (
                 "\n## Existing codebase (follow these patterns and conventions)\n"
-                f"<existing_code>\n{context}\n</existing_code>\n\n"
+                f"<existing_code>\n{saxutils.escape(context)}\n</existing_code>\n\n"
             )
         return (
             "You are an expert backend engineer. Generate production-quality code.\n"

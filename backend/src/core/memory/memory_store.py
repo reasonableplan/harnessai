@@ -47,29 +47,33 @@ class MemoryStore:
         self._qdrant = qdrant
         self._embed = embedding_fn
         self._collection_ready = False
+        self._ensure_lock = asyncio.Lock()
 
     async def ensure_collection(self) -> None:
         """컬렉션이 없으면 생성한다."""
         if self._collection_ready:
             return
-        result = await with_retry(
-            lambda: asyncio.to_thread(self._qdrant.get_collections),
-            max_retries=3, label="Qdrant get_collections(memory)",
-        )
-        if not any(c.name == COLLECTION_NAME for c in result.collections):
-            await with_retry(
-                lambda: asyncio.to_thread(
-                    self._qdrant.create_collection,
-                    collection_name=COLLECTION_NAME,
-                    vectors_config=VectorParams(
-                        size=EMBEDDING_DIM,
-                        distance=Distance.COSINE,
-                    ),
-                ),
-                max_retries=3, label="Qdrant create_collection(memory)",
+        async with self._ensure_lock:
+            if self._collection_ready:
+                return
+            result = await with_retry(
+                lambda: asyncio.to_thread(self._qdrant.get_collections),
+                max_retries=3, label="Qdrant get_collections(memory)",
             )
-            log.info("Memory collection created")
-        self._collection_ready = True
+            if not any(c.name == COLLECTION_NAME for c in result.collections):
+                await with_retry(
+                    lambda: asyncio.to_thread(
+                        self._qdrant.create_collection,
+                        collection_name=COLLECTION_NAME,
+                        vectors_config=VectorParams(
+                            size=EMBEDDING_DIM,
+                            distance=Distance.COSINE,
+                        ),
+                    ),
+                    max_retries=3, label="Qdrant create_collection(memory)",
+                )
+                log.info("Memory collection created")
+            self._collection_ready = True
 
     async def save(
         self,

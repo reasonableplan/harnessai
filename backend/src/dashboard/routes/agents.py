@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field, field_validator
 
 from src.core.llm.claude_client import ALLOWED_MODELS
@@ -49,7 +49,7 @@ async def list_agents(store=Depends(get_state_store)):
 
 
 @router.get("/{agent_id}/stats")
-async def get_agent_stats(agent_id: str, store=Depends(get_state_store)):
+async def get_agent_stats(agent_id: str = Path(..., min_length=1, max_length=64), store=Depends(get_state_store)):
     agents = await store.get_all_agents()
     if not any(a.id == agent_id for a in agents):
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -58,7 +58,7 @@ async def get_agent_stats(agent_id: str, store=Depends(get_state_store)):
 
 
 @router.get("/{agent_id}/config")
-async def get_agent_config(agent_id: str, store=Depends(get_state_store)):
+async def get_agent_config(agent_id: str = Path(..., min_length=1, max_length=64), store=Depends(get_state_store)):
     config = await store.get_agent_config(agent_id)
     if not config:
         raise HTTPException(status_code=404, detail="Config not found")
@@ -67,7 +67,7 @@ async def get_agent_config(agent_id: str, store=Depends(get_state_store)):
 
 @router.put("/{agent_id}/config")
 async def update_agent_config(
-    agent_id: str, body: AgentConfigUpdate, store=Depends(get_state_store)
+    agent_id: str = Path(..., min_length=1, max_length=64), body: AgentConfigUpdate = ..., store=Depends(get_state_store),
 ):
     agents = await store.get_all_agents()
     if not any(a.id == agent_id for a in agents):

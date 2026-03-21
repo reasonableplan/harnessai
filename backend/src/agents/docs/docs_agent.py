@@ -32,7 +32,7 @@ class DocsAgent(BaseCodeGeneratorAgent):
         if context:
             ctx_section = (
                 "\n## Existing codebase (reference for documentation)\n"
-                f"<existing_code>\n{context}\n</existing_code>\n\n"
+                f"<existing_code>\n{saxutils.escape(context)}\n</existing_code>\n\n"
             )
         return (
             "You are a technical documentation specialist. Generate clear, comprehensive documentation.\n"

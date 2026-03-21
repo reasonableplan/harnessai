@@ -47,7 +47,7 @@ async def test_reset():
     with pytest.raises(ValueError):
         await cb.execute(failing)
 
-    cb.reset()
+    await cb.reset()
     assert cb.state == CircuitState.CLOSED
 
 

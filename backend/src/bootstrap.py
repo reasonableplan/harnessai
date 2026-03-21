@@ -36,7 +36,8 @@ class SystemContext:
 
 async def bootstrap(config: AppConfig) -> SystemContext:
     """전체 시스템을 초기화하고 SystemContext를 반환한다."""
-    global _system_context
+    global _system_context, _shutting_down
+    _shutting_down = False  # 재부트스트랩 허용 (테스트/hot-reload)
 
     log.info("Bootstrapping system...")
 
@@ -231,7 +232,7 @@ _shutting_down = False
 
 async def shutdown(ctx: SystemContext) -> None:
     """Graceful shutdown — 에이전트 drain → watcher → DB."""
-    global _shutting_down
+    global _shutting_down, _system_context
     if _shutting_down:
         return
     _shutting_down = True
@@ -265,7 +266,6 @@ async def shutdown(ctx: SystemContext) -> None:
     await close_engine()
 
     _system_context = None
-    _shutting_down = False
     log.info("Shutdown complete")
 
 

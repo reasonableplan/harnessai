@@ -35,6 +35,7 @@ class GitService:
         self._status_options: dict[str, str] = {}  # column_name → option_id
         self._item_id_cache: dict[int, str] = {}   # issue_number → project item ID
         self._owner_gql_type: str = "user"         # "user" or "organization" — detected at startup
+        self._field_cache_lock = asyncio.Lock()
 
     @property
     def work_dir(self) -> str:
@@ -262,38 +263,43 @@ class GitService:
         if self._status_field_id:
             return
 
-        owner_type = self._project_owner_field()
-        data = await self._graphql(
-            f"""
-            query($owner: String!, $number: Int!) {{
-              {owner_type}(login: $owner) {{
-                projectV2(number: $number) {{
-                  id
-                  fields(first: 20) {{
-                    nodes {{
-                      ... on ProjectV2SingleSelectField {{
-                        id
-                        name
-                        options {{ id name }}
+        async with self._field_cache_lock:
+            # double-check after lock
+            if self._status_field_id:
+                return
+
+            owner_type = self._project_owner_field()
+            data = await self._graphql(
+                f"""
+                query($owner: String!, $number: Int!) {{
+                  {owner_type}(login: $owner) {{
+                    projectV2(number: $number) {{
+                      id
+                      fields(first: 20) {{
+                        nodes {{
+                          ... on ProjectV2SingleSelectField {{
+                            id
+                            name
+                            options {{ id name }}
+                          }}
+                        }}
                       }}
                     }}
                   }}
                 }}
-              }}
-            }}
-            """,
-            {"owner": self._owner, "number": self._project_number},
-        )
-        project = self._extract_project(data)
-        self._project_id = project.get("id", "")
-        for field in project.get("fields", {}).get("nodes", []):
-            if field.get("name", "").lower() == "status":
-                self._status_field_id = field["id"]
-                self._status_options = {opt["name"]: opt["id"] for opt in field.get("options", [])}
-                break
+                """,
+                {"owner": self._owner, "number": self._project_number},
+            )
+            project = self._extract_project(data)
+            self._project_id = project.get("id", "")
+            for field in project.get("fields", {}).get("nodes", []):
+                if field.get("name", "").lower() == "status":
+                    self._status_field_id = field["id"]
+                    self._status_options = {opt["name"]: opt["id"] for opt in field.get("options", [])}
+                    break
 
-        if not self._status_field_id:
-            raise GitServiceError("Status field not found in project")
+            if not self._status_field_id:
+                raise GitServiceError("Status field not found in project")
 
     async def _get_project_item_id(self, issue_number: int) -> str | None:
         """이슈 번호로 Project V2 item ID를 조회한다. 캐싱 포함."""
@@ -339,8 +345,9 @@ class GitService:
 
     async def create_branch(self, branch_name: str, base_branch: str = "main") -> None:
         # 안전한 브랜치 이름 검증 (.. 차단으로 path traversal 방지)
-        if not re.match(r'^[\w\-./]+$', branch_name) or '..' in branch_name:
-            raise GitServiceError(f"Invalid branch name: {branch_name!r}")
+        for name in (branch_name, base_branch):
+            if not re.match(r'^[\w\-./]+$', name) or '..' in name:
+                raise GitServiceError(f"Invalid branch name: {name!r}")
         try:
             proc = await asyncio.create_subprocess_exec(
                 "git", "-C", self._work_dir, "checkout", "-b", branch_name, f"origin/{base_branch}",

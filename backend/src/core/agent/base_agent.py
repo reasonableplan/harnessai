@@ -291,6 +291,7 @@ class BaseAgent(ABC):
                     task_id=task.id,
                     column=new_column,
                 )
+                return  # Board-first: do not update DB if Board failed
 
         updates: dict[str, Any] = {"status": new_status, "board_column": new_column}
         if result.success:

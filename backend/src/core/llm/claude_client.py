@@ -4,7 +4,7 @@ from __future__ import annotations
 import anthropic
 
 from src.core.config import DEFAULT_CLAUDE_MODEL
-from src.core.errors import RateLimitError, TokenBudgetError
+from src.core.errors import AuthError, NetworkError, RateLimitError, TokenBudgetError
 from src.core.llm.json_extract import parse_json_response
 from src.core.logging.logger import get_logger
 from src.core.resilience.api_retry import with_retry
@@ -71,6 +71,10 @@ class ClaudeClient:
             )
         except anthropic.RateLimitError as e:
             raise RateLimitError("Claude API", cause=e) from e
+        except anthropic.AuthenticationError as e:
+            raise AuthError("Claude API", cause=e) from e
+        except anthropic.APIError as e:
+            raise NetworkError(f"Claude API error: {e}", cause=e) from e
 
         input_tokens = response.usage.input_tokens
         output_tokens = response.usage.output_tokens

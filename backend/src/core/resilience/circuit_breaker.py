@@ -95,8 +95,9 @@ class CircuitBreaker:
             self._state = CircuitState.OPEN
             log.warning("Circuit opened", circuit=self.name, failures=self._failures)
 
-    def reset(self) -> None:
+    async def reset(self) -> None:
         """수동 리셋 (테스트/관리용)."""
-        self._state = CircuitState.CLOSED
-        self._failures = 0
-        self._half_open_successes = 0
+        async with self._lock:
+            self._state = CircuitState.CLOSED
+            self._failures = 0
+            self._half_open_successes = 0

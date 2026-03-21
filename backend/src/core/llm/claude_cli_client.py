@@ -85,7 +85,7 @@ class ClaudeCliClient:
         async def _call() -> str:
             try:
                 proc = await asyncio.create_subprocess_exec(
-                    *self._cli_args, "-p", prompt,
+                    *self._cli_args, "-p", "--", prompt,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     cwd=tempfile.gettempdir(),  # 프로젝트 CLAUDE.md 컨텍스트 차단
@@ -111,7 +111,11 @@ class ClaudeCliClient:
             return stdout.decode(errors="replace").strip()
 
         text = await with_retry(_call, max_retries=2, label="ClaudeCLI")
-        return text, 0, 0
+        # CLI는 토큰 카운트를 제공하지 않으므로 문자 수 기반 추정
+        estimated_input = len(prompt) // 4
+        estimated_output = len(text) // 4
+        self._tokens_used += estimated_input + estimated_output
+        return text, estimated_input, estimated_output
 
     async def chat_json(
         self,

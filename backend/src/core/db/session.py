@@ -39,11 +39,12 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI Depends용 세션 제공자."""
+    """FastAPI Depends용 세션 제공자. 정상 완료 시 자동 커밋, 예외 시 롤백."""
     factory = get_session_factory()
     async with factory() as session:
         try:
             yield session
+            await session.commit()
         except Exception:
             await session.rollback()
             raise

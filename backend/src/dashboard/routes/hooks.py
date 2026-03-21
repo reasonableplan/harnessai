@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel
 
 from src.dashboard.routes.deps import get_state_store
@@ -19,6 +19,6 @@ async def list_hooks(store=Depends(get_state_store)):
 
 
 @router.put("/{hook_id}/toggle")
-async def toggle_hook(hook_id: str, body: ToggleBody, store=Depends(get_state_store)):
+async def toggle_hook(hook_id: str = Path(..., min_length=1, max_length=64), body: ToggleBody = ..., store=Depends(get_state_store)):
     await store.toggle_hook(hook_id, body.enabled)
     return {"ok": True}

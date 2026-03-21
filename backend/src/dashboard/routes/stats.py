@@ -19,12 +19,16 @@ class SystemSummary(BaseModel):
 
 @router.get("/summary", response_model=SystemSummary)
 async def get_summary(store=Depends(get_state_store)):
-    # 3개 독립 쿼리를 병렬 실행
-    agents_result, tasks_result, epics_result = await asyncio.gather(
+    # 3개 독립 쿼리를 병렬 실행 (return_exceptions로 부분 실패 허용)
+    results = await asyncio.gather(
         store.get_all_agents(),
         store.get_all_tasks(),
         store.get_all_epics(),
+        return_exceptions=True,
     )
+    agents_result = results[0] if not isinstance(results[0], Exception) else []
+    tasks_result = results[1] if not isinstance(results[1], Exception) else []
+    epics_result = results[2] if not isinstance(results[2], Exception) else []
 
     status_counts: dict[str, int] = {}
     for t in tasks_result:

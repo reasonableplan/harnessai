@@ -35,29 +35,33 @@ class CodebaseIndexer:
         self._embed = embedding_fn
         self._indexed_hashes: set[str] = set()
         self._collection_ready = False
+        self._ensure_lock = asyncio.Lock()
 
     async def ensure_collection(self) -> None:
         """컬렉션이 없으면 생성한다."""
         if self._collection_ready:
             return
-        result = await with_retry(
-            lambda: asyncio.to_thread(self._qdrant.get_collections),
-            max_retries=3, label="Qdrant get_collections",
-        )
-        if not any(c.name == COLLECTION_NAME for c in result.collections):
-            await with_retry(
-                lambda: asyncio.to_thread(
-                    self._qdrant.create_collection,
-                    collection_name=COLLECTION_NAME,
-                    vectors_config=VectorParams(
-                        size=EMBEDDING_DIM,
-                        distance=Distance.COSINE,
-                    ),
-                ),
-                max_retries=3, label="Qdrant create_collection",
+        async with self._ensure_lock:
+            if self._collection_ready:
+                return
+            result = await with_retry(
+                lambda: asyncio.to_thread(self._qdrant.get_collections),
+                max_retries=3, label="Qdrant get_collections",
             )
-            log.info("Qdrant collection created", collection=COLLECTION_NAME)
-        self._collection_ready = True
+            if not any(c.name == COLLECTION_NAME for c in result.collections):
+                await with_retry(
+                    lambda: asyncio.to_thread(
+                        self._qdrant.create_collection,
+                        collection_name=COLLECTION_NAME,
+                        vectors_config=VectorParams(
+                            size=EMBEDDING_DIM,
+                            distance=Distance.COSINE,
+                        ),
+                    ),
+                    max_retries=3, label="Qdrant create_collection",
+                )
+                log.info("Qdrant collection created", collection=COLLECTION_NAME)
+            self._collection_ready = True
 
     async def index_workspace(self, work_dir: Path) -> int:
         """워크스페이스 전체를 스캔하여 인덱싱한다. 반환: 인덱싱된 청크 수."""

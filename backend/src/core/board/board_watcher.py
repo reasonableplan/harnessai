@@ -71,6 +71,7 @@ class BoardWatcher:
 
             # 필요한 컬럼의 태스크를 미리 일괄 조회 (병렬)
             tasks_by_column: dict[str, list] = {}
+            failed_columns: set[str] = set()
             if changed_columns:
                 cols = list(changed_columns)
                 results = await asyncio.gather(
@@ -80,15 +81,16 @@ class BoardWatcher:
                 for col, result in zip(cols, results):
                     if isinstance(result, Exception):
                         log.error("Failed to fetch tasks for column", column=col, err=str(result))
+                        failed_columns.add(col)
                     else:
                         tasks_by_column[col] = result
 
             for item in items:
-                await self._process_item(item, tasks_by_column)
+                await self._process_item(item, tasks_by_column, failed_columns)
         finally:
             self._syncing = False
 
-    async def _process_item(self, item, tasks_by_column: dict[str, list]) -> None:
+    async def _process_item(self, item, tasks_by_column: dict[str, list], failed_columns: set[str] | None = None) -> None:
         issue_number = item.issue_number
         new_column = item.column
         old_column = self._column_cache.get(issue_number)
@@ -96,6 +98,10 @@ class BoardWatcher:
         # 첫 sync이거나 컬럼이 변하지 않은 경우 캐시만 갱신하고 조기 반환
         if old_column is None or old_column == new_column:
             self._column_cache[issue_number] = new_column
+            return
+
+        # 실패한 컬럼의 아이템은 캐시 갱신하지 않아 다음 사이클에 재시도
+        if failed_columns and old_column in failed_columns:
             return
 
         # 미리 조회한 태스크에서 검색
@@ -123,21 +129,24 @@ class BoardWatcher:
                           issue=issue_number, err=str(e))
                 return  # 캐시 갱신하지 않아 다음 사이클에 재시도
 
-            await self._message_bus.publish(
-                Message(
-                    id=str(uuid.uuid4()),
-                    type=MessageType.BOARD_MOVE,
-                    from_agent="board-watcher",
-                    payload={
-                        "issueNumber": issue_number,
-                        "from": old_column,
-                        "to": new_column,
-                        "taskId": task.id,
-                    },
-                    trace_id=str(uuid.uuid4()),
-                    timestamp=datetime.now(timezone.utc),
+            try:
+                await self._message_bus.publish(
+                    Message(
+                        id=str(uuid.uuid4()),
+                        type=MessageType.BOARD_MOVE,
+                        from_agent="board-watcher",
+                        payload={
+                            "issueNumber": issue_number,
+                            "from": old_column,
+                            "to": new_column,
+                            "taskId": task.id,
+                        },
+                        trace_id=str(uuid.uuid4()),
+                        timestamp=datetime.now(timezone.utc),
+                    )
                 )
-            )
+            except Exception as e:
+                log.error("Failed to publish board move event", issue=issue_number, err=str(e))
             log.info("Board column changed", issue=issue_number, from_col=old_column, to_col=new_column)
 
         self._column_cache[issue_number] = new_column

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Path
 
 from src.dashboard.routes.deps import get_state_store
 
@@ -26,6 +26,6 @@ async def list_tasks(store=Depends(get_state_store)):
 
 
 @router.get("/{task_id}/history")
-async def get_task_history(task_id: str, store=Depends(get_state_store)):
+async def get_task_history(task_id: str = Path(..., min_length=1, max_length=64), store=Depends(get_state_store)):
     entries = await store.get_task_history(task_id)
     return [e.model_dump() for e in entries]
