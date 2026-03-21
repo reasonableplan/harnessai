@@ -173,13 +173,15 @@ class BaseAgent(ABC):
                         await self._set_status(AgentStatus.IDLE)
 
                     task = await self._find_next_task()
-                    self._consecutive_errors = 0
                     if task:
                         task_trace_id = str(uuid.uuid4())
                         await self._set_status(AgentStatus.BUSY, task.id, task_trace_id)
                         result = await self._execute_with_timeout(task)
                         await self._on_task_complete(task, result)
+                        self._consecutive_errors = 0
                         await self._set_status(AgentStatus.IDLE, None, task_trace_id)
+                    else:
+                        self._consecutive_errors = 0
                 except asyncio.CancelledError:
                     break
                 except Exception as e:

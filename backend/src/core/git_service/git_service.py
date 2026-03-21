@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 
 from src.core.config import AppConfig
-from src.core.errors import GitServiceError
+from src.core.errors import GitServiceError, RateLimitError
 from src.core.logging.logger import get_logger
 from src.core.resilience.api_retry import with_retry
 from src.core.resilience.circuit_breaker import CircuitBreaker
@@ -56,7 +56,11 @@ class GitService:
         async def _call():
             resp = await self._client.request(method, url, headers=self._headers(), **kwargs)
             if resp.status_code == 422:
-                return resp.json()  # already exists — not an error
+                body = resp.json()
+                errors = body.get("errors", [])
+                if any("already_exists" in str(e.get("message", "")) for e in errors):
+                    return body  # already exists — not an error
+                resp.raise_for_status()  # 실제 validation 에러는 전파
             resp.raise_for_status()
             return resp.json() if resp.content else {}
         try:
@@ -77,6 +81,9 @@ class GitService:
             resp.raise_for_status()
             data = resp.json()
             if "errors" in data:
+                for err in data["errors"]:
+                    if err.get("type") == "RATE_LIMITED":
+                        raise RateLimitError("GitHub GraphQL")
                 raise GitServiceError(f"GraphQL errors: {data['errors']}")
             return data
         try:

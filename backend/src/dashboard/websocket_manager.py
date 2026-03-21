@@ -13,6 +13,15 @@ from src.core.logging.logger import get_logger
 log = get_logger("WSManager")
 
 _AUTH_TIMEOUT_S = 5.0
+_MAX_WS_CONNECTIONS = 50
+
+
+async def _safe_close(ws: WebSocket, code: int) -> None:
+    """클라이언트가 이미 끊긴 경우 close() 예외를 무시한다."""
+    try:
+        await ws.close(code=code)
+    except Exception:
+        pass
 
 
 class WebSocketManager:
@@ -27,6 +36,11 @@ class WebSocketManager:
         """
         await ws.accept()
 
+        # 연결 수 제한
+        if len(self._connections) >= _MAX_WS_CONNECTIONS:
+            await _safe_close(ws, 4003)
+            return False
+
         if auth_token is None:
             # 인증 불필요 — 연결 풀에 바로 추가
             self._connections.add(ws)
@@ -38,22 +52,22 @@ class WebSocketManager:
             raw = await asyncio.wait_for(ws.receive_text(), timeout=_AUTH_TIMEOUT_S)
         except asyncio.TimeoutError:
             log.warning("WS auth timeout — closing")
-            await ws.close(code=4001)
+            await _safe_close(ws, 4001)
             return False
         except Exception:
-            await ws.close(code=4001)
+            await _safe_close(ws, 4001)
             return False
 
         try:
             msg = json.loads(raw)
         except json.JSONDecodeError:
-            await ws.close(code=4001)
+            await _safe_close(ws, 4001)
             return False
 
         token = msg.get("token") or ""
         if msg.get("type") != "auth" or not hmac.compare_digest(token.encode(), auth_token.encode()):
             log.warning("WS auth failed — invalid token")
-            await ws.close(code=4001)
+            await _safe_close(ws, 4001)
             return False
 
         self._connections.add(ws)
@@ -79,14 +93,18 @@ class WebSocketManager:
             "payload": data,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
-        dead: list[WebSocket] = []
-        for ws in list(self._connections):
+
+        async def _safe_send(ws: WebSocket) -> WebSocket | None:
             try:
-                await ws.send_text(payload)
+                await asyncio.wait_for(ws.send_text(payload), timeout=5.0)
+                return None
             except Exception:
-                dead.append(ws)
-        for ws in dead:
-            self._connections.discard(ws)
+                return ws
+
+        results = await asyncio.gather(*[_safe_send(ws) for ws in list(self._connections)])
+        for ws in results:
+            if ws is not None:
+                self._connections.discard(ws)
 
     @property
     def connection_count(self) -> int:

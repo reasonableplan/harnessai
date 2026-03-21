@@ -35,13 +35,11 @@ class MessageBus:
             except Exception as e:
                 log.error("Failed to persist message", err=str(e), message_type=message.type)
 
-        # 타입별 핸들러 호출
-        for handler in list(self._handlers.get(message.type, [])):
-            await self._call(handler, message)
-
-        # 전체 구독 핸들러 호출 (대시보드용)
-        for handler in list(self._all_handlers):
-            await self._call(handler, message)
+        # 핸들러 병렬 호출 — 하나의 느린 핸들러가 나머지를 차단하지 않도록
+        tasks = [self._call(h, message) for h in list(self._handlers.get(message.type, []))]
+        tasks += [self._call(h, message) for h in list(self._all_handlers)]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _call(self, handler, message: Message) -> None:
         try:

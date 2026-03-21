@@ -169,6 +169,7 @@ def create_app(
                 try:
                     msg = json.loads(raw)
                 except json.JSONDecodeError:
+                    await ws.send_text('{"type":"error","message":"Invalid JSON"}')
                     continue
 
                 msg_type = msg.get("type", "")

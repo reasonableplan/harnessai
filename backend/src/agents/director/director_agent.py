@@ -519,9 +519,10 @@ class DirectorAgent(BaseAgent):
         )
         lower = text.strip().lower()
         log.info("Classification raw response", text=repr(text[:100]))
-        if "create_epic" in lower:
+        stripped = lower.strip()
+        if stripped == "create_epic":
             return "create_epic"
-        if "status_query" in lower:
+        if stripped == "status_query":
             return "status_query"
         return "clarify"
 
