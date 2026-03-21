@@ -1,393 +1,290 @@
-# System Architecture
+# Agent Architecture — 에이전트별 로직 상세 문서
 
-## 전체 시스템 구조
+## 개요
 
-```mermaid
-graph TB
-    subgraph External["외부 시스템"]
-        GH["GitHub<br/>(Issues + Projects V2)"]
-        Claude["Claude API<br/>(Anthropic)"]
-        PG["PostgreSQL"]
-    end
+5개 에이전트가 협력하여 소프트웨어를 자율 개발하는 멀티 에이전트 시스템.
 
-    subgraph Bootstrap["bootstrap.py"]
-        BConfig["AppConfig 로드"]
-        BAgents["에이전트 인스턴스 생성"]
-        BResources["리소스 초기화<br/>(GitService, StateStore 등)"]
-    end
-
-    subgraph Core["core/"]
-        direction TB
-        subgraph Agent["agent/"]
-            BaseAgent["BaseAgent"]
-            BaseCodeGen["BaseCodeGenerator"]
-        end
-        subgraph Messaging["messaging/"]
-            MsgBus["MessageBus"]
-        end
-        subgraph State["state/"]
-            StateStore["StateStore"]
-            TaskSM["TaskStateMachine"]
-        end
-        subgraph Board["board/"]
-            BoardWatcher["BoardWatcher"]
-        end
-        subgraph LLM["llm/"]
-            ClaudeClient["ClaudeClient<br/>(Anthropic API)"]
-            CliClient["ClaudeCliClient<br/>(subprocess)"]
-            LocalClient["LocalModelClient<br/>(OpenAI-compat)"]
-            PromptLoader["PromptLoader"]
-            BaseCodeGen2["BaseCodeGenerator"]
-        end
-        subgraph Resilience["resilience/"]
-            CB["CircuitBreaker"]
-            Retry["withRetry()"]
-            Orphan["OrphanCleaner"]
-            BoardThenDB["boardThenDb()"]
-        end
-        subgraph GitSvc["git_service/"]
-            GitFacade["GitService (Facade)"]
-            BoardOps["BoardOperations"]
-            IssueManager["IssueManager"]
-            GitOps["GitOperations"]
-        end
-        subgraph Hooks["hooks/"]
-            HookReg["HookRegistry"]
-        end
-        subgraph IO["io/"]
-            FileWriter["FileWriter"]
-            FollowUp["FollowUpCreator"]
-        end
-        DB["db/<br/>(SQLAlchemy Schema)"]
-        Config["config.py"]
-        Errors["errors.py"]
-    end
-
-    subgraph Agents["agents/"]
-        Director["director/<br/>(L0 Director)"]
-        GitAgent["git/<br/>(L2 Worker)"]
-        Backend["backend/<br/>(L2 Worker)"]
-        Frontend["frontend/<br/>(L2 Worker)"]
-        Docs["docs/<br/>(L2 Worker)"]
-    end
-
-    subgraph Dashboard["dashboard/"]
-        Server["server.py<br/>(FastAPI)"]
-        EventMapper["event_mapper.py<br/>(MessageBus → WS)"]
-        WSManager["ws_manager.py"]
-    end
-
-    subgraph Client["dashboard-client<br/>(TypeScript/React)"]
-        Canvas["Canvas<br/>(RPG Maker 스타일)"]
-        UIComponents["UI Components<br/>(Stats, Activity 등)"]
-    end
-
-    %% Bootstrap flow
-    Bootstrap --> BConfig --> Config
-    Bootstrap --> BAgents --> Director & GitAgent & Backend & Frontend & Docs
-    Bootstrap --> BResources --> Core
-
-    %% Agent dependencies
-    Director & GitAgent & Backend & Frontend & Docs --> BaseAgent
-    Backend & Frontend & Docs --> BaseCodeGen
-
-    %% Core internal wiring
-    BaseAgent --> MsgBus & StateStore & GitFacade
-    BoardWatcher --> GitFacade & StateStore & MsgBus
-    StateStore --> DB
-    GitFacade --> BoardOps & IssueManager & GitOps
-
-    %% Resilience
-    GitFacade -.->|"wrapped by"| CB & Retry & BoardThenDB
-    BoardWatcher -.->|"resilience"| Retry
-
-    %% External connections
-    GitFacade -->|"REST + GraphQL"| GH
-    ClaudeClient -->|"API"| Claude
-    CliClient -->|"subprocess"| Claude
-    LocalClient -->|"fetch"| LocalLLM["Local/Cloud LLM<br/>(Ollama, HuggingFace 등)"]
-    PromptLoader -->|"fs.readFile"| Prompts["prompts/<br/>(shared + agent)"]
-    DB -->|"asyncpg"| PG
-    BoardWatcher -->|"GraphQL poll"| GH
-
-    %% Dashboard
-    Server --> StateStore & MsgBus & EventMapper
-    EventMapper --> MsgBus
-    EventMapper --> WSManager
-    WSManager --> Canvas & UIComponents
-    Canvas -->|"WebSocket + REST"| Server
-
-    %% Main
-    Main["main.py<br/>(uvicorn + agents)"] --> Bootstrap
-    Main --> Server
+```
+사용자
+  │
+  ▼
+Director (L0) ──── 계획·상담·리뷰
+  │
+  ├── Git Agent (L2) ──── 저장소·브랜치·PR
+  ├── Backend Agent (L2) ──── API·DB·비즈니스 로직
+  ├── Frontend Agent (L2) ──── UI·컴포넌트·상태관리
+  └── Docs Agent (L2) ──── 문서·가이드
 ```
 
-## 모듈 의존성 그래프
+---
 
-```mermaid
-graph LR
-    core["core/<br/>(config, db, agent, llm, etc)"]
-    git["agents/git"]
-    director["agents/director"]
-    backend["agents/backend"]
-    frontend["agents/frontend"]
-    docs["agents/docs"]
-    dashboard["dashboard/<br/>(server, event_mapper, ws_manager)"]
-    client["dashboard-client/<br/>(TypeScript/React)"]
-    bootstrap["bootstrap.py"]
-    main["main.py"]
+## 1. Director Agent (`director_agent.py`)
 
-    git --> core
-    director --> core
-    backend --> core
-    frontend --> core
-    docs --> core
-    dashboard --> core
-    bootstrap --> core & git & director & backend & frontend & docs & dashboard
-    main --> bootstrap & dashboard
-    client -.->|"WebSocket"| dashboard
+### 역할
+- 사용자와 대화하며 프로젝트 아키텍처 설계
+- Worker 에이전트들과 상담하여 태스크 보강
+- GitHub Project Board에 3계층 이슈 생성 (Epic → Story → Sub-task)
+- Worker 작업 결과 리뷰 (approve/reject)
+
+### 상태 머신 (PlanStage)
+
+```
+GATHERING → STRUCTURING → CONFIRMING → COMMITTED → EXECUTING
+   │              │              │           │           │
+   │              │              │           │           └── 에이전트 작업 중
+   │              │              │           └── 이슈 생성 완료, "시작해" 대기
+   │              │              └── 사용자 최종 확인
+   │              └── 태스크 분해 + Worker 상담
+   └── 스켈레톤(ProjectContext) 채우기
 ```
 
-## 에이전트 계층 구조
+### 핵심 메서드
 
-```mermaid
-graph TB
-    User["사용자<br/>(CLI / Dashboard)"]
-    Director["Director Agent<br/>L0 — 계획 · 디스패치 · 리뷰"]
+| 메서드 | 역할 |
+|--------|------|
+| `handle_user_input()` | 사용자 메시지 수신 → stage별 라우팅 |
+| `_handle_gathering()` | 스켈레톤 채우기 (topic, purpose, tech_stack 등) |
+| `_generate_task_breakdown()` | LLM으로 초기 태스크 분해 (3계층) |
+| `_consult_workers()` | 4개 Worker 에이전트와 순차 상담 → 태스크 보강 |
+| `_handle_confirming()` | 사용자 최종 확인 (commit/revise) |
+| `_commit_plan()` | GitHub에 Epic+Story+Sub-task 이슈 생성 + 보드 배치 |
+| `_start_execution()` | 의존성 없는 태스크를 Ready로 전환 |
+| `_handle_review()` | Worker 완료 태스크 리뷰 (Done/재작업) |
+| `_persist_plan()` | 현재 plan 상태를 DB에 저장 |
+| `restore_plan_from_db()` | 서버 시작 시 마지막 plan 복원 |
 
-    subgraph Workers["L2 Worker Agents"]
-        GitA["Git Agent<br/>브랜치 · PR · 충돌"]
-        BackendA["Backend Agent<br/>서버 코드 생성"]
-        FrontendA["Frontend Agent<br/>UI 코드 생성"]
-        DocsA["Docs Agent<br/>문서 생성"]
-    end
+### 스켈레톤 (ProjectContext)
 
-    User -->|"user.input"| Director
-    Director -->|"Board issue 생성<br/>(label: agent:backend 등)"| Workers
-    Workers -->|"Board → Review 컬럼 이동"| Director
-    Director -->|"review.feedback"| Workers
+Director가 GATHERING에서 대화로 채우는 구조체:
+
+```python
+class ProjectContext:
+    topic: str          # 무엇을 만드는가
+    purpose: str        # 왜 만드는가
+    target_users: str   # 누가 쓰는가
+    scope: str          # MVP / 프로덕션
+    tech_stack: TechStack  # frontend, backend, database, infra
+    existing_system: str   # 기존 시스템 유무
+    constraints: list[str] # 제약 조건
+    non_goals: list[str]   # 명시적 제외 항목
 ```
 
-## 에이전트 간 상호작용
+### Worker 상담 흐름
 
-### 통신 경로 3가지
-
-에이전트끼리 직접 메서드를 호출하지 않는다. 모든 상호작용은 아래 3가지 간접 경로를 통한다.
-
-```mermaid
-flowchart TB
-    subgraph Director["Director Agent (L0)"]
-        EP["EpicPlanner"]
-        DP["Dispatcher"]
-        RP["ReviewProcessor"]
-    end
-
-    subgraph Workers["Worker Agents (L2)"]
-        Git["Git Agent"]
-        BE["Backend Agent"]
-        FE["Frontend Agent"]
-        Doc["Docs Agent"]
-    end
-
-    Board["GitHub Board<br/>(Issues + Projects V2)"]
-    MB["MessageBus<br/>(브로드캐스트)"]
-    DB["PostgreSQL<br/>(tasks.reviewNote)"]
-
-    %% 경로 1: Board 기반 (태스크 할당 + 완료 보고)
-    EP -->|"① Issue 생성<br/>(label: agent:backend 등)"| Board
-    DP -->|"① Backlog → Ready 승인"| Board
-    Board -->|"BoardWatcher 동기화"| DB
-    Workers -->|"① In Progress → Review 이동"| Board
-
-    %% 경로 2: MessageBus (이벤트 브로드캐스트)
-    Workers -->|"② review.request"| MB
-    RP -->|"② review.feedback<br/>(to: assignedAgent)"| MB
-    MB -->|"② board.move 구독"| DP
-
-    %% 경로 3: Follow-up Issue (도메인 간 작업 요청)
-    Workers -->|"③ Follow-up Issue 생성<br/>(type:commit → Git Agent)"| Board
-    DP -->|"③ 자동 승인 후 Ready"| Board
+```
+Director: 초기 태스크 분해 (LLM 1회)
+  │
+  ├── DevOps Agent에게: "인프라 태스크 1개 검토해줘"
+  │   ← "Docker 설정 분리 권장, 개발 스크립트 추가"
+  │
+  ├── Backend Agent에게: "API 태스크 20개 검토해줘"
+  │   ← "횡단 관심사 누락, DB 세션 관리 태스크 추가"
+  │
+  ├── Frontend Agent에게: "UI 태스크 10개 검토해줘"
+  │   ← "상태 관리 전략 태스크 추가, 드래그앤드롭 분리"
+  │
+  └── Docs Agent에게: "문서 태스크 2개 검토해줘"
+      ← "API 문서 범위 축소, 다이어그램 별도 분리"
+  │
+  ▼
+  통합된 최종 태스크 → 사용자에게 제시
 ```
 
-### 경로 1 — Board 기반 태스크 할당
+### 3계층 이슈 생성 (_commit_plan)
 
-| 단계 | 발신 | 수신 | 매체 | 설명 |
-|------|------|------|------|------|
-| 태스크 생성 | EpicPlanner | Worker (간접) | GitHub Issue + `agent:*` label | Worker는 DB에서 자기 label 태스크만 폴링 |
-| Ready 승인 | Dispatcher | Worker (간접) | Board 컬럼 이동 Backlog→Ready | BoardWatcher가 DB 동기화 → Worker가 claimTask() |
-| 완료 보고 | Worker | Director (간접) | Board 컬럼 이동 In Progress→Review | + review.request MessageBus 발행 |
-| 리뷰 승인 | ReviewProcessor | - | Board 컬럼 이동 Review→Done | + 의존성 체인 트리거 (checkAndPromoteDependents) |
-| 리뷰 거절 | ReviewProcessor | Worker (간접) | Board 컬럼 이동 Review→Ready | + DB reviewNote에 피드백 저장, review.feedback 발행 |
-
-### 경로 2 — MessageBus 이벤트
-
-```mermaid
-sequenceDiagram
-    participant W as Worker Agent
-    participant MB as MessageBus
-    participant Dir as Director Agent
-    participant BW as BoardWatcher
-    participant Dash as Dashboard
-
-    Note over W, Dash: Worker 코드 생성 완료 후
-
-    W ->> MB: review.request {taskId, result}
-    MB -->> Dir: ReviewProcessor.onReviewRequest()
-    MB -->> Dash: EventMapper → WS broadcast
-
-    Note over W, Dash: Director 리뷰 거절 시
-
-    Dir ->> MB: review.feedback {taskId, feedback, retryCount}
-    MB -->> W: (Worker는 DB reviewNote로 피드백 수신)
-    MB -->> Dash: EventMapper → WS broadcast
-
-    Note over W, Dash: Board 컬럼 변경 시
-
-    BW ->> MB: board.move {issueNumber, fromColumn, toColumn}
-    MB -->> Dir: Dispatcher.onBoardMove()
-    MB -->> Dash: EventMapper → WS broadcast
-
-    Note over W, Dash: 모든 에이전트
-
-    W ->> MB: agent.status {status}
-    W ->> MB: token.usage {inputTokens, outputTokens}
-    MB -->> Dash: 실시간 UI 업데이트
+```
+Phase 0: 라벨 확보 (epic, story, backend, frontend, infra, docs)
+Phase 1: Sub-task 이슈 생성 (개별 작업 단위)
+Phase 2: Story 이슈 생성 (기능 그룹, Sub-task 참조)
+Phase 3: Epic 이슈 생성 (프로젝트 전체, Story 참조)
+Phase 4: 서브이슈 연결 (Story→Epic, Sub-task→Story)
+Phase 5: 프로젝트 보드에 전체 추가 (Backlog)
+Phase 6: DB 저장 (Epic + Tasks)
+Phase 7: COMMITTED 상태 전환 + plan DB persist
 ```
 
-| 메시지 타입 | 발행자 | 구독자 | 용도 |
-|------------|--------|--------|------|
-| `board.move` | BoardWatcher | Dispatcher, Dashboard | 컬럼 변경 감지 → 의존성 승인, Backlog 검토 |
-| `board.remove` | BoardWatcher | Dashboard | Board에서 이슈 삭제 감지 → 대시보드 알림 |
-| `review.request` | BaseAgent (Worker) | ReviewProcessor, Dashboard | 코드 리뷰 요청 |
-| `review.feedback` | ReviewProcessor | Dashboard (Worker는 DB로 수신) | 리뷰 피드백 전달 |
-| `agent.status` | 모든 에이전트 | Dashboard | 에이전트 상태 표시 |
-| `token.usage` | 모든 에이전트 | Dashboard | 토큰 사용량 추적 |
-| `epic.progress` | EpicPlanner | Dashboard | 에픽 진행률 표시 |
-| `user.input` | CLI / Dashboard | DirectorAgent | 사용자 명령 전달 |
-| `agent.config.updated` | Dashboard REST API | BaseAgent (hot-reload) | 에이전트 설정 변경 |
+### Plan 영속성
 
-### 경로 3 — Follow-up Issue (도메인 간 작업 요청)
+- 모든 stage 변경 시 `_persist_plan()` → DB에 자동 저장
+- 서버 재시작 시 `restore_plan_from_db()` → 마지막 plan 복원
+- 세션 초기화 시 `_reset_session()` → DB에서 plan 삭제
 
-Worker가 작업 중 다른 도메인의 작업이 필요하면 GitHub에 follow-up issue를 생성한다.
-Worker끼리 직접 통신하지 않고, Board를 통해 간접적으로 협업한다.
+---
 
-```mermaid
-sequenceDiagram
-    participant BE as Backend Agent
-    participant Board as GitHub Board
-    participant BW as BoardWatcher
-    participant Dir as Director (Dispatcher)
-    participant Git as Git Agent
+## 2. BaseAgent (공통 추상 클래스, `base_agent.py`)
 
-    BE ->> BE: 코드 생성 완료
-    BE ->> Board: Follow-up Issue 생성<br/>(label: agent:git, type:commit)
-    Note over Board: Backlog 컬럼에 생성됨
+### 역할
+- 모든 Worker 에이전트의 부모 클래스
+- 폴링 루프, 태스크 선점, 상태 관리 제공
 
-    BW ->> Board: 폴링 — 새 이슈 감지
-    BW ->> Dir: board.move {toColumn: Backlog}
+### 폴링 루프 (`_poll_loop`)
 
-    Dir ->> Dir: Dispatcher.reviewBacklogIssue()
-    Note over Dir: type:commit → 자동 승인
-
-    Dir ->> Board: Backlog → Ready 이동
-    BW ->> Board: 폴링 — Ready 감지
-    BW ->> Git: (DB 동기화 → Git Agent가 claimTask)
-
-    Git ->> Git: branch 생성, commit, PR
-    Git ->> Board: In Progress → Review
+```
+while polling:
+  if status == IDLE or ERROR:
+    task = _find_next_task()     # DB에서 ready 태스크 조회
+    if task:
+      claim_task()               # 원자적 선점 (WHERE status='ready')
+      move_to_board("In Progress")  # Board-first
+      result = execute_task()    # 서브클래스 구현
+      on_task_complete()         # Review/Failed로 전환
+    sleep(interval + backoff)
 ```
 
-**Follow-up 타입:**
+### 태스크 선점 (Optimistic Locking)
 
-| 타입 | 대상 에이전트 | 설명 |
-|------|-------------|------|
-| `commit` | Git Agent | 생성된 코드를 branch + commit + PR |
-| `test` | Backend/Frontend Agent | 테스트 코드 작성 |
-| `docs` | Docs Agent | API 문서, README 업데이트 |
-| `api-hook` | Backend Agent | API 엔드포인트 연동 |
-| `review` | Director | 수동 리뷰 요청 |
-
-### 핵심 설계 원칙
-
-1. **직접 통신 금지** — Worker↔Worker 직접 호출 없음. 모든 협업은 Board 또는 MessageBus 경유
-2. **Board가 진실의 원천** — 태스크 상태는 Board가 최종 권한. BoardWatcher가 DB로 동기화
-3. **Worker는 DB만 읽음** — `stateStore.getReadyTasksForAgent()`로 자기 태스크만 폴링. GitHub API 직접 호출 안 함
-4. **MessageBus는 알림 전용** — 상태 변경은 Board/DB에서 수행. MessageBus는 이벤트 알림 + 감사 로그
-5. **review.feedback는 이중 경로** — MessageBus로 브로드캐스트 (대시보드용) + DB `reviewNote`에 저장 (Worker가 재작업 시 참조)
-
-## 데이터 흐름 요약
-
-| 경로 | 방향 | 매체 |
-|------|------|------|
-| 사용자 → Director | CLI / Dashboard command bar | MessageBus (`user.input`) |
-| Director → Worker | 태스크 할당 | GitHub Board (issue 생성 + label) |
-| Worker → Director | 작업 완료 보고 | Board 컬럼 이동 (In Progress → Review) |
-| Board → DB | 동기화 | BoardWatcher (15초 폴링) |
-| Agent → DB | 태스크 읽기 | StateStore (`getReadyTasksForAgent`) |
-| Agent ↔ Agent | 브로드캐스트 | MessageBus (`board.move`, `agent.status` 등) |
-| Server → Client | 실시간 UI | WebSocket (DashboardEvent) |
-
-## LLM 백엔드 아키텍처
-
-3가지 LLM 백엔드를 지원하며, bootstrap.py에서 설정에 따라 적절한 클라이언트를 생성한다.
-
-```mermaid
-graph LR
-    Factory["create_llm_client()<br/>(bootstrap.py)"]
-
-    subgraph Backends["ILLMClient 구현체"]
-        API["ClaudeClient<br/>Anthropic API"]
-        CLI["ClaudeCliClient<br/>subprocess + CLI"]
-        Local["LocalModelClient<br/>OpenAI-compat API"]
-    end
-
-    subgraph Targets["LLM 서비스"]
-        Anthropic["Anthropic API<br/>(API Key)"]
-        ClaudeCLI["Claude Code CLI<br/>(Max 구독)"]
-        Ollama["Ollama / LM Studio"]
-        HF["HuggingFace<br/>Inference API"]
-        OR["OpenRouter"]
-    end
-
-    Factory -->|"USE_LOCAL_MODEL"| Local
-    Factory -->|"USE_CLAUDE_CLI"| CLI
-    Factory -->|"기본 (ANTHROPIC_API_KEY)"| API
-
-    API --> Anthropic
-    CLI -->|"subprocess.run"| ClaudeCLI
-    Local --> Ollama & HF & OR
+```sql
+UPDATE tasks SET status='in-progress', started_at=NOW()
+WHERE id=:id AND status='ready'
+-- rowCount == 1이면 성공, 0이면 다른 에이전트가 선점
 ```
 
-### 우선순위 및 구현
+### 상태 전이
 
-| 순위 | 조건 | 클라이언트 | 구현 | 환경변수 |
-|------|------|-----------|------|----------|
-| 1 | `USE_LOCAL_MODEL=true` | `LocalModelClient` | httpx.AsyncClient로 OpenAI-compat API 호출 | `LOCAL_MODEL_BASE_URL`, `LOCAL_MODEL_NAME`, `LOCAL_MODEL_API_KEY` |
-| 2 | `USE_CLAUDE_CLI=true` | `ClaudeCliClient` | subprocess + stdin/stdout으로 Claude Code CLI 실행 | — (Claude Code 설치 필수) |
-| 3 | 기본 | `ClaudeClient` | Anthropic Python SDK 사용 | `ANTHROPIC_API_KEY` |
-
-**ClaudeCliClient 특징:**
-- subprocess로 `claude` 명령어 실행 (stdin으로 프롬프트 전달)
-- JSON 응답을 stdin으로 반환받음
-- Max 구독자 무료 사용 가능
-- 네트워크 지연 최소화
-
-### 프롬프트 시스템
-
-```mermaid
-graph TB
-    PL["PromptLoader<br/>(싱글톤)"]
-    Shared["prompts/shared/<br/>code-style.md<br/>review-criteria.md"]
-    Agent["prompts/&lt;agent&gt;/<br/>system.md<br/>task-analysis.md"]
-
-    PL -->|"loadAgentPrompt()"| Combined["shared + agent-specific<br/>프롬프트 결합"]
-    PL --> Shared
-    PL --> Agent
-
-    Combined --> ClaudeClient & ClaudeCliClient & LocalModelClient
+```
+IDLE → BUSY (태스크 실행 중) → IDLE (완료)
+  └→ ERROR (실패) → IDLE (복구, 다음 폴링)
 ```
 
-- **`prompts/shared/`** — 모든 에이전트가 공유하는 코딩 스타일, 리뷰 기준
-- **`prompts/<agent>/`** — 에이전트별 시스템 프롬프트, 태스크 분석 지침
-- **경로 순회 방어** — `resolve()` + `startsWith()` 검증
-- **캐싱** — 파일당 1회 읽기, `clearCache()`로 초기화
+---
+
+## 3. Git Agent (`git_agent.py`)
+
+### 역할
+- Git 저장소 초기화, 브랜치 생성
+- 커밋, PR 생성/관리
+- 프로젝트 구조 스캐폴딩
+
+### 실행 흐름
+1. 태스크 수신 (e.g., "모노레포 초기화")
+2. LLM에 코드 생성 요청
+3. `git_service`로 브랜치 생성 → 파일 생성 → 커밋 → PR
+
+---
+
+## 4. Backend Agent (`backend_agent.py`)
+
+### 역할
+- FastAPI 엔드포인트, Pydantic 스키마 생성
+- SQLAlchemy 모델, Alembic 마이그레이션
+- 비즈니스 로직, 서비스 계층 코드
+
+### 실행 흐름
+1. 태스크 수신 (e.g., "Task CRUD API")
+2. 코드베이스 RAG 검색 (기존 코드 참조)
+3. LLM에 코드 생성 요청 (시스템 프롬프트 + 컨텍스트)
+4. 생성된 파일을 워크스페이스에 저장
+5. 결과 보고 (artifacts: 파일 경로, diff)
+
+---
+
+## 5. Frontend Agent (`frontend_agent.py`)
+
+### 역할
+- React 컴포넌트, 페이지 생성
+- shadcn/ui 기반 UI 구현
+- API 연동 (TanStack Query hooks)
+- 상태 관리 (Zustand store)
+
+### 실행 흐름
+1. 태스크 수신 (e.g., "칸반보드 UI")
+2. 기존 컴포넌트 구조 RAG 검색
+3. LLM에 코드 생성 (React + TypeScript)
+4. 컴포넌트/페이지 파일 생성
+5. 결과 보고
+
+---
+
+## 6. Docs Agent (`docs_agent.py`)
+
+### 역할
+- README, API 문서 생성
+- 아키텍처 다이어그램 (Mermaid)
+- 에이전트 통합 가이드
+
+### 실행 흐름
+1. 태스크 수신 (e.g., "API 문서 작성")
+2. 기존 코드/라우트 분석
+3. LLM에 문서 생성 요청
+4. Markdown 파일 생성
+
+---
+
+## 공통 인프라
+
+### GitService (`git_service.py`)
+
+GitHub API 래퍼. 모든 에이전트가 공유.
+
+| 메서드 | 역할 |
+|--------|------|
+| `create_issue()` | GitHub Issue 생성 (REST API) |
+| `add_issue_to_project()` | Project V2에 이슈 추가 + 상태 설정 (GraphQL) |
+| `link_sub_issue()` | 부모-자식 서브이슈 연결 (GraphQL) |
+| `move_issue_to_column()` | Board 컬럼 이동 (GraphQL) |
+| `ensure_label()` | 라벨 생성 (없으면 생성, 있으면 무시) |
+| `create_branch()` / `create_pr()` | Git 브랜치/PR 관리 |
+
+### StateStore (`state_store.py`)
+
+PostgreSQL DB 래퍼. CRUD + 원자적 상태 전이.
+
+| 카테고리 | 주요 메서드 |
+|----------|------------|
+| Agent | `register_agent`, `update_heartbeat`, `claim_task` |
+| Task | `create_task`, `update_task`, `get_ready_tasks_for_agent` |
+| Epic | `create_epic`, `update_epic` |
+| Plan | `save_plan`, `get_latest_plan`, `delete_plan` |
+
+### OrphanCleaner (`orphan_cleaner.py`)
+
+백그라운드 태스크. 30분 이상 in-progress인 태스크를 ready로 롤백.
+Board-first: GitHub Board → DB 순서로 복구.
+
+### MessageBus (`message_bus.py`)
+
+에이전트 간 비동기 메시지 전달. Pub/Sub 패턴.
+메시지 타입: `agent.status`, `review.request`, `director.message`, `director.plan` 등.
+
+---
+
+## 에이전트 기대사항 커스터마이징
+
+`prompts/expectations/` 디렉토리에 MD 파일로 각 에이전트에 대한 기대사항 정의:
+
+```
+prompts/expectations/
+  agent-backend.md    ← "RESTful 원칙", "Pydantic 스키마 필수" 등
+  agent-frontend.md   ← "shadcn/ui 우선", "TypeScript strict" 등
+  agent-git.md        ← "Conventional Commits", "Docker Compose" 등
+  agent-docs.md       ← "Quick Start 포함", "curl 예제" 등
+```
+
+Director가 Worker 상담 시 이 파일을 자동 로드하여 프롬프트에 반영.
+
+---
+
+## 태스크 상태 흐름
+
+```
+Backlog ──→ Ready ──→ In Progress ──→ Review ──→ Done
+   │          │           │              │
+   └── Failed ←───────────┘              └── Ready (거절 시 재작업)
+                     │
+                     └── Ready (OrphanCleaner: 30분 timeout)
+```
+
+## 데이터 흐름
+
+```
+사용자 요청
+  → Director GATHERING (스켈레톤 채우기)
+  → Director STRUCTURING (LLM 분해 + Worker 상담)
+  → 사용자 CONFIRMING (승인)
+  → Director COMMITTED (GitHub 이슈 생성)
+  → 사용자 "시작해" EXECUTING (Ready 전환)
+  → Worker 폴링 → claim → execute → 결과 보고
+  → Director 리뷰 → Done / 재작업
+  → 의존 태스크 해제 → 다음 Worker 작업
+  → Epic 완료
+```
