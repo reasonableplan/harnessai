@@ -1,6 +1,8 @@
 """Backend Agent (Level 2) — Python/TypeScript 백엔드 코드 생성."""
 from __future__ import annotations
 
+import xml.sax.saxutils as saxutils
+
 from src.core.agent.base_code_generator import BaseCodeGeneratorAgent
 from src.core.types import Task
 
@@ -17,5 +19,5 @@ class BackendAgent(BaseCodeGeneratorAgent):
             "You are an expert backend engineer. Generate production-quality code.\n"
             "Respond with JSON: {\"files\": [{\"path\": str, \"content\": str, \"action\": str}], \"summary\": str}\n\n"
             f"{ctx_section}"
-            f"<task>\nTitle: {task.title}\nDescription: {task.description}\n</task>"
+            f"<task>\nTitle: {saxutils.escape(task.title)}\nDescription: {saxutils.escape(task.description)}\n</task>"
         )

@@ -34,14 +34,16 @@ class TestMemoryStore:
         decisions = await store.search("인증", category="decision")
         assert all(m.category == "decision" for m in decisions)
 
-    async def test_search_formatted_returns_text(self):
-        """search_formatted가 프롬프트용 텍스트를 반환한다."""
+    async def test_search_formatted_returns_xml(self):
+        """search_formatted가 XML 딜리미터로 감싼 프롬프트용 텍스트를 반환한다."""
         store = _make_store()
         await store.save("REST API는 FastAPI로 구현", category="decision")
 
         text = await store.search_formatted("API 프레임워크")
         assert "FastAPI" in text
-        assert "(decision)" in text
+        assert 'category="decision"' in text
+        assert "<memory" in text
+        assert "</memory>" in text
 
     async def test_save_conversation_summary(self):
         """대화 요약과 결정 사항을 저장한다."""

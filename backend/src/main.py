@@ -11,7 +11,7 @@ from src.bootstrap import bootstrap, get_system_context, shutdown
 from src.core.config import get_config
 from src.core.logging.logger import configure_logging, get_logger
 from src.dashboard.event_mapper import EventMapper
-from src.dashboard.server import create_app, get_ws_manager
+from src.dashboard.server import cancel_background_tasks, create_app, get_ws_manager
 
 log = get_logger("Main")
 
@@ -57,7 +57,10 @@ async def main() -> None:
             loop.add_signal_handler(sig, _handle_signal)
         except NotImplementedError:
             # Windows: asyncio signal handler 미지원 → stdlib signal 사용
-            signal.signal(sig, lambda _s, _f: _handle_signal())
+            try:
+                signal.signal(sig, lambda _s, _f: _handle_signal())
+            except OSError:
+                log.warning("Signal not supported on this platform", signal=sig.name)
 
     # uvicorn 서버 (별도 태스크로 실행)
     server_config = uvicorn.Config(
@@ -79,6 +82,7 @@ async def main() -> None:
     server.should_exit = True
     await server_task
     event_mapper.dispose()
+    await cancel_background_tasks()
     await shutdown(ctx)
 
 

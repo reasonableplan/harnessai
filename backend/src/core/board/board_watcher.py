@@ -61,13 +61,34 @@ class BoardWatcher:
         self._syncing = True
         try:
             items = await self._git_service.get_all_project_items()
+
+            # 변경된 항목의 old_column들을 수집하여 한 번에 조회 (N+1 방지)
+            changed_columns: set[str] = set()
             for item in items:
-                await self._process_item(item)
+                old_col = self._column_cache.get(item.issue_number)
+                if old_col is not None and old_col != item.column:
+                    changed_columns.add(old_col)
+
+            # 필요한 컬럼의 태스크를 미리 일괄 조회 (병렬)
+            tasks_by_column: dict[str, list] = {}
+            if changed_columns:
+                cols = list(changed_columns)
+                results = await asyncio.gather(
+                    *(self._state_store.get_tasks_by_column(c) for c in cols),
+                    return_exceptions=True,
+                )
+                for col, result in zip(cols, results):
+                    if isinstance(result, Exception):
+                        log.error("Failed to fetch tasks for column", column=col, err=str(result))
+                    else:
+                        tasks_by_column[col] = result
+
+            for item in items:
+                await self._process_item(item, tasks_by_column)
         finally:
             self._syncing = False
 
-    async def _process_item(self, item) -> None:
-        from src.core.types import BoardIssue
+    async def _process_item(self, item, tasks_by_column: dict[str, list]) -> None:
         issue_number = item.issue_number
         new_column = item.column
         old_column = self._column_cache.get(issue_number)
@@ -77,8 +98,8 @@ class BoardWatcher:
             self._column_cache[issue_number] = new_column
             return
 
-        # DB에서 현재 태스크 조회
-        tasks = await self._state_store.get_tasks_by_column(old_column)
+        # 미리 조회한 태스크에서 검색
+        tasks = tasks_by_column.get(old_column, [])
         task = next((t for t in tasks if t.github_issue_number == issue_number), None)
 
         if task:
@@ -92,10 +113,15 @@ class BoardWatcher:
                 "Done": "done",
             }
             new_status = status_map.get(new_column, "backlog")
-            await self._state_store.update_task(
-                task.id,
-                {"board_column": new_column, "status": new_status},
-            )
+            try:
+                await self._state_store.update_task(
+                    task.id,
+                    {"board_column": new_column, "status": new_status},
+                )
+            except Exception as e:
+                log.error("Failed to sync board change to DB, will retry next cycle",
+                          issue=issue_number, err=str(e))
+                return  # 캐시 갱신하지 않아 다음 사이클에 재시도
 
             await self._message_bus.publish(
                 Message(

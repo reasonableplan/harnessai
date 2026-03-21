@@ -75,6 +75,11 @@ class AppConfig(BaseSettings):
                 "ANTHROPIC_API_KEY is required when USE_CLAUDE_CLI and USE_LOCAL_MODEL are not enabled.\n"
                 "Set ANTHROPIC_API_KEY, USE_CLAUDE_CLI=true, or USE_LOCAL_MODEL=true."
             )
+        if self.is_production and not self.dashboard_auth_token:
+            raise ConfigError(
+                "DASHBOARD_AUTH_TOKEN is required in production mode. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+            )
 
 
 _config: AppConfig | None = None
@@ -85,8 +90,8 @@ def get_config(require_all: bool = True) -> AppConfig:
     global _config
     if _config is None:
         _config = AppConfig()
-        if require_all:
-            _config.validate_required()
+    if require_all:
+        _config.validate_required()
     return _config
 
 

@@ -93,7 +93,15 @@ def create_app(
 ) -> FastAPI:
     limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 
-    app = FastAPI(title="Agent Orchestration Dashboard", version="1.0.0")
+    # 프로덕션(auth_token 설정 시) OpenAPI/Swagger 문서 비활성화
+    is_prod = auth_token is not None
+    app = FastAPI(
+        title="Agent Orchestration Dashboard",
+        version="1.0.0",
+        docs_url=None if is_prod else "/docs",
+        redoc_url=None if is_prod else "/redoc",
+        openapi_url=None if is_prod else "/openapi.json",
+    )
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -130,6 +138,7 @@ def create_app(
 
     # 진행 중인 WS 백그라운드 태스크 — GC 방지
     _ws_bg_tasks: set[asyncio.Task] = set()
+    register_bg_task_set(_ws_bg_tasks)
 
     # WS 메시지 rate limiting (LLM API 비용 보호)
     _ws_msg_times: dict[int, list[float]] = {}
@@ -249,12 +258,15 @@ def create_app(
                     # Board-first: 외부(Board) 먼저 → 내부(DB) 나중
                     if task_row.github_issue_number:
                         try:
-                            director = get_director()
-                            await director._git_service.move_issue_to_column(
+                            from src.bootstrap import get_system_context
+                            git_service = get_system_context().git_service
+                            await git_service.move_issue_to_column(
                                 task_row.github_issue_number, "Ready"
                             )
                         except Exception as e:
-                            _log.error("Task retry: Board move failed", task_id=task_id, err=str(e))
+                            _log.error("Task retry: Board move failed, aborting retry", task_id=task_id, err=str(e))
+                            await ws.send_text('{"type":"error","message":"Board move failed, retry aborted"}')
+                            continue
                     await store.update_task(
                         task_id, {"status": "ready", "board_column": "Ready"}
                     )
@@ -295,3 +307,21 @@ def get_ws_manager() -> WebSocketManager:
     if _ws_manager is None:
         raise RuntimeError("WebSocketManager not initialized")
     return _ws_manager
+
+
+# WS/command 백그라운드 태스크 참조 (셧다운 시 정리용)
+_all_bg_task_sets: list[set[asyncio.Task]] = []
+
+
+def register_bg_task_set(task_set: set[asyncio.Task]) -> None:
+    """create_app 내부에서 호출 — shutdown 시 정리할 태스크 셋 등록."""
+    _all_bg_task_sets.append(task_set)
+
+
+async def cancel_background_tasks() -> None:
+    """Graceful shutdown 시 진행 중인 WS/command 백그라운드 태스크를 정리한다."""
+    for task_set in _all_bg_task_sets:
+        for task in list(task_set):
+            task.cancel()
+        await asyncio.gather(*task_set, return_exceptions=True)
+        task_set.clear()

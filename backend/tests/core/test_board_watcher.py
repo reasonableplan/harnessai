@@ -51,7 +51,7 @@ class TestProcessItem:
     async def test_first_sync_no_db_query(self, watcher, state_store):
         """첫 sync (old_column=None)에서는 DB 쿼리를 실행하지 않는다."""
         item = make_board_issue(1, "Backlog")
-        await watcher._process_item(item)
+        await watcher._process_item(item, {})
 
         state_store.get_tasks_by_column.assert_not_called()
         state_store.update_task.assert_not_called()
@@ -59,7 +59,7 @@ class TestProcessItem:
     async def test_first_sync_updates_cache(self, watcher):
         """첫 sync는 column_cache만 갱신한다."""
         item = make_board_issue(1, "Backlog")
-        await watcher._process_item(item)
+        await watcher._process_item(item, {})
 
         assert watcher._column_cache[1] == "Backlog"
 
@@ -68,7 +68,7 @@ class TestProcessItem:
         watcher._column_cache[1] = "Ready"
         item = make_board_issue(1, "Ready")
 
-        await watcher._process_item(item)
+        await watcher._process_item(item, {})
 
         state_store.get_tasks_by_column.assert_not_called()
         state_store.update_task.assert_not_called()
@@ -77,10 +77,10 @@ class TestProcessItem:
         """컬럼이 변경되면 DB를 업데이트한다."""
         watcher._column_cache[1] = "Ready"
         task = make_task("t1", 1)
-        state_store.get_tasks_by_column = AsyncMock(return_value=[task])
+        tasks_by_column = {"Ready": [task]}
 
         item = make_board_issue(1, "In Progress")
-        await watcher._process_item(item)
+        await watcher._process_item(item, tasks_by_column)
 
         state_store.update_task.assert_called_once_with(
             "t1", {"board_column": "In Progress", "status": "in-progress"}
@@ -89,29 +89,40 @@ class TestProcessItem:
     async def test_column_change_updates_cache(self, watcher, state_store):
         watcher._column_cache[1] = "Ready"
         task = make_task("t1", 1)
-        state_store.get_tasks_by_column = AsyncMock(return_value=[task])
+        tasks_by_column = {"Ready": [task]}
 
         item = make_board_issue(1, "In Progress")
-        await watcher._process_item(item)
+        await watcher._process_item(item, tasks_by_column)
 
         assert watcher._column_cache[1] == "In Progress"
 
     async def test_unknown_issue_number_no_db_update(self, watcher, state_store):
         """DB에 없는 이슈 번호는 DB 업데이트를 하지 않는다."""
         watcher._column_cache[99] = "Ready"
-        state_store.get_tasks_by_column = AsyncMock(return_value=[])
 
         item = make_board_issue(99, "In Progress")
-        await watcher._process_item(item)
+        await watcher._process_item(item, {"Ready": []})
 
         state_store.update_task.assert_not_called()
 
     async def test_done_column_maps_to_done_status(self, watcher, state_store):
         watcher._column_cache[1] = "Review"
         task = make_task("t1", 1)
-        state_store.get_tasks_by_column = AsyncMock(return_value=[task])
+        tasks_by_column = {"Review": [task]}
 
-        await watcher._process_item(make_board_issue(1, "Done"))
+        await watcher._process_item(make_board_issue(1, "Done"), tasks_by_column)
 
         call_args = state_store.update_task.call_args[0][1]
         assert call_args["status"] == "done"
+
+    async def test_db_failure_preserves_cache(self, watcher, state_store):
+        """DB 업데이트 실패 시 캐시를 갱신하지 않아 다음 사이클에 재시도한다."""
+        watcher._column_cache[1] = "Ready"
+        task = make_task("t1", 1)
+        tasks_by_column = {"Ready": [task]}
+        state_store.update_task = AsyncMock(side_effect=RuntimeError("DB down"))
+
+        await watcher._process_item(make_board_issue(1, "In Progress"), tasks_by_column)
+
+        # 캐시가 갱신되지 않아야 한다 (다음 sync에서 재시도)
+        assert watcher._column_cache[1] == "Ready"

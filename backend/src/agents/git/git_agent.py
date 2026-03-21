@@ -73,14 +73,19 @@ class GitAgent(BaseAgent):
         return TaskResult(success=True, data={"committed": True}, artifacts=[])
 
     @staticmethod
-    async def _run_git(work_dir: str, *args: str) -> str:
+    async def _run_git(work_dir: str, *args: str, timeout_s: float = 60.0) -> str:
         """비동기 git 명령 실행. 이벤트 루프를 블로킹하지 않는다."""
         proc = await asyncio.create_subprocess_exec(
             "git", "-C", work_dir, *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate()
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise RuntimeError(f"git {args[0] if args else ''} timed out after {timeout_s}s")
         if proc.returncode != 0:
             raise RuntimeError(stderr.decode().strip())
         return stdout.decode().strip()

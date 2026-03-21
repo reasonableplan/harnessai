@@ -1,6 +1,7 @@
 """Director 장기 기억 저장소 — Qdrant 기반."""
 from __future__ import annotations
 
+import asyncio
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -17,6 +18,7 @@ from qdrant_client.models import (
 )
 
 from src.core.logging.logger import get_logger
+from src.core.resilience.api_retry import with_retry
 
 log = get_logger("MemoryStore")
 
@@ -44,19 +46,30 @@ class MemoryStore:
     def __init__(self, qdrant: QdrantClient, embedding_fn: Any) -> None:
         self._qdrant = qdrant
         self._embed = embedding_fn
+        self._collection_ready = False
 
     async def ensure_collection(self) -> None:
         """컬렉션이 없으면 생성한다."""
-        collections = self._qdrant.get_collections().collections
-        if not any(c.name == COLLECTION_NAME for c in collections):
-            self._qdrant.create_collection(
-                collection_name=COLLECTION_NAME,
-                vectors_config=VectorParams(
-                    size=EMBEDDING_DIM,
-                    distance=Distance.COSINE,
+        if self._collection_ready:
+            return
+        result = await with_retry(
+            lambda: asyncio.to_thread(self._qdrant.get_collections),
+            max_retries=3, label="Qdrant get_collections(memory)",
+        )
+        if not any(c.name == COLLECTION_NAME for c in result.collections):
+            await with_retry(
+                lambda: asyncio.to_thread(
+                    self._qdrant.create_collection,
+                    collection_name=COLLECTION_NAME,
+                    vectors_config=VectorParams(
+                        size=EMBEDDING_DIM,
+                        distance=Distance.COSINE,
+                    ),
                 ),
+                max_retries=3, label="Qdrant create_collection(memory)",
             )
             log.info("Memory collection created")
+        self._collection_ready = True
 
     async def save(
         self,
@@ -83,19 +96,23 @@ class MemoryStore:
         if hasattr(vector, "tolist"):
             vector = vector.tolist()
 
-        self._qdrant.upsert(
-            collection_name=COLLECTION_NAME,
-            points=[PointStruct(
-                id=memory_id,
-                vector=vector,
-                payload={
-                    "content": content,
-                    "category": category,
-                    "source": source,
-                    "created_at": now,
-                    **(metadata or {}),
-                },
-            )],
+        await with_retry(
+            lambda: asyncio.to_thread(
+                self._qdrant.upsert,
+                collection_name=COLLECTION_NAME,
+                points=[PointStruct(
+                    id=memory_id,
+                    vector=vector,
+                    payload={
+                        "content": content,
+                        "category": category,
+                        "source": source,
+                        "created_at": now,
+                        **(metadata or {}),
+                    },
+                )],
+            ),
+            max_retries=3, label="Qdrant upsert(memory)",
         )
         log.debug("Memory saved", memory_id=memory_id, category=category)
         return memory_id
@@ -126,12 +143,17 @@ class MemoryStore:
         search_filter = Filter(must=conditions) if conditions else None
 
         try:
-            hits = self._qdrant.query_points(
-                collection_name=COLLECTION_NAME,
-                query=query_vector,
-                limit=top_k,
-                query_filter=search_filter,
-            ).points
+            result = await with_retry(
+                lambda: asyncio.to_thread(
+                    self._qdrant.query_points,
+                    collection_name=COLLECTION_NAME,
+                    query=query_vector,
+                    limit=top_k,
+                    query_filter=search_filter,
+                ),
+                max_retries=3, label="Qdrant query_points(memory)",
+            )
+            hits = result.points
         except Exception as e:
             log.error("Memory search failed", err=str(e))
             return []
@@ -156,15 +178,21 @@ class MemoryStore:
         return memories
 
     async def search_formatted(self, query: str, top_k: int = 5) -> str:
-        """검색 결과를 프롬프트 주입용 텍스트로 반환한다."""
+        """검색 결과를 프롬프트에 안전하게 삽입할 수 있는 XML 형식으로 반환한다."""
         memories = await self.search(query, top_k=top_k)
         if not memories:
             return ""
 
+        import xml.sax.saxutils as saxutils
+
         lines = []
         for m in memories:
             date = m.created_at[:10] if m.created_at else "unknown"
-            lines.append(f"- [{date}] ({m.category}) {m.content}")
+            safe_content = saxutils.escape(m.content)
+            lines.append(
+                f'<memory date="{date}" category="{saxutils.escape(m.category)}">'
+                f"{safe_content}</memory>"
+            )
 
         return "\n".join(lines)
 

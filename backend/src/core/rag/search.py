@@ -1,9 +1,11 @@
 """코드베이스 검색 서비스 — Dense 벡터 검색 + 키워드 필터링."""
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from src.core.logging.logger import get_logger
@@ -61,13 +63,15 @@ class CodeSearchService:
         search_filter = Filter(must=conditions) if conditions else None
 
         try:
-            hits = self._qdrant.query_points(
+            result = await asyncio.to_thread(
+                self._qdrant.query_points,
                 collection_name=COLLECTION_NAME,
                 query=query_vector,
                 limit=top_k,
                 query_filter=search_filter,
-            ).points
-        except Exception as e:
+            )
+            hits = result.points
+        except (UnexpectedResponse, ConnectionError, TimeoutError) as e:
             log.error("Code search failed", err=str(e))
             return []
 

@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 class AgentSummary(BaseModel):
     id: str
     domain: str
-    level: str
+    level: int
     status: str
     lastHeartbeat: str | None = None
 

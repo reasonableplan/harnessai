@@ -1,6 +1,7 @@
 """Docs Agent (Level 2) — 문서 생성."""
 from __future__ import annotations
 
+import xml.sax.saxutils as saxutils
 from typing import Any
 
 from src.core.agent.base_code_generator import BaseCodeGeneratorAgent
@@ -37,5 +38,5 @@ class DocsAgent(BaseCodeGeneratorAgent):
             "You are a technical documentation specialist. Generate clear, comprehensive documentation.\n"
             "Respond with JSON: {\"files\": [{\"path\": str, \"content\": str, \"action\": str}], \"summary\": str}\n\n"
             f"{ctx_section}"
-            f"<task>\nTitle: {task.title}\nDescription: {task.description}\n</task>"
+            f"<task>\nTitle: {saxutils.escape(task.title)}\nDescription: {saxutils.escape(task.description)}\n</task>"
         )

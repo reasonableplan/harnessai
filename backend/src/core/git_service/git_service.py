@@ -337,9 +337,9 @@ class GitService:
     # ===== Git Operations =====
 
     async def create_branch(self, branch_name: str, base_branch: str = "main") -> None:
-        # 안전한 브랜치 이름 검증
+        # 안전한 브랜치 이름 검증 (.. 차단으로 path traversal 방지)
         import re
-        if not re.match(r'^[\w\-./]+$', branch_name):
+        if not re.match(r'^[\w\-./]+$', branch_name) or '..' in branch_name:
             raise GitServiceError(f"Invalid branch name: {branch_name!r}")
         try:
             proc = await asyncio.create_subprocess_exec(

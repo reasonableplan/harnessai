@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import httpx
 
-from src.core.errors import AuthError, NetworkError, RateLimitError
+from src.core.errors import AuthError, NetworkError, RateLimitError, TokenBudgetError
 from src.core.llm.json_extract import parse_json_response
 from src.core.logging.logger import get_logger
 from src.core.resilience.api_retry import with_retry
@@ -40,6 +40,7 @@ class LocalModelClient:
         self._model = model
         self._api_key = api_key
         self._client = httpx.AsyncClient(timeout=TIMEOUT_S)
+        self._tokens_used = 0
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -62,6 +63,9 @@ class LocalModelClient:
         OpenAI-compatible /v1/chat/completions 호출.
         Returns: (response_text, input_tokens, output_tokens)
         """
+        if token_budget and self._tokens_used >= token_budget:
+            raise TokenBudgetError(self._tokens_used, token_budget)
+
         if system:
             messages = [{"role": "system", "content": system}, *messages]
 
@@ -80,13 +84,17 @@ class LocalModelClient:
             )
             if resp.status_code == 401:
                 raise AuthError("LocalModel")
-            if resp.status_code == 429:
-                raise RateLimitError("LocalModel")
+            # 429 등 retryable 에러는 raise_for_status()가 httpx.HTTPStatusError를
+            # 발생시키도록 하여 with_retry의 _is_retryable이 올바르게 인식하게 한다.
             resp.raise_for_status()
             return resp.json()
 
         try:
             data = await with_retry(_call, max_retries=3, label="LocalModel")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                raise RateLimitError("LocalModel", cause=e) from e
+            raise NetworkError(f"LocalModel HTTP {e.response.status_code}", cause=e) from e
         except httpx.ConnectError as e:
             raise NetworkError(f"Connection failed to {self._base_url}", cause=e) from e
         except httpx.TimeoutException as e:
@@ -97,6 +105,7 @@ class LocalModelClient:
         usage = data.get("usage", {})
         input_tokens = usage.get("prompt_tokens", 0)
         output_tokens = usage.get("completion_tokens", 0)
+        self._tokens_used += input_tokens + output_tokens
         return text, input_tokens, output_tokens
 
     async def chat_json(

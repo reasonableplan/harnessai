@@ -115,6 +115,7 @@ class DirectorAgent(BaseAgent):
                     session_id=str(uuid.uuid4()),
                     goal=safe_content,
                 )
+                self._append_conversation("user", safe_content)
                 await self._handle_gathering(safe_content)
             elif action == "status_query":
                 await self._handle_status_query(safe_content)
@@ -138,6 +139,7 @@ class DirectorAgent(BaseAgent):
                     session_id=str(uuid.uuid4()),
                     goal=safe_content,
                 )
+                self._append_conversation("user", safe_content)
                 await self._handle_gathering(safe_content)
             elif action == "status_query":
                 await self._handle_status_query(safe_content)
@@ -566,9 +568,10 @@ class DirectorAgent(BaseAgent):
                 )
             except Exception as e:
                 log.error(
-                    "Review: Board move failed, proceeding with DB update",
+                    "Review: Board move failed, skipping DB update (Board-first)",
                     task_id=task_id, err=str(e),
                 )
+                return
 
         updates: dict[str, Any] = {"status": target_status, "board_column": target_column}
         if not success:
@@ -636,13 +639,13 @@ class DirectorAgent(BaseAgent):
             self._conversation = self._conversation[-_MAX_CONVERSATION_TURNS * 2:]
 
     def _format_conversation(self) -> str:
-        """대화 기록을 텍스트로 포맷. 각 turn content를 XML escape 처리."""
+        """대화 기록을 텍스트로 포맷. content는 저장 시 이미 escape 처리됨."""
         if not self._conversation:
             return "(no previous conversation)"
         lines = []
         for turn in self._conversation:
             prefix = "User" if turn["role"] == "user" else "Director"
-            lines.append(f"{prefix}: {saxutils.escape(turn['content'])}")
+            lines.append(f"{prefix}: {turn['content']}")
         return "\n".join(lines)
 
     async def _recall_memories(self, query: str) -> str:

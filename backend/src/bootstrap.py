@@ -73,8 +73,8 @@ async def bootstrap(config: AppConfig) -> SystemContext:
         config, message_bus, state_store, git_service, llm_client, code_search, memory_store,
     )
 
-    # 10. 에이전트 DB 등록 (병렬)
-    await asyncio.gather(*(
+    # 10. 에이전트 DB 등록 (병렬, 개별 실패 허용)
+    results = await asyncio.gather(*(
         state_store.register_agent({
             "id": agent.id,
             "domain": agent.domain,
@@ -82,7 +82,14 @@ async def bootstrap(config: AppConfig) -> SystemContext:
             "status": "idle",
         })
         for agent in agents
-    ))
+    ), return_exceptions=True)
+    failures = []
+    for agent, result in zip(agents, results):
+        if isinstance(result, Exception):
+            log.error("Agent registration failed", agent=agent.id, err=str(result))
+            failures.append(agent.id)
+    if len(failures) == len(agents):
+        raise RuntimeError(f"All {len(failures)} agent registrations failed: {failures}")
 
     ctx = SystemContext(
         config=config,
@@ -256,6 +263,9 @@ async def shutdown(ctx: SystemContext) -> None:
 
     # DB 연결 종료
     await close_engine()
+
+    _system_context = None
+    _shutting_down = False
     log.info("Shutdown complete")
 
 

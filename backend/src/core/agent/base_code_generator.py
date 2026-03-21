@@ -84,7 +84,11 @@ class BaseCodeGeneratorAgent(BaseAgent):
             )
         except Exception as e:
             self._log.error("Code generation failed", task_id=task.id, err=str(e))
-            return TaskResult(success=False, error={"message": "Code generation failed"}, artifacts=[])
+            return TaskResult(
+                success=False,
+                error={"message": f"Code generation failed: {type(e).__name__}"},
+                artifacts=[],
+            )
 
     async def _search_codebase(self, task: Task) -> str:
         """RAG: 태스크와 관련된 기존 코드를 검색한다."""

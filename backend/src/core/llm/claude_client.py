@@ -76,7 +76,11 @@ class ClaudeClient:
         output_tokens = response.usage.output_tokens
         self._tokens_used += input_tokens + output_tokens
 
-        text = response.content[0].text if response.content else ""
+        text = ""
+        if response.content:
+            block = response.content[0]
+            if hasattr(block, "text"):
+                text = block.text
         return text, input_tokens, output_tokens
 
     async def chat_json(

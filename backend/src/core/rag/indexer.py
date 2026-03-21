@@ -1,6 +1,7 @@
 """코드 청크를 Qdrant 벡터DB에 인덱싱한다."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import uuid
 from pathlib import Path
@@ -18,6 +19,7 @@ from qdrant_client.models import (
 
 from src.core.logging.logger import get_logger
 from src.core.rag.chunker import CodeChunk, scan_workspace
+from src.core.resilience.api_retry import with_retry
 
 log = get_logger("CodebaseIndexer")
 
@@ -32,19 +34,30 @@ class CodebaseIndexer:
         self._qdrant = qdrant
         self._embed = embedding_fn
         self._indexed_hashes: set[str] = set()
+        self._collection_ready = False
 
     async def ensure_collection(self) -> None:
         """컬렉션이 없으면 생성한다."""
-        collections = self._qdrant.get_collections().collections
-        if not any(c.name == COLLECTION_NAME for c in collections):
-            self._qdrant.create_collection(
-                collection_name=COLLECTION_NAME,
-                vectors_config=VectorParams(
-                    size=EMBEDDING_DIM,
-                    distance=Distance.COSINE,
+        if self._collection_ready:
+            return
+        result = await with_retry(
+            lambda: asyncio.to_thread(self._qdrant.get_collections),
+            max_retries=3, label="Qdrant get_collections",
+        )
+        if not any(c.name == COLLECTION_NAME for c in result.collections):
+            await with_retry(
+                lambda: asyncio.to_thread(
+                    self._qdrant.create_collection,
+                    collection_name=COLLECTION_NAME,
+                    vectors_config=VectorParams(
+                        size=EMBEDDING_DIM,
+                        distance=Distance.COSINE,
+                    ),
                 ),
+                max_retries=3, label="Qdrant create_collection",
             )
             log.info("Qdrant collection created", collection=COLLECTION_NAME)
+        self._collection_ready = True
 
     async def index_workspace(self, work_dir: Path) -> int:
         """워크스페이스 전체를 스캔하여 인덱싱한다. 반환: 인덱싱된 청크 수."""
@@ -66,7 +79,12 @@ class CodebaseIndexer:
             # 배치 upsert (100개씩)
             for i in range(0, len(points), 100):
                 batch = points[i : i + 100]
-                self._qdrant.upsert(collection_name=COLLECTION_NAME, points=batch)
+                await with_retry(
+                    lambda b=batch: asyncio.to_thread(
+                        self._qdrant.upsert, collection_name=COLLECTION_NAME, points=b,
+                    ),
+                    max_retries=3, label="Qdrant upsert",
+                )
 
         for c in new_chunks:
             self._indexed_hashes.add(self._content_hash(c))
@@ -92,13 +110,17 @@ class CodebaseIndexer:
                 continue
 
             # 해당 파일의 기존 청크 삭제
-            self._qdrant.delete(
-                collection_name=COLLECTION_NAME,
-                points_selector=FilterSelector(
-                    filter=Filter(
-                        must=[FieldCondition(key="file_path", match=MatchValue(value=rel_path))]
-                    )
+            await with_retry(
+                lambda rp=rel_path: asyncio.to_thread(
+                    self._qdrant.delete,
+                    collection_name=COLLECTION_NAME,
+                    points_selector=FilterSelector(
+                        filter=Filter(
+                            must=[FieldCondition(key="file_path", match=MatchValue(value=rp))]
+                        )
+                    ),
                 ),
+                max_retries=3, label="Qdrant delete",
             )
             # 기존 해시 제거
             self._indexed_hashes = {
@@ -113,7 +135,12 @@ class CodebaseIndexer:
             points = self._chunks_to_points(all_new)
             for i in range(0, len(points), 100):
                 batch = points[i : i + 100]
-                self._qdrant.upsert(collection_name=COLLECTION_NAME, points=batch)
+                await with_retry(
+                    lambda b=batch: asyncio.to_thread(
+                        self._qdrant.upsert, collection_name=COLLECTION_NAME, points=b,
+                    ),
+                    max_retries=3, label="Qdrant upsert",
+                )
 
             for c in all_new:
                 self._indexed_hashes.add(self._content_hash(c))
