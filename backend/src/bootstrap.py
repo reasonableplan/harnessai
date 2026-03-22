@@ -204,6 +204,9 @@ def _create_agents(
         message_bus=message_bus,
         state_store=state_store,
         git_service=git_service,
+        llm_client=llm_client,
+        work_dir=work_dir,
+        code_search=code_search,
     )
     backend = BackendAgent(
         config=make_config("agent-backend", "backend", AgentLevel.WORKER, temperature=0.2),

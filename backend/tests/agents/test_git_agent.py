@@ -47,6 +47,8 @@ def agent(git_service):
         message_bus=bus,
         state_store=state_store,
         git_service=git_service,
+        llm_client=MagicMock(),
+        work_dir="/tmp/workspace",
     )
 
 

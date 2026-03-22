@@ -951,31 +951,136 @@ class DirectorAgent(BaseAgent):
         if not task_id:
             return
 
-        success = result.get("success", False) if isinstance(result, dict) else False
-        target_column = "Done" if success else "Ready"
-        target_status = "done" if success else "ready"
-
         task = await self._state_store.get_task(task_id)
         if task is None:
             log.warning("Review for unknown task, ignoring", task_id=task_id)
             return
+
+        success = result.get("success", False) if isinstance(result, dict) else False
+
+        if not success:
+            # Worker가 실패 보고 → 바로 재작업
+            await self._finalize_review(task, approved=False, reason="Worker reported failure")
+            return
+
+        # Worker 성공 → Director가 LLM으로 코드 리뷰
+        artifacts = result.get("artifacts", []) if isinstance(result, dict) else []
+        summary = result.get("data", {}).get("summary", "") if isinstance(result, dict) else ""
+
+        approved, review_note = await self._llm_review(task, artifacts, summary)
+        await self._finalize_review(task, approved=approved, reason=review_note)
+
+        # 리뷰 코멘트를 GitHub Issue에 추가
+        if task.github_issue_number and review_note:
+            status = "Approved" if approved else "Changes Requested"
+            await self._git_service.add_comment(
+                task.github_issue_number,
+                f"**Director Review: {status}**\n\n{review_note}",
+            )
+
+    async def _llm_review(
+        self, task: Any, artifacts: list[str], summary: str,
+    ) -> tuple[bool, str]:
+        """LLM으로 생성된 코드를 리뷰한다. (approved, review_note) 반환."""
+        # 생성된 파일 내용 읽기 (최대 5개, 각 2000자)
+        file_contents: list[str] = []
+        for fpath in artifacts[:5]:
+            try:
+                from pathlib import Path
+                content = Path(fpath).read_text(encoding="utf-8", errors="replace")[:2000]
+                file_contents.append(f"### {fpath}\n```\n{content}\n```")
+            except Exception:
+                file_contents.append(f"### {fpath}\n(읽기 실패)")
+
+        if not file_contents:
+            # 파일이 없으면 summary만으로 판단
+            return True, "파일 없음 — summary 기반 자동 승인"
+
+        prompt = (
+            "You are a senior code reviewer. Review the following generated code.\n\n"
+            f"## Task\nTitle: {task.title}\nDescription: {task.description or 'N/A'}\n\n"
+            f"## Summary\n{summary}\n\n"
+            f"## Generated Files\n" + "\n\n".join(file_contents) + "\n\n"
+            "## Review Criteria\n"
+            "1. Does the code match the task description?\n"
+            "2. Are there obvious bugs or security issues?\n"
+            "3. Is the code structure reasonable?\n"
+            "4. MVP quality is acceptable — don't be too strict.\n\n"
+            'Respond with JSON: {"approved": true/false, "note": "1-2 sentence review"}\n'
+            "Respond in Korean."
+        )
+
+        try:
+            data, inp, out = await self._llm.chat_json(
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=256, temperature=0.2,
+            )
+            await self._publish_token_usage(inp, out)
+            approved = data.get("approved", True) if isinstance(data, dict) else True
+            note = data.get("note", "") if isinstance(data, dict) else ""
+            log.info("LLM review complete", task_id=task.id, approved=approved, note=note[:100])
+            return approved, note
+        except Exception as e:
+            log.warning("LLM review failed, auto-approving", task_id=task.id, err=str(e))
+            return True, "리뷰 실패 — 자동 승인"
+
+    async def _finalize_review(self, task: Any, approved: bool, reason: str) -> None:
+        """리뷰 결과를 Board + DB에 반영하고, 승인 시 의존 태스크를 Ready로 전환."""
+        target_column = "Done" if approved else "Ready"
+        target_status = "done" if approved else "ready"
+
         if task.github_issue_number:
             try:
                 await self._git_service.move_issue_to_column(
                     task.github_issue_number, target_column
                 )
             except Exception as e:
-                log.error(
-                    "Review: Board move failed, skipping DB update (Board-first)",
-                    task_id=task_id, err=str(e),
-                )
+                log.error("Review: Board move failed (Board-first)", task_id=task.id, err=str(e))
                 return
 
-        updates: dict[str, Any] = {"status": target_status, "board_column": target_column}
-        if not success:
+        updates: dict[str, Any] = {
+            "status": target_status,
+            "board_column": target_column,
+            "review_note": reason[:500],
+        }
+        if not approved:
             updates["retry_count_increment"] = 1
-        await self._state_store.update_task(task_id, updates)
-        log.info("Task review processed", task_id=task_id, approved=success)
+        await self._state_store.update_task(task.id, updates)
+
+        log.info("Task review finalized", task_id=task.id, approved=approved)
+
+        # 승인 시 → 이 태스크에 의존하는 태스크들을 Ready로 전환
+        if approved:
+            await self._unlock_dependent_tasks(task.id)
+
+    async def _unlock_dependent_tasks(self, completed_task_id: str) -> None:
+        """완료된 태스크에 의존하는 backlog 태스크들의 의존성을 확인하고 Ready 전환."""
+        all_tasks = await self._state_store.get_all_tasks()
+        for t in all_tasks:
+            if t.status != "backlog":
+                continue
+            deps = t.dependencies or []
+            if completed_task_id not in deps:
+                continue
+
+            # 이 태스크의 모든 의존성이 done인지 확인
+            all_deps_done = True
+            for dep_id in deps:
+                dep_task = await self._state_store.get_task(dep_id)
+                if dep_task is None or dep_task.status != "done":
+                    all_deps_done = False
+                    break
+
+            if all_deps_done:
+                # Board-first: Ready로 이동
+                if t.github_issue_number:
+                    try:
+                        await self._git_service.move_issue_to_column(t.github_issue_number, "Ready")
+                    except Exception as e:
+                        log.warning("Failed to unlock task on Board", task_id=t.id, err=str(e))
+                        continue
+                await self._state_store.update_task(t.id, {"status": "ready", "board_column": "Ready"})
+                log.info("Dependent task unlocked", task_id=t.id, title=t.title)
 
     # ===== Helpers =====
 

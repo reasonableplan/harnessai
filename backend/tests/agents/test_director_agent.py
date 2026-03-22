@@ -53,12 +53,17 @@ def state_store():
 def git_service():
     svc = MagicMock()
     svc.move_issue_to_column = AsyncMock()
+    svc.add_comment = AsyncMock()
     return svc
 
 
 @pytest.fixture
 def director(state_store, git_service):
-    return make_director(state_store, git_service)
+    d = make_director(state_store, git_service)
+    # LLM 리뷰를 기본 auto-approve로 mock
+    d._llm_review = AsyncMock(return_value=(True, "LGTM"))
+    d._unlock_dependent_tasks = AsyncMock()
+    return d
 
 
 class TestHandleReview:

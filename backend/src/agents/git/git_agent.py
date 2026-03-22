@@ -1,11 +1,11 @@
-"""Git Agent (Level 2) — branch, commit, PR 작업 처리."""
+"""Git Agent (Level 2) — Git/인프라 작업 처리 + LLM 범용 코드 생성."""
 from __future__ import annotations
 
 import asyncio
 import re
 from typing import Any
 
-from src.core.agent.base_agent import BaseAgent
+from src.core.agent.base_code_generator import BaseCodeGeneratorAgent
 from src.core.logging.logger import get_logger
 from src.core.messaging.message_bus import MessageBus
 from src.core.state.state_store import StateStore
@@ -14,15 +14,33 @@ from src.core.types import AgentConfig, Task, TaskResult
 log = get_logger("GitAgent")
 
 
-class GitAgent(BaseAgent):
+class GitAgent(BaseCodeGeneratorAgent):
+    """Git/인프라 전문 에이전트.
+
+    branch/commit/pr 태스크는 전용 핸들러로 처리하고,
+    그 외(저장소 초기화, Docker 설정 등)는 LLM 코드 생성으로 처리한다.
+    """
+
+    _role_description = (
+        "You are a senior DevOps/Infrastructure engineer. "
+        "Generate production-quality infrastructure files: "
+        "Dockerfiles, docker-compose, CI/CD configs, project scaffolding, .gitignore, Makefiles, shell scripts."
+    )
+
     def __init__(
         self,
         config: AgentConfig,
         message_bus: MessageBus,
         state_store: StateStore,
         git_service: Any,
+        llm_client: Any,
+        work_dir: str = "./workspace",
+        code_search: Any = None,
     ) -> None:
-        super().__init__(config, message_bus, state_store, git_service)
+        super().__init__(
+            config, message_bus, state_store, git_service,
+            llm_client, work_dir, temperature=0.2, code_search=code_search,
+        )
 
     async def execute_task(self, task: Task) -> TaskResult:
         label = task.labels or []
@@ -36,14 +54,12 @@ class GitAgent(BaseAgent):
             elif task_type == "pr":
                 return await self._handle_pr(task)
             else:
-                return TaskResult(
-                    success=False,
-                    error={"message": f"Unknown git task type for: {task.title}"},
-                    artifacts=[],
-                )
+                # LLM 범용 코드 생성 (BaseCodeGeneratorAgent)
+                log.info("Using LLM code generation", task_id=task.id, title=task.title)
+                return await super().execute_task(task)
         except Exception as e:
             log.error("Git task failed", task_id=task.id, err=str(e))
-            return TaskResult(success=False, error={"message": "Git task failed"}, artifacts=[])
+            return TaskResult(success=False, error={"message": f"Git task failed: {e}"}, artifacts=[])
 
     _TYPE_PATTERNS = {
         "branch": re.compile(r'\bbranch\b'),
@@ -68,17 +84,14 @@ class GitAgent(BaseAgent):
         work_dir = self._git_service.work_dir
         if not work_dir:
             raise RuntimeError("git_service.work_dir is not configured")
-        # 커밋 메시지: 제어문자 제거 + 250자 초과 시 자름
         commit_msg = re.sub(r'[\x00-\x1f]', ' ', task.title[:250]).strip() or f"chore: task {task.id[:8]}"
-
-        # -u: 이미 추적 중인 파일만 스테이징 (.env 등 미추적 파일 제외)
         await self._run_git(work_dir, "add", "-u")
         await self._run_git(work_dir, "commit", "-m", commit_msg)
         return TaskResult(success=True, data={"committed": True}, artifacts=[])
 
     @staticmethod
     async def _run_git(work_dir: str, *args: str, timeout_s: float = 60.0) -> str:
-        """비동기 git 명령 실행. 이벤트 루프를 블로킹하지 않는다."""
+        """비동기 git 명령 실행."""
         proc = await asyncio.create_subprocess_exec(
             "git", "-C", work_dir, *args,
             stdout=asyncio.subprocess.PIPE,

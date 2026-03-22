@@ -16,12 +16,39 @@ from src.core.types import AgentConfig, Task, TaskResult
 
 MAX_TOKENS = 16_000
 TOKEN_BUDGET = 100_000_000
+_MAX_CONTEXT_CHARS = 12_000  # 워크스페이스 컨텍스트 최대 길이
+_MAX_FILE_CHARS = 2_000      # 개별 파일 최대 읽기 길이
+
+# 에이전트 도메인별 관심 파일 패턴
+_DOMAIN_FILE_PATTERNS: dict[str, list[str]] = {
+    "backend": [
+        "**/*.py", "**/requirements.txt", "**/pyproject.toml",
+        "**/alembic.ini", "**/docker-compose.yml",
+    ],
+    "frontend": [
+        "**/*.ts", "**/*.tsx", "**/package.json", "**/tsconfig.json",
+        "**/*.css", "**/vite.config.*",
+    ],
+    "git": [
+        "**/docker-compose.yml", "**/Dockerfile", "**/.gitignore",
+        "**/Makefile", "**/*.sh", "**/*.yml", "**/*.yaml",
+    ],
+    "docs": [
+        "**/*.md", "**/*.py", "**/*.ts",  # 문서 작성 시 코드 참조
+    ],
+}
+
+# 모든 에이전트가 참조해야 하는 공유 파일 패턴
+_SHARED_PATTERNS = [
+    "**/types/**", "**/models/**", "**/schemas/**",
+    "**/domain.ts", "**/base.py", "**/config.py",
+]
 
 
 class BaseCodeGeneratorAgent(BaseAgent):
     """LLM으로 파일을 생성하는 에이전트의 공통 로직.
 
-    서브클래스는 _build_prompt()만 구현하면 된다.
+    서브클래스는 _role_description만 설정하면 된다.
     """
 
     def __init__(
@@ -50,19 +77,27 @@ class BaseCodeGeneratorAgent(BaseAgent):
         if context:
             ctx_section = (
                 "\n## Existing codebase (follow these patterns and conventions)\n"
-                f"<existing_code>\n{saxutils.escape(context)}\n</existing_code>\n\n"
+                "<existing_code>\n"
+                f"{saxutils.escape(context)}\n"
+                "</existing_code>\n\n"
+                "IMPORTANT: Follow the existing file structure and naming conventions. "
+                "Generate files that are consistent with the codebase above.\n\n"
             )
         return (
             f"{self._role_description}\n"
             'Respond with JSON: {"files": [{"path": str, "content": str, "action": str}], "summary": str}\n\n'
             f"{ctx_section}"
-            f"<task>\nTitle: {saxutils.escape(task.title)}\nDescription: {saxutils.escape(task.description)}\n</task>"
+            f"<task>\nTitle: {saxutils.escape(task.title)}\n"
+            f"Description: {saxutils.escape(task.description)}\n</task>"
         )
 
     async def execute_task(self, task: Task) -> TaskResult:
         try:
-            # RAG: 기존 코드베이스에서 관련 코드 검색
+            # 1. RAG 검색 시도
             context = await self._search_codebase(task)
+            # 2. RAG 실패 시 workspace 직접 스캔
+            if not context:
+                context = await self._scan_workspace_context(task)
             prompt = self._build_prompt(task, context=context)
             data, input_tokens, output_tokens = await self._llm.chat_json(
                 messages=[{"role": "user", "content": prompt}],
@@ -126,10 +161,63 @@ class BaseCodeGeneratorAgent(BaseAgent):
             query = f"{task.title} {task.description or ''}"
             return await self._code_search.search_formatted(query, top_k=5, min_score=0.3)
         except Exception as e:
-            self._log.warning("Code search failed, proceeding without context", err=str(e))
+            self._log.warning("Code search failed, falling back to workspace scan", err=str(e))
             return ""
 
-    # _build_prompt는 위에서 기본 구현 제공. 서브클래스는 _role_description만 설정하면 됨.
+    async def _scan_workspace_context(self, task: Task) -> str:
+        """workspace 디렉토리의 기존 파일을 스캔하여 컨텍스트로 반환한다.
+
+        에이전트 도메인에 맞는 파일 + 공유 타입/스키마 파일을 읽어서
+        다른 에이전트가 생성한 코드를 참조할 수 있게 한다.
+        """
+        if not self._work_dir.exists():
+            return ""
+
+        # 도메인별 패턴 + 공유 패턴
+        patterns = list(_SHARED_PATTERNS)
+        domain_patterns = _DOMAIN_FILE_PATTERNS.get(self.domain, [])
+        patterns.extend(domain_patterns)
+
+        # 파일 수집 (중복 제거)
+        collected_files: dict[str, str] = {}  # rel_path → content
+        total_chars = 0
+
+        for pattern in patterns:
+            for file_path in sorted(self._work_dir.glob(pattern)):
+                if not file_path.is_file():
+                    continue
+                rel = str(file_path.relative_to(self._work_dir))
+                if rel in collected_files:
+                    continue
+                # 바이너리/큰 파일 스킵
+                if file_path.suffix in (".png", ".jpg", ".ico", ".woff", ".lock"):
+                    continue
+                if file_path.stat().st_size > 50_000:
+                    continue
+                try:
+                    content = await asyncio.to_thread(
+                        file_path.read_text, "utf-8", "replace"
+                    )
+                    truncated = content[:_MAX_FILE_CHARS]
+                    if total_chars + len(truncated) > _MAX_CONTEXT_CHARS:
+                        break
+                    collected_files[rel] = truncated
+                    total_chars += len(truncated)
+                except Exception:
+                    continue
+            if total_chars >= _MAX_CONTEXT_CHARS:
+                break
+
+        if not collected_files:
+            return ""
+
+        parts = []
+        for rel_path, content in collected_files.items():
+            parts.append(f"### {rel_path}\n```\n{content}\n```")
+
+        self._log.info("Workspace context loaded",
+                       files=len(collected_files), chars=total_chars)
+        return "\n\n".join(parts)
 
     def _safe_resolve(self, rel_path: str) -> Path:
         """Sandbox escape 방지: work_dir 밖 경로 차단."""
