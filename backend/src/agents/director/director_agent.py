@@ -1184,6 +1184,15 @@ class DirectorAgent(BaseAgent):
         # ---- Step 1: 린트 — 새로 생성된 파일만 (기존 코드 false positive 방지) ----
         lint_targets = self._collect_lint_targets(work_dir, artifacts)
         if lint_targets:
+            # Step 1a: 안전한 lint 자동 수정 (로직 변경 없음)
+            # I=import 정렬, F401=미사용 import 삭제, UP042=StrEnum 변환
+            await self._run_subprocess(
+                ["uv", "run", "ruff", "check", *lint_targets,
+                 "--select=I,F401,UP042", "--fix",
+                 "--exclude", ".worktrees", "-q"],
+                work_dir, "Lint-autofix", timeout=15,
+            )
+            # Step 1b: 나머지 린트 에러 검출
             lint_passed, lint_out = await self._run_subprocess(
                 ["uv", "run", "ruff", "check", *lint_targets,
                  "--exclude", ".worktrees", "--no-fix", "-q"],
@@ -1227,6 +1236,9 @@ class DirectorAgent(BaseAgent):
                     rel = os.path.relpath(fpath, work_dir)
                 else:
                     rel = fpath
+                # .worktrees 내부 파일 제외 (ruff --exclude가 명시적 경로에는 미적용)
+                if ".worktrees" in rel.replace("\\", "/"):
+                    continue
                 if os.path.isfile(os.path.join(work_dir, rel)):
                     targets.append(rel)
             except ValueError:
