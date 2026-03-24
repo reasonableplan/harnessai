@@ -5,7 +5,7 @@ _VALID_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
     TaskStatus.BACKLOG:      {TaskStatus.READY, TaskStatus.FAILED},
     TaskStatus.READY:        {TaskStatus.IN_PROGRESS, TaskStatus.FAILED, TaskStatus.BACKLOG},
     TaskStatus.IN_PROGRESS:  {TaskStatus.REVIEW, TaskStatus.FAILED, TaskStatus.READY},
-    TaskStatus.REVIEW:       {TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.READY, TaskStatus.IN_PROGRESS},
+    TaskStatus.REVIEW:       {TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.READY, TaskStatus.IN_PROGRESS, TaskStatus.BACKLOG},
     TaskStatus.FAILED:       {TaskStatus.READY, TaskStatus.BACKLOG},
     TaskStatus.DONE:         set(),
 }

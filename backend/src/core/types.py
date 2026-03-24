@@ -140,6 +140,7 @@ class EpicPlan(BaseModel):
     session_id: str
     stage: PlanStage = PlanStage.GATHERING
     goal: str = ""
+    epic_id: str = ""  # _commit_plan에서 생성된 에픽 UUID
     project: ProjectContext = Field(default_factory=ProjectContext)
     decisions: list[str] = Field(default_factory=list)
     epic_title: str = ""

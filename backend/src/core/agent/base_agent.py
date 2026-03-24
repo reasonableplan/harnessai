@@ -26,6 +26,15 @@ HEARTBEAT_INTERVAL_CYCLES = 3
 
 
 class BaseAgent(ABC):
+    # 워크트리 → workspace sync 시 파일 충돌 방지 (전 에이전트 공유)
+    _sync_lock: asyncio.Lock | None = None
+
+    @classmethod
+    def _get_sync_lock(cls) -> asyncio.Lock:
+        if cls._sync_lock is None:
+            cls._sync_lock = asyncio.Lock()
+        return cls._sync_lock
+
     def __init__(
         self,
         config: AgentConfig,
@@ -320,88 +329,86 @@ class BaseAgent(ABC):
 
         git diff로 추가/수정/삭제된 파일을 파악하여
         workspace에 동일하게 적용. 삭제 파일도 올바르게 처리.
+        Lock으로 동시 sync를 방지하여 파일 충돌을 차단한다.
         """
         if not self._active_worktree:
             return
-        try:
-            import shutil
-            from pathlib import Path
-
-            wt = Path(self._active_worktree)
-            ws = Path(self._git_service.work_dir)
-            if not wt.exists() or not ws.exists():
-                return
-
-            # git diff로 변경 파일 목록 파악 (A=추가, M=수정, D=삭제, R=이름변경)
+        async with self._get_sync_lock():
             try:
-                diff_output = await self._git_service.run_git_in_worktree(
-                    self._active_worktree,
-                    "diff", "--name-status", "--diff-filter=AMDRC",
-                    "origin/main..HEAD",
+                import shutil
+                from pathlib import Path
+
+                wt = Path(self._active_worktree)
+                ws = Path(self._git_service.work_dir)
+                if not wt.exists() or not ws.exists():
+                    return
+
+                # git diff로 변경 파일 목록 파악 (A=추가, M=수정, D=삭제, R=이름변경)
+                try:
+                    diff_output = await self._git_service.run_git_in_worktree(
+                        self._active_worktree,
+                        "diff", "--name-status", "--diff-filter=AMDRC",
+                        "origin/main..HEAD",
+                    )
+                except Exception:
+                    # diff 실패 시 (첫 커밋 등) 전체 파일 복사 폴백
+                    diff_output = ""
+
+                if diff_output:
+                    for line in diff_output.strip().split("\n"):
+                        if not line.strip():
+                            continue
+                        parts = line.split("\t")
+                        if len(parts) < 2:
+                            continue
+                        status = parts[0].strip()
+
+                        # R(rename)/C(copy): old_path → new_path (탭 구분 3열)
+                        if status.startswith(("R", "C")) and len(parts) >= 3:
+                            old_path = parts[1].strip()
+                            new_path = parts[2].strip()
+                            if status.startswith("R"):
+                                dst_old = ws / old_path
+                                if dst_old.exists():
+                                    dst_old.unlink()
+                            src = wt / new_path
+                            dst = ws / new_path
+                            if src.exists():
+                                dst.parent.mkdir(parents=True, exist_ok=True)
+                                shutil.copy2(str(src), str(dst))
+                            continue
+
+                        filepath = parts[1].strip()
+                        if status == "D":
+                            dst = ws / filepath
+                            if dst.exists():
+                                dst.unlink()
+                                self._log.debug("Sync: deleted", file=filepath)
+                        elif status in ("A", "M"):
+                            src = wt / filepath
+                            dst = ws / filepath
+                            if src.exists():
+                                dst.parent.mkdir(parents=True, exist_ok=True)
+                                shutil.copy2(str(src), str(dst))
+                else:
+                    # diff 불가 시 폴백: 변경된 파일만 복사 (삭제 감지 불가)
+                    skip = {".git", ".venv", "node_modules", "__pycache__", ".worktrees"}
+                    for src_file in wt.rglob("*"):
+                        if not src_file.is_file():
+                            continue
+                        if any(d in src_file.parts for d in skip):
+                            continue
+                        rel = src_file.relative_to(wt)
+                        dst = ws / rel
+                        if not dst.exists() or src_file.stat().st_mtime > dst.stat().st_mtime:
+                            dst.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.copy2(str(src_file), str(dst))
+
+                self._log.info("Worktree synced to workspace", task_id=task.id)
+            except Exception as e:
+                self._log.warning(
+                    "Worktree sync failed", task_id=task.id, err=str(e),
                 )
-            except Exception:
-                # diff 실패 시 (첫 커밋 등) 전체 파일 복사 폴백
-                diff_output = ""
-
-            if diff_output:
-                for line in diff_output.strip().split("\n"):
-                    if not line.strip():
-                        continue
-                    parts = line.split("\t")
-                    if len(parts) < 2:
-                        continue
-                    status = parts[0].strip()
-
-                    # R(rename)/C(copy): old_path → new_path (탭 구분 3열)
-                    if status.startswith(("R", "C")) and len(parts) >= 3:
-                        old_path = parts[1].strip()
-                        new_path = parts[2].strip()
-                        # rename인 경우 old_path 삭제
-                        if status.startswith("R"):
-                            dst_old = ws / old_path
-                            if dst_old.exists():
-                                dst_old.unlink()
-                        # new_path 복사
-                        src = wt / new_path
-                        dst = ws / new_path
-                        if src.exists():
-                            dst.parent.mkdir(parents=True, exist_ok=True)
-                            shutil.copy2(str(src), str(dst))
-                        continue
-
-                    filepath = parts[1].strip()
-                    if status == "D":
-                        # 삭제된 파일 → workspace에서도 삭제
-                        dst = ws / filepath
-                        if dst.exists():
-                            dst.unlink()
-                            self._log.debug("Sync: deleted", file=filepath)
-                    elif status in ("A", "M"):
-                        # 추가/수정 → workspace로 복사
-                        src = wt / filepath
-                        dst = ws / filepath
-                        if src.exists():
-                            dst.parent.mkdir(parents=True, exist_ok=True)
-                            shutil.copy2(str(src), str(dst))
-            else:
-                # diff 불가 시 폴백: 변경된 파일만 복사 (삭제 감지 불가)
-                skip = {".git", ".venv", "node_modules", "__pycache__", ".worktrees"}
-                for src_file in wt.rglob("*"):
-                    if not src_file.is_file():
-                        continue
-                    if any(d in src_file.parts for d in skip):
-                        continue
-                    rel = src_file.relative_to(wt)
-                    dst = ws / rel
-                    if not dst.exists() or src_file.stat().st_mtime > dst.stat().st_mtime:
-                        dst.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(str(src_file), str(dst))
-
-            self._log.info("Worktree synced to workspace", task_id=task.id)
-        except Exception as e:
-            self._log.warning(
-                "Worktree sync failed", task_id=task.id, err=str(e),
-            )
 
     async def _remap_artifact_paths(self, task: Task) -> None:
         """artifact의 file_path를 worktree → workspace 기준으로 재매핑한다.

@@ -131,6 +131,7 @@ class PlanModel(Base):
 
     session_id: Mapped[str] = mapped_column(String, primary_key=True)
     stage: Mapped[str] = mapped_column(String, nullable=False, default="gathering")
+    epic_id: Mapped[str] = mapped_column(String, nullable=False, default="")
     goal: Mapped[str] = mapped_column(Text, nullable=False, default="")
     epic_title: Mapped[str] = mapped_column(String, nullable=False, default="")
     epic_description: Mapped[str] = mapped_column(Text, nullable=False, default="")

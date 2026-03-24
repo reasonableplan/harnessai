@@ -60,4 +60,11 @@ class EventMapper:
                 "epicTitle": payload.get("epicTitle"),
                 "issues": payload.get("issues", []),
             }
+        if msg.type == MessageType.TASK_ARTIFACTS:
+            return "task.artifacts", {
+                "taskId": payload.get("task_id"),
+                "taskTitle": payload.get("task_title"),
+                "issueNumber": payload.get("issue_number"),
+                "files": payload.get("files", []),
+            }
         return None, {}

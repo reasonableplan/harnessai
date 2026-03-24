@@ -120,6 +120,7 @@ class DirectorAgent(BaseAgent):
             self._active_plan = EpicPlan(
                 session_id=plan_row.session_id,
                 stage=PlanStage(stage),
+                epic_id=getattr(plan_row, "epic_id", "") or "",
                 goal=plan_row.goal,
                 epic_title=plan_row.epic_title,
                 epic_description=plan_row.epic_description,
@@ -144,6 +145,7 @@ class DirectorAgent(BaseAgent):
             await self._state_store.save_plan({
                 "session_id": plan.session_id,
                 "stage": plan.stage.value,
+                "epic_id": plan.epic_id,
                 "goal": plan.goal,
                 "epic_title": plan.epic_title,
                 "epic_description": plan.epic_description,
@@ -279,6 +281,7 @@ class DirectorAgent(BaseAgent):
             if plan.stage in (PlanStage.STRUCTURING, PlanStage.CONSULTING, PlanStage.CONFIRMING):
                 plan.stage = PlanStage.STRUCTURING
                 plan.updated_at = datetime.now(timezone.utc)
+                await self._broadcast_plan()
                 await self._handle_structuring(content or "수정해주세요")
 
         elif action == "commit":
@@ -801,6 +804,7 @@ class DirectorAgent(BaseAgent):
 
         # ---- Phase 6: DB — Epic + Tasks 저장 ----
         epic_id = str(uuid.uuid4())
+        plan.epic_id = epic_id
         try:
             await self._state_store.create_epic({
                 "id": epic_id,
@@ -917,11 +921,15 @@ class DirectorAgent(BaseAgent):
             await self._broadcast_director_message("시작할 수 있는 계획이 없습니다.")
             return
 
-        # 의존성 없는 태스크만 Ready로 이동 (의존성 있는 태스크는 Backlog 유지)
+        # 이 에픽의 의존성 없는 태스크만 Ready로 이동
         tasks = await self._state_store.get_all_tasks()
+        target_epic_id = plan.epic_id or ""
         moved = 0
         for task in tasks:
             if task.status != "backlog":
+                continue
+            # 에픽 필터링: 현재 에픽 소속 태스크만 대상
+            if target_epic_id and getattr(task, "epic_id", None) != target_epic_id:
                 continue
             has_deps = bool(task.dependencies)
             if not has_deps and task.github_issue_number:
@@ -1020,9 +1028,9 @@ class DirectorAgent(BaseAgent):
                         )
                     except Exception as e:
                         log.error("Board move to Backlog failed", task_id=task_id, err=str(e))
-                # Board=Backlog에 맞춰 DB도 ready(재시작 대기) + retry 리셋
+                # Board=Backlog에 맞춰 DB도 backlog + retry 리셋
                 await self._state_store.update_task(task_id, {
-                    "status": "ready", "board_column": "Backlog", "retry_count": 0,
+                    "status": "backlog", "board_column": "Backlog", "retry_count": 0,
                 })
                 return
             await self._finalize_review(task, approved=False, reason="Worker reported failure")
@@ -1045,7 +1053,7 @@ class DirectorAgent(BaseAgent):
                 except Exception as e:
                     log.error("Board move to Backlog failed", task_id=task_id, err=str(e))
             await self._state_store.update_task(task_id, {
-                "status": "ready", "board_column": "Backlog", "retry_count": 0,
+                "status": "backlog", "board_column": "Backlog", "retry_count": 0,
             })
             return
 
@@ -1521,8 +1529,14 @@ class DirectorAgent(BaseAgent):
 
     async def _unlock_dependent_tasks(self, completed_task_id: str) -> None:
         """완료된 태스크에 의존하는 backlog 태스크들의 의존성을 확인하고 Ready 전환."""
+        # 완료된 태스크의 에픽 ID로 범위 제한
+        completed_task = await self._state_store.get_task(completed_task_id)
+        epic_id = getattr(completed_task, "epic_id", None) if completed_task else None
         all_tasks = await self._state_store.get_all_tasks()
         for t in all_tasks:
+            # 에픽 범위 필터링
+            if epic_id and getattr(t, "epic_id", None) != epic_id:
+                continue
             if t.status != "backlog":
                 continue
             deps = t.dependencies or []
