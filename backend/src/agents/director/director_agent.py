@@ -1184,16 +1184,28 @@ class DirectorAgent(BaseAgent):
         # ---- Step 1: 린트 — 새로 생성된 파일만 (기존 코드 false positive 방지) ----
         lint_targets = self._collect_lint_targets(work_dir, artifacts)
         if lint_targets:
+            # workspace 자체 ruff 설정이 있으면 사용 (오케스트레이션 설정과 분리)
+            ruff_config_args: list[str] = []
+            for cfg_name in ("ruff.toml", ".ruff.toml"):
+                cfg_path = os.path.join(work_dir, cfg_name)
+                if os.path.isfile(cfg_path):
+                    ruff_config_args = ["--config", cfg_path]
+                    break
+            if not ruff_config_args:
+                pyproject = os.path.join(work_dir, "pyproject.toml")
+                if os.path.isfile(pyproject):
+                    ruff_config_args = ["--config", pyproject]
+
             # Step 1a: 안전한 lint 자동 수정 (--fix는 safe fix만 적용)
             await self._run_subprocess(
                 ["uv", "run", "ruff", "check", *lint_targets,
-                 "--fix", "--exclude", ".worktrees", "-q"],
+                 "--fix", "--exclude", ".worktrees", "-q", *ruff_config_args],
                 work_dir, "Lint-autofix", timeout=15,
             )
             # Step 1b: 나머지 린트 에러 검출
             lint_passed, lint_out = await self._run_subprocess(
                 ["uv", "run", "ruff", "check", *lint_targets,
-                 "--exclude", ".worktrees", "--no-fix", "-q"],
+                 "--exclude", ".worktrees", "--no-fix", "-q", *ruff_config_args],
                 work_dir, "Lint", timeout=30,
             )
             if lint_out:
