@@ -175,75 +175,77 @@ class BaseCodeGeneratorAgent(BaseAgent):
             return Path(self._active_worktree).resolve()
         return self._work_dir
 
+    def _build_workspace_instructions(self, task: Task, work_dir: str) -> str:
+        """Worker에게 전달할 자율 작업 지시문을 구성한다."""
+        agent_id = self.id
+        agent_md = f"docs/agents/{agent_id}.md"
+
+        review_section = ""
+        review_note = getattr(task, "review_note", None)
+        retry_count = getattr(task, "retry_count", 0)
+        if review_note and retry_count and retry_count > 0:
+            review_section = (
+                f"\n## 이전 리뷰 피드백 (반드시 반영!)\n"
+                f"이 태스크는 {retry_count}회 reject 되었습니다:\n"
+                f"{review_note}\n\n"
+            )
+
+        return (
+            f"{self._role_description}\n\n"
+            f"## 태스크\n"
+            f"제목: {task.title}\n"
+            f"설명: {task.description}\n\n"
+            f"{review_section}"
+            f"## 작업 순서 (반드시 따를 것)\n\n"
+            f"### Step 1: 프로젝트 문서 읽기\n"
+            f"다음 파일을 반드시 읽고 규칙을 따르세요:\n"
+            f"- docs/ARCHITECTURE.md — 파일 구조, import 경로, 현재 상태\n"
+            f"- docs/CONVENTIONS.md — 코딩 규칙, 패턴\n"
+            f"- docs/api-spec.md — API 계약 (엔드포인트, 타입)\n"
+            f"- docs/agents/SHARED_LESSONS.md — 과거 실수, 금지사항\n"
+            f"- {agent_md} — 에이전트 전용 규칙\n\n"
+            f"### Step 2: 기존 코드 읽기\n"
+            f"작업과 관련된 기존 파일을 읽어서 패턴을 파악하세요:\n"
+            f"- backend/app/main.py — 현재 등록된 라우터\n"
+            f"- backend/app/models/__init__.py — 사용 가능한 모델\n"
+            f"- backend/app/database.py — DB 세션 패턴\n"
+            f"- 기존 라우터/서비스/스키마가 있으면 패턴 참고\n\n"
+            f"### Step 3: 코드 작성\n"
+            f"- ARCHITECTURE.md와 CONVENTIONS.md 규칙을 따라 구현\n"
+            f"- api-spec.md의 엔드포인트/타입과 정확히 일치\n"
+            f"- 새 디렉토리 만들면 __init__.py 반드시 생성\n"
+            f"- 새 라우터 만들면 main.py에 include_router() 추가\n\n"
+            f"### Step 4: 자체 검증\n"
+            f"코드 작성 후 반드시 실행해서 확인:\n"
+            f"1. python -c \"from app.main import app\" — ImportError 없는지\n"
+            f"2. ruff check backend/ --fix --config ruff.toml — lint 통과\n"
+            f"3. 테스트 파일 작성 후 pytest 실행 — 통과 확인\n\n"
+            f"### Step 5: 실패하면 직접 수정\n"
+            f"위 검증에서 에러가 나면 스스로 원인을 찾아 수정하세요.\n"
+            f"모든 검증을 통과할 때까지 반복하세요.\n\n"
+            f"## 금지사항\n"
+            f"- workspace 밖의 파일 수정 금지\n"
+            f"- docs/ 파일 수정 금지 (읽기만)\n"
+            f"- .git/ 디렉토리 직접 조작 금지\n"
+        )
+
     async def execute_task(self, task: Task) -> TaskResult:
+        """Claude Code CLI를 자율 개발자로 실행한다.
+
+        JSON 생성 대신 workspace에서 직접 파일 읽기/쓰기/테스트/수정.
+        """
         try:
-            # 워크트리가 활성화되어 있으면 해당 경로 사용
             effective_dir = self._effective_work_dir
+            instructions = self._build_workspace_instructions(task, str(effective_dir))
 
-            # 1. RAG 검색 시도
-            context = await self._search_codebase(task)
-            # 2. RAG 실패 시 workspace 직접 스캔
-            if not context:
-                context = await self._scan_workspace_context(task)
-            # 3. 선행 태스크 산출물 컨텍스트 수집
-            artifact_context = await self._collect_artifact_context(task)
-            prompt = self._build_prompt(
-                task, context=context, artifact_context=artifact_context,
-            )
-            data, input_tokens, output_tokens = await self._llm.chat_json(
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=MAX_TOKENS,
-                temperature=self._temperature,
-                token_budget=TOKEN_BUDGET,
-            )
-            await self._publish_token_usage(input_tokens, output_tokens)
+            # Claude CLI 자율 실행 모드 시도
+            from src.core.llm.claude_cli_client import ClaudeCliClient
+            if isinstance(self._llm, ClaudeCliClient):
+                return await self._execute_autonomous(task, str(effective_dir), instructions)
 
-            files = data.get("files", []) if isinstance(data, dict) else []
-            artifact_paths: list[str] = []
+            # fallback: API 클라이언트 → 기존 JSON 생성 방식
+            return await self._execute_json_mode(task, effective_dir)
 
-            # 잘린 파일 감지 — 괄호/중괄호가 맞지 않으면 불완전한 파일
-            truncated_files = []
-            for f in files:
-                content = f.get("content", "")
-                if content and self._is_likely_truncated(content, f.get("path", "")):
-                    truncated_files.append(f.get("path", "unknown"))
-            if truncated_files:
-                self._log.warning(
-                    "Truncated files detected — skipping generation",
-                    truncated=truncated_files,
-                    task_id=task.id,
-                )
-                return TaskResult(
-                    success=False,
-                    error={"message": f"LLM output truncated: {', '.join(truncated_files)}. Retry with fewer files."},
-                    artifacts=[],
-                )
-
-            for f in files:
-                path = f.get("path", "")
-                content = f.get("content", "")
-                if not path or not content:
-                    continue
-                abs_path = self._safe_resolve(path, effective_dir)
-                abs_path.parent.mkdir(parents=True, exist_ok=True)
-                await asyncio.to_thread(abs_path.write_text, content, "utf-8")
-
-                await self._state_store.save_artifact({
-                    "id": str(uuid.uuid4()),
-                    "task_id": task.id,
-                    "file_path": str(abs_path),
-                    "content_hash": hashlib.sha256(content.encode()).hexdigest(),
-                    "created_by": self.id,
-                })
-                artifact_paths.append(str(abs_path))
-
-            summary = data.get("summary", "") if isinstance(data, dict) else ""
-            self._log.info("Files generated", task_id=task.id, files=len(artifact_paths))
-            return TaskResult(
-                success=True,
-                data={"files": artifact_paths, "summary": summary},
-                artifacts=artifact_paths,
-            )
         except SandboxEscapeError as e:
             self._log.error(
                 "SECURITY: sandbox escape attempted",
@@ -255,12 +257,143 @@ class BaseCodeGeneratorAgent(BaseAgent):
                 artifacts=[],
             )
         except Exception as e:
-            self._log.error("Code generation failed", task_id=task.id, err=str(e))
+            self._log.error("Task execution failed", task_id=task.id, err=str(e))
             return TaskResult(
                 success=False,
-                error={"message": f"Code generation failed: {type(e).__name__}"},
+                error={"message": f"Task execution failed: {type(e).__name__}: {e}"},
                 artifacts=[],
             )
+
+    async def _execute_autonomous(
+        self, task: Task, work_dir: str, instructions: str,
+    ) -> TaskResult:
+        """Claude Code CLI를 자율 개발자로 실행 — 파일 읽기/쓰기/테스트/수정."""
+        from src.core.llm.claude_cli_client import ClaudeCliClient
+        cli: ClaudeCliClient = self._llm
+
+        success, output = await cli.execute_in_workspace(work_dir, instructions)
+
+        if not success:
+            self._log.warning("Autonomous execution failed", task_id=task.id, output=output[:500])
+            return TaskResult(
+                success=False,
+                error={"message": output[:500]},
+                artifacts=[],
+            )
+
+        # 성공: 변경된 파일 수집 (git diff로 감지)
+        artifact_paths = await self._collect_changed_files(work_dir, task.id)
+        self._log.info("Autonomous task complete", task_id=task.id, files=len(artifact_paths))
+        return TaskResult(
+            success=True,
+            data={"files": artifact_paths, "summary": output[-1000:]},
+            artifacts=artifact_paths,
+        )
+
+    async def _collect_changed_files(self, work_dir: str, task_id: str) -> list[str]:
+        """git diff로 변경된 파일을 수집하고 artifact로 등록한다."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "git", "diff", "--name-only", "--diff-filter=ACMR", "HEAD",
+                cwd=work_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await proc.communicate()
+            # untracked 파일도 포함
+            proc2 = await asyncio.create_subprocess_exec(
+                "git", "ls-files", "--others", "--exclude-standard",
+                cwd=work_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout2, _ = await proc2.communicate()
+
+            changed = set()
+            for line in (stdout.decode() + stdout2.decode()).strip().split("\n"):
+                line = line.strip()
+                if line:
+                    changed.add(line)
+
+            artifact_paths: list[str] = []
+            for rel_path in changed:
+                abs_path = os.path.join(work_dir, rel_path)
+                if not os.path.isfile(abs_path):
+                    continue
+                try:
+                    content = Path(abs_path).read_text(encoding="utf-8", errors="replace")
+                    await self._state_store.save_artifact({
+                        "id": str(uuid.uuid4()),
+                        "task_id": task_id,
+                        "file_path": abs_path,
+                        "content_hash": hashlib.sha256(content.encode()).hexdigest(),
+                        "created_by": self.id,
+                    })
+                    artifact_paths.append(abs_path)
+                except Exception:
+                    pass
+            return artifact_paths
+        except Exception as e:
+            self._log.warning("Failed to collect changed files", err=str(e))
+            return []
+
+    async def _execute_json_mode(self, task: Task, effective_dir: Path) -> TaskResult:
+        """기존 JSON 생성 방식 (API 클라이언트 fallback).
+
+        Raises SandboxEscapeError to caller for security violations.
+        """
+        context = await self._search_codebase(task)
+        if not context:
+            context = await self._scan_workspace_context(task)
+        artifact_context = await self._collect_artifact_context(task)
+        prompt = self._build_prompt(task, context=context, artifact_context=artifact_context)
+
+        data, input_tokens, output_tokens = await self._llm.chat_json(
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=MAX_TOKENS,
+            temperature=self._temperature,
+            token_budget=TOKEN_BUDGET,
+        )
+        await self._publish_token_usage(input_tokens, output_tokens)
+
+        files = data.get("files", []) if isinstance(data, dict) else []
+        artifact_paths: list[str] = []
+
+        truncated_files = []
+        for f in files:
+            content = f.get("content", "")
+            if content and self._is_likely_truncated(content, f.get("path", "")):
+                truncated_files.append(f.get("path", "unknown"))
+        if truncated_files:
+            return TaskResult(
+                success=False,
+                error={"message": f"LLM output truncated: {', '.join(truncated_files)}. Retry with fewer files."},
+                artifacts=[],
+            )
+
+        for f in files:
+            path = f.get("path", "")
+            content = f.get("content", "")
+            if not path or not content:
+                continue
+            abs_path = self._safe_resolve(path, effective_dir)
+            abs_path.parent.mkdir(parents=True, exist_ok=True)
+            await asyncio.to_thread(abs_path.write_text, content, "utf-8")
+            await self._state_store.save_artifact({
+                "id": str(uuid.uuid4()),
+                "task_id": task.id,
+                "file_path": str(abs_path),
+                "content_hash": hashlib.sha256(content.encode()).hexdigest(),
+                "created_by": self.id,
+            })
+            artifact_paths.append(str(abs_path))
+
+        summary = data.get("summary", "") if isinstance(data, dict) else ""
+        return TaskResult(
+            success=True,
+            data={"files": artifact_paths, "summary": summary},
+            artifacts=artifact_paths,
+        )
 
     async def _search_codebase(self, task: Task) -> str:
         """RAG: 태스크와 관련된 기존 코드를 검색한다."""

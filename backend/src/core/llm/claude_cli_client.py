@@ -145,6 +145,53 @@ class ClaudeCliClient:
         )
         return parse_json_response(text), input_tokens, output_tokens
 
+    async def execute_in_workspace(
+        self,
+        work_dir: str,
+        instructions: str,
+        timeout: float = _CLI_TIMEOUT_S,
+    ) -> tuple[bool, str]:
+        """workspace에서 Claude Code를 자율 실행한다.
+
+        Agent가 파일을 읽고, 코드를 쓰고, 테스트를 돌리고, 에러를 고치는
+        실제 개발자처럼 동작한다.
+
+        Returns: (success, summary)
+        """
+        log.info("Executing in workspace", work_dir=work_dir, instructions_len=len(instructions))
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *self._cli_args, "-p",
+                "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=work_dir,
+            )
+        except FileNotFoundError as e:
+            raise RuntimeError(f"claude CLI not found ({self._cli_args[0]})") from e
+
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(input=instructions.encode("utf-8")),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return False, f"CLI timed out after {timeout}s"
+
+        output = stdout.decode(errors="replace").strip()
+        if proc.returncode != 0:
+            err = stderr.decode(errors="replace").strip()
+            log.warning("CLI execution failed", returncode=proc.returncode, err=err[:500])
+            return False, f"CLI exited {proc.returncode}: {err[:500]}"
+
+        estimated_tokens = (len(instructions) + len(output)) // 4
+        self._tokens_used += estimated_tokens
+        return True, output
+
     @property
     def tokens_used(self) -> int:
         return self._tokens_used
