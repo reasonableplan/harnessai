@@ -1199,10 +1199,10 @@ class DirectorAgent(BaseAgent):
                 if os.path.isfile(pyproject):
                     ruff_config_args = ["--config", os.path.abspath(pyproject)]
 
-            # Step 1a: 안전한 lint 자동 수정 (--fix는 safe fix만 적용)
+            # Step 1a: lint 자동 수정 (--unsafe-fixes로 미사용 변수 등도 자동 삭제)
             await self._run_subprocess(
                 ["uv", "run", "ruff", "check", *lint_targets,
-                 "--fix", "--exclude", ".worktrees", "-q", *ruff_config_args],
+                 "--fix", "--unsafe-fixes", "--exclude", ".worktrees", "-q", *ruff_config_args],
                 work_dir, "Lint-autofix", timeout=15,
             )
             # Step 1b: 나머지 린트 에러 검출
