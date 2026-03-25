@@ -97,6 +97,9 @@ async def bootstrap(config: AppConfig) -> SystemContext:
             await agent.restore_plan_from_db()
             break
 
+    # 8.6. 서버 재시작 시 자동 복구 — 수동 개입 없이 작업 재개
+    await _auto_recover_tasks(state_store)
+
     # 9. 에이전트 DB 등록 (병렬, 개별 실패 허용)
     results = await asyncio.gather(*(
         state_store.register_agent({
@@ -346,6 +349,48 @@ def _create_agents(
                 ["director", "agent-backend", "agent-frontend", "agent-git", "agent-docs"]},
     )
     return [director, git_agent, backend, frontend, docs], llm_clients
+
+
+async def _auto_recover_tasks(state_store: StateStore) -> None:
+    """서버 재시작 시 고아 태스크 복구 + 의존성 자동 해제.
+
+    1. in-progress/review 태스크 → ready (에이전트가 없으므로 재작업)
+    2. done 태스크 기반으로 backlog 의존성 해제 → ready
+    """
+    try:
+        all_tasks = await state_store.get_all_tasks()
+        if not all_tasks:
+            return
+
+        # Step 1: 고아 태스크 복구 (in-progress/review → ready)
+        orphan_count = 0
+        for t in all_tasks:
+            if t.status in ("in-progress", "review"):
+                await state_store.update_task(t.id, {
+                    "status": "ready", "board_column": "Ready",
+                })
+                orphan_count += 1
+
+        # Step 2: 의존성 자동 해제 (backlog → ready)
+        done_ids = {t.id for t in all_tasks if t.status == "done"}
+        unlock_count = 0
+        # 복구 후 최신 상태로 다시 조회
+        all_tasks = await state_store.get_all_tasks()
+        for t in all_tasks:
+            if t.status != "backlog":
+                continue
+            deps = t.dependencies or []
+            if deps and all(d in done_ids for d in deps):
+                await state_store.update_task(t.id, {
+                    "status": "ready", "board_column": "Ready",
+                })
+                unlock_count += 1
+
+        if orphan_count or unlock_count:
+            log.info("Auto-recovery complete",
+                     orphans_reset=orphan_count, deps_unlocked=unlock_count)
+    except Exception as e:
+        log.warning("Auto-recovery failed, continuing", err=str(e))
 
 
 _shutting_down = False
