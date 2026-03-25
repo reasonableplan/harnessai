@@ -383,10 +383,11 @@ class BaseCodeGeneratorAgent(BaseAgent):
             if opens - closes >= 3:
                 return True
 
-        # 일반: 코드가 키워드 중간에서 끊긴 경우
-        last_line = stripped.split("\n")[-1].rstrip()
-        if last_line.endswith((",", ":", "->", "=>", "=")):
-            return True
+        # 일반: 코드가 키워드 중간에서 끊긴 경우 (YAML/config 파일은 제외)
+        if not path.endswith((".yml", ".yaml", ".toml", ".ini", ".cfg", ".json")):
+            last_line = stripped.split("\n")[-1].rstrip()
+            if last_line.endswith((",", ":", "->", "=>", "=")):
+                return True
 
         return False
 
