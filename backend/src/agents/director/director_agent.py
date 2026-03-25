@@ -1199,22 +1199,20 @@ class DirectorAgent(BaseAgent):
                 if os.path.isfile(pyproject):
                     ruff_config_args = ["--config", os.path.abspath(pyproject)]
 
-            # Step 1a: lint 자동 수정 (--unsafe-fixes로 미사용 변수 등도 자동 삭제)
+            # Step 1a: lint 자동 수정 (가능한 모든 것을 자동 수정)
             await self._run_subprocess(
                 ["uv", "run", "ruff", "check", *lint_targets,
                  "--fix", "--unsafe-fixes", "--exclude", ".worktrees", "-q", *ruff_config_args],
                 work_dir, "Lint-autofix", timeout=15,
             )
-            # Step 1b: 나머지 린트 에러 검출
-            lint_passed, lint_out = await self._run_subprocess(
+            # Step 1b: 남은 린트 에러는 reject하지 않고 LLM 리뷰 컨텍스트로 전달
+            _, lint_out = await self._run_subprocess(
                 ["uv", "run", "ruff", "check", *lint_targets,
                  "--exclude", ".worktrees", "--no-fix", "-q", *ruff_config_args],
                 work_dir, "Lint", timeout=30,
             )
             if lint_out:
-                outputs.append(f"=== LINT ===\n{lint_out}")
-            if not lint_passed:
-                return False, "\n\n".join(outputs)
+                outputs.append(f"=== LINT (참고용, LLM 리뷰에서 판단) ===\n{lint_out}")
 
         # ---- Step 2: 테스트 — pyproject.toml 있을 때만 (인프라 셋업 단계 스킵) ----
         test_dir = os.path.join(work_dir, "tests")
