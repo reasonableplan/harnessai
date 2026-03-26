@@ -233,6 +233,20 @@ class BaseAgent(ABC):
                             await self._sync_worktree_to_workspace(task)
                             await self._remap_artifact_paths(task)
                             await self._on_task_complete(task, result)
+                        except (TimeoutError, Exception) as exec_err:
+                            # 타임아웃/예외 시 태스크를 failed로 마킹 (in-progress 고착 방지)
+                            self._log.error(
+                                "Task execution error, marking as failed",
+                                task_id=task.id, err=str(exec_err),
+                            )
+                            await self._on_task_complete(
+                                task,
+                                TaskResult(
+                                    success=False,
+                                    error={"message": str(exec_err)[:500]},
+                                    artifacts=[],
+                                ),
+                            )
                         finally:
                             # 워크트리 정리 (리뷰/머지 후 — 파일은 이미 workspace에 복사됨)
                             await self._cleanup_worktree(task)
