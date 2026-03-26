@@ -211,7 +211,8 @@ class BaseAgent(ABC):
                         try:
                             await self._setup_worktree(task)
                         except Exception as wt_err:
-                            # worktree 실패 → 태스크를 failed 처리하고 다음으로
+                            # worktree 실패 → 부분 생성된 worktree 정리 + 태스크 failed
+                            await self._cleanup_worktree(task)
                             self._log.error(
                                 "Worktree setup failed, marking task as failed",
                                 task_id=task.id, err=str(wt_err),

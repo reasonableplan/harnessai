@@ -510,6 +510,11 @@ class GitService:
                 "-b", full_branch, "origin/main",
             )
         except GitServiceError:
+            # 첫 시도 실패 시 브랜치가 부분 생성됐을 수 있음 → 정리
+            try:
+                await self._run_git("branch", "-D", full_branch)
+            except GitServiceError:
+                pass
             # origin/main이 없는 경우 (빈 repo) → HEAD 기반
             await self._run_git(
                 "worktree", "add", worktree_path,
