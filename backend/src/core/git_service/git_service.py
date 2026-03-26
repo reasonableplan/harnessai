@@ -505,21 +505,35 @@ class GitService:
             except GitServiceError:
                 pass
         try:
-            await self._run_git(
-                "worktree", "add", worktree_path,
-                "-b", full_branch, "origin/main",
-            )
+            try:
+                await self._run_git(
+                    "worktree", "add", worktree_path,
+                    "-b", full_branch, "origin/main",
+                )
+            except GitServiceError:
+                # 첫 시도 실패 시 브랜치가 부분 생성됐을 수 있음 → 정리
+                try:
+                    await self._run_git("branch", "-D", full_branch)
+                except GitServiceError:
+                    pass
+                # origin/main이 없는 경우 (빈 repo) → HEAD 기반
+                await self._run_git(
+                    "worktree", "add", worktree_path,
+                    "-b", full_branch,
+                )
         except GitServiceError:
-            # 첫 시도 실패 시 브랜치가 부분 생성됐을 수 있음 → 정리
+            # 전체 실패 시 잔여 브랜치 + 디렉토리 확실히 정리
+            if os.path.isdir(worktree_path):
+                shutil.rmtree(worktree_path, ignore_errors=True)
+            try:
+                await self._run_git("worktree", "prune")
+            except GitServiceError:
+                pass
             try:
                 await self._run_git("branch", "-D", full_branch)
             except GitServiceError:
                 pass
-            # origin/main이 없는 경우 (빈 repo) → HEAD 기반
-            await self._run_git(
-                "worktree", "add", worktree_path,
-                "-b", full_branch,
-            )
+            raise
 
         log.info("Worktree created",
                  task_id=task_id, path=worktree_path, branch=full_branch)
