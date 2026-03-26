@@ -19,3 +19,4 @@ __pycache__/
 backend/.venv/
 *.zip
 *.png
+*.pdf
