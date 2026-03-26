@@ -483,7 +483,7 @@ class GitService:
         short_id = task_id[:8]
         safe_branch = re.sub(r'[^a-zA-Z0-9\-]', '-', branch_name)[:40].strip('-')
         worktree_name = f"{safe_branch}-{short_id}"
-        worktree_path = os.path.join(self._work_dir, ".worktrees", worktree_name)
+        worktree_path = os.path.abspath(os.path.join(self._work_dir, ".worktrees", worktree_name))
 
         # .worktrees 디렉토리 생성
         os.makedirs(os.path.join(self._work_dir, ".worktrees"), exist_ok=True)
@@ -555,7 +555,7 @@ class GitService:
             if worktree_name is None:
                 return
 
-        worktree_path = os.path.join(self._work_dir, ".worktrees", worktree_name)
+        worktree_path = os.path.abspath(os.path.join(self._work_dir, ".worktrees", worktree_name))
         branch_name = f"wt/{worktree_name}"
 
         # worktree 제거
