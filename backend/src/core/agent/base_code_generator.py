@@ -223,7 +223,8 @@ class BaseCodeGeneratorAgent(BaseAgent):
             f"코드 작성 후 반드시 실행해서 확인:\n"
             f"1. python -c \"from app.main import app\" — ImportError 없는지\n"
             f"2. ruff check backend/ --fix --config ruff.toml — lint 통과\n"
-            f"3. 테스트 파일 작성 후 pytest 실행 — 통과 확인\n\n"
+            f"3. 테스트 파일 작성 후 pytest 실행 — 통과 확인\n"
+            f"4. 태스크 설명에 수락 기준이 있으면 각 기준을 하나씩 검증\n\n"
             f"### Step 5: 실패하면 직접 수정\n"
             f"위 검증에서 에러가 나면 스스로 원인을 찾아 수정하세요.\n"
             f"모든 검증을 통과할 때까지 반복하세요.\n\n"
@@ -301,6 +302,12 @@ class BaseCodeGeneratorAgent(BaseAgent):
         success, output = await cli.execute_in_workspace(
             work_dir, instructions, timeout=cli_timeout,
         )
+
+        # CLI 출력을 task_log에 저장 (실패/성공 모두 — 관측성 확보)
+        try:
+            await self._state_store.update_task_log_text(task.id, output[-5000:])
+        except Exception:
+            pass  # 로그 저장 실패는 메인 플로우 차단 금지
 
         if not success:
             self._log.warning("Autonomous execution failed", task_id=task.id, output=output[:500])

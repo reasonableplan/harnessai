@@ -1421,7 +1421,16 @@ class DirectorAgent(BaseAgent):
             "- REJECT ONLY if: NO tests at all, completely wrong architecture, or security issue.\n"
             "- **IMPORTANT**: Truncated files or missing minor files (like __init__.py, .gitkeep) are NOT reject reasons. "
             "These can be fixed in follow-up tasks. Focus on whether the CORE implementation is correct.\n\n"
-            'Respond with JSON: {"approved": true/false, "note": "specific feedback with reject reason if any"}\n'
+            "## Reject Feedback Format (MUST follow if rejecting)\n"
+            "If rejecting, your 'note' MUST include for EACH issue:\n"
+            "1. **File**: which file has the problem\n"
+            "2. **Line/Section**: where exactly (function name or line range)\n"
+            "3. **Problem**: what is wrong\n"
+            "4. **Fix**: concrete fix instruction the Worker can follow\n"
+            "Example: 'File: backend/app/routers/tasks.py, Function: create_task, "
+            "Problem: missing input validation for title field, "
+            "Fix: add `if not body.title: raise HTTPException(400)`'\n\n"
+            'Respond with JSON: {"approved": true/false, "note": "specific feedback per issue"}\n'
             "Respond in Korean."
         )
 
@@ -1533,6 +1542,30 @@ class DirectorAgent(BaseAgent):
             )
         await self._unlock_dependent_tasks(task.id)
         await self._update_architecture_md()
+        await self._check_epic_health(task)
+
+    async def _check_epic_health(self, task: Any) -> None:
+        """에픽의 skip 비율이 50% 초과 시 사용자에게 경고한다."""
+        epic_id = getattr(task, "epic_id", None)
+        if not epic_id:
+            return
+        try:
+            all_tasks = await self._state_store.get_all_tasks()
+            epic_tasks = [t for t in all_tasks if getattr(t, "epic_id", None) == epic_id]
+            if len(epic_tasks) < 2:
+                return
+            skipped = sum(1 for t in epic_tasks if t.status == "skipped")
+            if skipped > len(epic_tasks) / 2:
+                log.warning(
+                    "Epic health warning: >50% tasks skipped",
+                    epic_id=epic_id, skipped=skipped, total=len(epic_tasks),
+                )
+                await self._broadcast_director_message(
+                    f"⚠️ 에픽 건강도 경고: {len(epic_tasks)}개 태스크 중 {skipped}개가 skip 상태입니다. "
+                    f"에픽을 검토해주세요."
+                )
+        except Exception as e:
+            log.warning("Epic health check failed", err=str(e))
 
     async def _write_feedback_to_agent_md(self, task: Any, reason: str) -> None:
         """reject 피드백을 에이전트 MD + SHARED_LESSONS에 기록한다."""

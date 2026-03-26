@@ -79,6 +79,15 @@ The user's requirements are locked. Break the project into Epic → Stories → 
 - Docs tasks: depend on the feature they document.
 - E2E tests: come last.
 
+## Parallel Batch Planning
+Group tasks into execution batches. Tasks in the same batch can run in parallel (no mutual dependencies).
+In your response, clearly show which tasks form each batch:
+- Batch 1 (병렬): docs + git setup (의존성 없음)
+- Batch 2 (병렬): DB models + schemas (Batch 1 의존)
+- Batch 3 (병렬): API routers (Batch 2 의존)
+- Batch 4 (병렬): Frontend pages (Batch 3 의존)
+This helps Workers execute safely in parallel without conflicts.
+
 ## Output Format (JSON)
 {{
   "response": "Your message presenting the plan (Act-Confirm style)",
@@ -96,7 +105,7 @@ The user's requirements are locked. Break the project into Epic → Stories → 
     {{
       "temp_id": "draft-1",
       "title": "Sub-task title",
-      "description": "What this sub-task produces",
+      "description": "What this sub-task produces. MUST include acceptance criteria: concrete checks the Worker can verify (e.g., 'import 가능', 'GET /api/tasks 200 응답', 'pytest 통과')",
       "agent": "agent-backend",
       "priority": 1,
       "complexity": "low|medium|high",

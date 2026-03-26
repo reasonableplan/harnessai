@@ -518,6 +518,20 @@ class StateStore:
             )
             return list(result.scalars().all())
 
+    async def update_task_log_text(self, task_id: str, log_text: str) -> None:
+        """태스크의 가장 최근 로그에 CLI 출력을 저장한다."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(TaskLogModel)
+                .where(TaskLogModel.task_id == task_id)
+                .order_by(TaskLogModel.created_at.desc())
+                .limit(1)
+            )
+            row = result.scalar_one_or_none()
+            if row:
+                row.log_text = log_text
+                await session.commit()
+
     async def get_daily_token_usage(self) -> dict[str, int]:
         """오늘의 토큰 사용량 합계를 반환한다."""
         async with self._session_factory() as session:
