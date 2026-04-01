@@ -23,6 +23,7 @@ from src.core.state.state_store import StateStore
 log = get_logger("Bootstrap")
 
 _system_context: SystemContext | None = None
+_shutting_down = False
 
 
 @dataclass
@@ -98,7 +99,7 @@ async def bootstrap(config: AppConfig) -> SystemContext:
             break
 
     # 8.6. 서버 재시작 시 자동 복구 — 수동 개입 없이 작업 재개
-    await _auto_recover_tasks(state_store)
+    await _auto_recover_tasks(state_store, git_service)
 
     # 9. 에이전트 DB 등록 (병렬, 개별 실패 허용)
     results = await asyncio.gather(*(
@@ -135,24 +136,6 @@ async def bootstrap(config: AppConfig) -> SystemContext:
     return ctx
 
 
-def _create_llm_client(config: AppConfig) -> Any:
-    """글로벌 LLM 클라이언트 (에이전트별 설정이 없을 때 폴백용)."""
-    if config.use_local_model:
-        from src.core.llm.local_model_client import LocalModelClient
-        return LocalModelClient(
-            base_url=config.local_model_base_url,
-            model=config.local_model_name,
-            api_key=config.local_model_api_key,
-        )
-    if config.use_cli:
-        from src.core.llm.claude_cli_client import ClaudeCliClient
-        log.info("LLM backend: claude CLI subprocess")
-        return ClaudeCliClient()
-    from src.core.llm.claude_client import ClaudeClient
-    log.info("LLM backend: Anthropic API")
-    return ClaudeClient(api_key=config.anthropic_api_key)
-
-
 # 에이전트별 기본 모델 매핑 (Director=Opus, B/F=Sonnet, 나머지=Haiku)
 _DEFAULT_AGENT_MODELS: dict[str, str] = {
     "director": "claude-opus-4-6",
@@ -185,8 +168,8 @@ def _create_agent_llm_client(agent_config: "AgentConfig", app_config: AppConfig)
     # 명시적 provider: claude-cli
     if provider == "claude-cli":
         from src.core.llm.claude_cli_client import ClaudeCliClient
-        log.info("LLM backend: claude CLI", agent=agent_config.id)
-        return ClaudeCliClient()
+        log.info("LLM backend: claude CLI", agent=agent_config.id, model=agent_config.claude_model)
+        return ClaudeCliClient(default_model=agent_config.claude_model)
 
     # 명시적 provider: anthropic API
     if provider == "anthropic":
@@ -204,7 +187,7 @@ def _create_agent_llm_client(agent_config: "AgentConfig", app_config: AppConfig)
         )
     if app_config.use_cli:
         from src.core.llm.claude_cli_client import ClaudeCliClient
-        return ClaudeCliClient()
+        return ClaudeCliClient(default_model=agent_config.claude_model)
 
     from src.core.llm.claude_client import ClaudeClient
     log.info("LLM backend: Anthropic API", agent=agent_config.id, model=agent_config.claude_model)
@@ -263,7 +246,6 @@ def _create_agents(
     git_service: GitService,
     code_search: Any = None,
     memory_store: Any = None,
-    merge_queue: MergeQueue | None = None,
 ) -> tuple[list[Any], list[Any]]:
     """에이전트와 에이전트별 LLM 클라이언트를 생성한다.
 
@@ -296,10 +278,10 @@ def _create_agents(
         git_service=git_service,
         llm_client=make_llm(director_cfg),
         memory_store=memory_store,
-        merge_queue=merge_queue,
+        merge_queue=None,
     )
 
-    git_cfg = make_config("agent-git", "git", AgentLevel.WORKER)
+    git_cfg = make_config("agent-git", "git", AgentLevel.WORKER, task_timeout_ms=600_000)
     git_agent = GitAgent(
         config=git_cfg,
         message_bus=message_bus,
@@ -311,7 +293,7 @@ def _create_agents(
         memory_store=memory_store,
     )
 
-    backend_cfg = make_config("agent-backend", "backend", AgentLevel.WORKER, temperature=0.2)
+    backend_cfg = make_config("agent-backend", "backend", AgentLevel.WORKER, temperature=0.2, task_timeout_ms=600_000)
     backend = BackendAgent(
         config=backend_cfg,
         message_bus=message_bus,
@@ -338,7 +320,7 @@ def _create_agents(
         memory_store=memory_store,
     )
 
-    docs_cfg = make_config("agent-docs", "docs", AgentLevel.WORKER, temperature=0.3)
+    docs_cfg = make_config("agent-docs", "docs", AgentLevel.WORKER, temperature=0.3, task_timeout_ms=600_000)
     docs = DocsAgent(
         config=docs_cfg,
         message_bus=message_bus,
@@ -367,49 +349,75 @@ def _create_agents(
     return [director, git_agent, backend, frontend, docs], llm_clients
 
 
-async def _auto_recover_tasks(state_store: StateStore) -> None:
+async def _auto_recover_tasks(state_store: StateStore, git_service: Any = None) -> None:
     """서버 재시작 시 고아 태스크 복구 + 의존성 자동 해제.
 
-    1. in-progress/review 태스크 → ready (에이전트가 없으므로 재작업)
+    1. in-progress/review 태스크 → ready (에이전트가 없으므로 재작업) + retry_count 증가
     2. done 태스크 기반으로 backlog 의존성 해제 → ready
+    Board-first 원칙: Board 이동 성공 후 DB 업데이트.
     """
     try:
         all_tasks = await state_store.get_all_tasks()
         if not all_tasks:
             return
 
-        # Step 1: 고아 태스크 복구 (in-progress/review → ready)
+        # Step 1: 고아 태스크 복구 (in-progress/review/failed → ready)
+        # retry_count는 건드리지 않음 — 서버 재시작은 실패로 간주하지 않는다.
+        # Director reject 시에만 retry_count가 증가한다.
         orphan_count = 0
         for t in all_tasks:
-            if t.status in ("in-progress", "review"):
+            if t.status in ("in-progress", "review", "failed"):
+                # Board-first: Board 이동 먼저
+                if git_service and t.github_issue_number:
+                    try:
+                        await git_service.move_issue_to_column(t.github_issue_number, "Ready")
+                    except Exception as e:
+                        log.warning("Auto-recovery: Board move failed, skipping",
+                                    task_id=t.id, err=str(e))
+                        continue
                 await state_store.update_task(t.id, {
                     "status": "ready", "board_column": "Ready",
+                    "started_at": None,
                 })
                 orphan_count += 1
 
-        # Step 1.5: retry 초과 backlog 태스크 → skipped (의존성 교착 방지)
+        # Step 1.5: retry 초과 backlog/failed 태스크 → skipped (의존성 교착 방지)
         skipped_count = 0
         for t in all_tasks:
             retry = getattr(t, "retry_count", 0) or 0
             if t.status in ("backlog", "failed") and retry >= 3:
+                if git_service and t.github_issue_number:
+                    try:
+                        await git_service.move_issue_to_column(t.github_issue_number, "Skipped")
+                    except Exception as e:
+                        log.warning("Auto-recovery: Board move to Skipped failed",
+                                    task_id=t.id, err=str(e))
+                        continue
                 await state_store.update_task(t.id, {
                     "status": "skipped", "board_column": "Skipped",
                 })
                 skipped_count += 1
 
         # Step 2: 의존성 자동 해제 (backlog → ready)
-        # done 또는 skipped 모두 의존성 충족으로 간주
+        # Step 1/1.5에서 DB를 변경했으므로 최신 상태로 다시 조회
+        unlock_count = 0
+        all_tasks = await state_store.get_all_tasks()
         completed_ids = {
             t.id for t in all_tasks if t.status in ("done", "skipped")
         }
-        unlock_count = 0
-        # 복구 후 최신 상태로 다시 조회
-        all_tasks = await state_store.get_all_tasks()
         for t in all_tasks:
             if t.status != "backlog":
                 continue
             deps = t.dependencies or []
-            if deps and all(d in completed_ids for d in deps):
+            # 의존성 없거나, 모든 의존성이 완료된 태스크 → ready
+            if not deps or all(d in completed_ids for d in deps):
+                if git_service and t.github_issue_number:
+                    try:
+                        await git_service.move_issue_to_column(t.github_issue_number, "Ready")
+                    except Exception as e:
+                        log.warning("Auto-recovery: Board unlock failed",
+                                    task_id=t.id, err=str(e))
+                        continue
                 await state_store.update_task(t.id, {
                     "status": "ready", "board_column": "Ready",
                 })
@@ -421,9 +429,6 @@ async def _auto_recover_tasks(state_store: StateStore) -> None:
                      skipped=skipped_count)
     except Exception as e:
         log.warning("Auto-recovery failed, continuing", err=str(e))
-
-
-_shutting_down = False
 
 
 async def shutdown(ctx: SystemContext) -> None:
@@ -449,10 +454,16 @@ async def shutdown(ctx: SystemContext) -> None:
             log.error("Agent drain error", agent=agent.id, err=str(e))
 
     # OrphanCleaner 중지
-    await ctx.orphan_cleaner.stop()
+    try:
+        await ctx.orphan_cleaner.stop()
+    except Exception as e:
+        log.error("OrphanCleaner stop error", err=str(e))
 
     # BoardWatcher 중지
-    await ctx.board_watcher.stop()
+    try:
+        await ctx.board_watcher.stop()
+    except Exception as e:
+        log.error("BoardWatcher stop error", err=str(e))
 
     # LLM 클라이언트 / GitService HTTP 연결 종료
     for client in ctx.llm_clients:
@@ -467,7 +478,10 @@ async def shutdown(ctx: SystemContext) -> None:
         log.error("GitService close error", err=str(e))
 
     # DB 연결 종료
-    await close_engine()
+    try:
+        await close_engine()
+    except Exception as e:
+        log.error("DB close error", err=str(e))
 
     _system_context = None
     log.info("Shutdown complete")

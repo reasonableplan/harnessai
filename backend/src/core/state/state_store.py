@@ -159,6 +159,7 @@ class StateStore:
                 select(TaskModel).where(
                     and_(
                         TaskModel.board_column == "Ready",
+                        TaskModel.status == "ready",
                         TaskModel.assigned_agent == agent_id,
                     )
                 )

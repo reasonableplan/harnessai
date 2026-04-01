@@ -13,7 +13,7 @@ from src.core.resilience.api_retry import with_retry
 
 log = get_logger("ClaudeCliClient")
 
-_CLI_TIMEOUT_S = 300.0  # 5분 — 복잡한 코드 생성 태스크 고려
+_CLI_TIMEOUT_S = 600.0  # 10분 — 복잡한 코드 생성 + Director 리뷰(대용량 diff) 고려
 
 # 프로세스 그룹 격리 — 타임아웃 시 트리 종료를 위해 필요
 _PGROUP_KWARGS: dict = (
@@ -107,10 +107,11 @@ class ClaudeCliClient:
     토큰 카운트는 CLI가 제공하지 않으므로 0으로 반환한다.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, default_model: str | None = None) -> None:
         self._tokens_used = 0
         self._cli_args = _resolve_cli_args()
-        log.info("ClaudeCliClient initialized", args=self._cli_args)
+        self._default_model = default_model
+        log.info("ClaudeCliClient initialized", args=self._cli_args, model=default_model)
 
     async def chat(
         self,
@@ -134,9 +135,11 @@ class ClaudeCliClient:
         async def _call() -> str:
             # stdin으로 프롬프트 전달 — Windows에서 긴 유니코드
             # command-line 인자가 프로세스를 멈추는 문제 방지
+            use_model = model or self._default_model
+            model_args = ["--model", use_model] if use_model else []
             try:
                 proc = await asyncio.create_subprocess_exec(
-                    *self._cli_args, "-p",
+                    *self._cli_args, "-p", *model_args,
                     stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
@@ -208,9 +211,10 @@ class ClaudeCliClient:
 
         # --allowedTools가 CLI 버전에 따라 미지원일 수 있으므로 fallback
         cli_extra_args = ["--allowedTools", "Read,Write,Edit,Bash,Glob,Grep"]
+        model_args = ["--model", self._default_model] if self._default_model else []
         try:
             proc = await asyncio.create_subprocess_exec(
-                *self._cli_args, "-p", *cli_extra_args,
+                *self._cli_args, "-p", *model_args, *cli_extra_args,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,

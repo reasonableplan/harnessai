@@ -24,6 +24,21 @@ class TaskComplexity(str, Enum):
     MEDIUM = "medium"
     HIGH = "high"
 
+    @classmethod
+    def _missing_(cls, value: object) -> "TaskComplexity | None":
+        """LLM이 생성한 비표준 값을 표준 값으로 매핑한다."""
+        aliases: dict[str, TaskComplexity] = {
+            "small": cls.LOW,
+            "simple": cls.LOW,
+            "easy": cls.LOW,
+            "large": cls.HIGH,
+            "complex": cls.HIGH,
+            "hard": cls.HIGH,
+        }
+        if isinstance(value, str):
+            return aliases.get(value.lower(), cls.MEDIUM)
+        return cls.MEDIUM
+
 
 class AgentLevel(int, Enum):
     DIRECTOR = 0
@@ -118,6 +133,8 @@ class ProjectContext(BaseModel):
     existing_system: str = ""
     constraints: list[str] = Field(default_factory=list)
     non_goals: list[str] = Field(default_factory=list)
+    core_features: list[str] = Field(default_factory=list)
+    user_scenarios: list[str] = Field(default_factory=list)
     coding_conventions: str = ""
     special_rules: str = ""
 
@@ -181,6 +198,7 @@ class TaskResult(BaseModel):
     data: dict[str, Any] | None = None
     error: dict[str, str] | None = None
     artifacts: list[str] = Field(default_factory=list)
+    skip_sync: bool = False  # CLI가 main workspace에 직접 쓴 경우 sync 불필요
 
 
 class Message(BaseModel):

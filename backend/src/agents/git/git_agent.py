@@ -87,7 +87,7 @@ class GitAgent(BaseCodeGeneratorAgent):
         if not work_dir:
             raise RuntimeError("git_service.work_dir is not configured")
         commit_msg = re.sub(r'[\x00-\x1f]', ' ', task.title[:250]).strip() or f"chore: task {task.id[:8]}"
-        await self._run_git(work_dir, "add", "-u")
+        await self._run_git(work_dir, "add", "-A")
         await self._run_git(work_dir, "commit", "-m", commit_msg)
         return TaskResult(success=True, data={"committed": True}, artifacts=[])
 

@@ -146,6 +146,7 @@ The user wants to modify the current task breakdown plan.
   "response": "Your message presenting the updated plan",
   "epic_title": "Updated or same title",
   "epic_description": "Updated or same description",
+  "stories": [ ... same format as structuring (temp_id, title, description) ... ],
   "tasks": [ ... same format as structuring ... ]
 }}
 

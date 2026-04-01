@@ -7,6 +7,9 @@ from src.core.state.state_store import StateStore
 log = get_logger("TokenBudget")
 
 
+_MAX_CONSECUTIVE_FAILURES = 5
+
+
 class TokenBudgetManager:
     def __init__(
         self,
@@ -17,6 +20,7 @@ class TokenBudgetManager:
         self._state_store = state_store
         self._max_per_task = max_tokens_per_task
         self._max_per_day = max_tokens_per_day
+        self._consecutive_failures = 0
 
     async def check_budget(self, task_id: str) -> tuple[bool, str]:
         """예산 내인지 확인한다. (allowed, reason) 반환."""
@@ -29,6 +33,7 @@ class TokenBudgetManager:
                     f"Daily token budget exceeded: {daily_total:,} >= {self._max_per_day:,}"
                 )
                 log.warning(reason)
+                self._consecutive_failures = 0
                 return False, reason
 
             # 태스크별 예산 체크
@@ -42,12 +47,22 @@ class TokenBudgetManager:
                     f"Task token budget exceeded: {task_total:,} >= {self._max_per_task:,}"
                 )
                 log.warning(reason, task_id=task_id)
+                self._consecutive_failures = 0
                 return False, reason
 
+            self._consecutive_failures = 0
             return True, ""
         except Exception as e:
-            # 예산 체크 실패 시 실행 허용 (가용성 우선)
-            log.warning("Budget check failed, allowing execution", err=str(e))
+            self._consecutive_failures += 1
+            if self._consecutive_failures > _MAX_CONSECUTIVE_FAILURES:
+                reason = (
+                    f"Budget check failed {self._consecutive_failures} consecutive times, blocking execution"
+                )
+                log.error(reason, err=str(e))
+                return False, reason
+            # 일시적 실패 — 가용성 우선으로 허용
+            log.warning("Budget check failed, allowing execution", err=str(e),
+                        consecutive_failures=self._consecutive_failures)
             return True, ""
 
     async def record_usage(

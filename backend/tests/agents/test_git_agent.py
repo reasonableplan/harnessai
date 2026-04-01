@@ -70,15 +70,15 @@ class TestHandleCommit:
         for call in calls:
             assert "/tmp/workspace" in call[0]
 
-    async def test_uses_git_add_u_not_A(self, agent, git_service):
-        """`git add -u` 를 사용한다 (미추적 파일 포함 -A 금지)."""
+    async def test_uses_git_add_A(self, agent, git_service):
+        """`git add -A` 를 사용한다 (untracked 파일 포함)."""
         mock_proc = _make_mock_process()
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc) as mock_exec:
             await agent._handle_commit(make_task())
 
         add_call = mock_exec.call_args_list[0][0]
-        assert "-u" in add_call
-        assert "-A" not in add_call
+        assert "-A" in add_call
+        assert "-u" not in add_call
 
     async def test_commit_message_truncated_at_250(self, agent, git_service):
         """커밋 메시지가 250자를 초과하면 잘린다."""

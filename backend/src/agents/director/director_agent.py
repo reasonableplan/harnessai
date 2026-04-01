@@ -96,6 +96,7 @@ class DirectorAgent(BaseAgent):
         self._active_plan: EpicPlan | None = None
         self._conversation: list[dict[str, str]] = []
         self._plan_lock = asyncio.Lock()
+        self._file_write_lock = asyncio.Lock()
         self._memory = memory_store
         self._merge_queue = merge_queue
 
@@ -220,32 +221,39 @@ class DirectorAgent(BaseAgent):
                 await self._route_input(safe_content, user_input)
             return
 
-        self._append_conversation("user", safe_content)
-
         # 승인/진행 키워드 감지 — REST API에서도 stage 전이 가능하게
         _approve_keywords = ("진행", "승인", "확인", "좋아", "approve", "ok", "yes", "시작")
 
         if plan.stage == PlanStage.GATHERING:
+            self._append_conversation("user", safe_content)
             await self._handle_gathering(safe_content)
         elif plan.stage == PlanStage.STRUCTURING:
+            self._append_conversation("user", safe_content)
             if plan.tasks and any(kw in safe_content.lower() for kw in _approve_keywords):
                 # 태스크가 이미 있고 사용자가 승인 → CONSULTING으로 전이
-                await self.handle_plan_action("approve")
+                await self._handle_plan_action_inner("approve")
             else:
                 await self._handle_structuring(safe_content)
         elif plan.stage == PlanStage.CONSULTING:
+            # CONSULTING 중 입력은 무시 — conversation에 기록하지 않음
             await self._broadcast_director_message(
                 "에이전트 상의가 진행 중입니다. 완료되면 검토 요청드리겠습니다."
             )
         elif plan.stage == PlanStage.CONFIRMING:
+            self._append_conversation("user", safe_content)
             if any(kw in safe_content.lower() for kw in _approve_keywords):
                 # 사용자가 승인 → 이슈 생성 (COMMITTED)
-                await self.handle_plan_action("approve")
+                await self._handle_plan_action_inner("approve")
             else:
                 await self._handle_confirming(safe_content)
 
     async def handle_plan_action(self, action: str, content: str = "") -> None:
-        """WS에서 받은 plan.approve / plan.revise / plan.commit 처리."""
+        """WS에서 받은 plan.approve / plan.revise / plan.commit 처리 (lock 포함)."""
+        async with self._plan_lock:
+            await self._handle_plan_action_inner(action, content)
+
+    async def _handle_plan_action_inner(self, action: str, content: str = "") -> None:
+        """plan action 실제 처리. 호출자가 lock을 보유해야 한다."""
         if self._active_plan is None:
             await self._broadcast_director_message("활성화된 프로젝트 계획이 없습니다.")
             return
@@ -361,6 +369,7 @@ class DirectorAgent(BaseAgent):
             await self._generate_task_breakdown()
         else:
             await self._broadcast_director_message(response)
+            await self._persist_plan()
 
     async def _handle_structuring(self, content: str) -> None:
         """Stage 2: 태스크 분해 / 수정."""
@@ -391,10 +400,17 @@ class DirectorAgent(BaseAgent):
             )},
         ]
 
-        data, input_tokens, output_tokens = await self._llm.chat_json(
-            messages=messages, system=system, max_tokens=2048, temperature=0.3,
-        )
-        await self._publish_token_usage(input_tokens, output_tokens)
+        try:
+            data, input_tokens, output_tokens = await self._llm.chat_json(
+                messages=messages, system=system, max_tokens=2048, temperature=0.3,
+            )
+            await self._publish_token_usage(input_tokens, output_tokens)
+        except Exception as e:
+            log.error("Confirming LLM call failed", err=str(e))
+            await self._broadcast_director_message(
+                "최종 확인 중 LLM 호출이 실패했습니다. 다시 시도해주세요."
+            )
+            return
 
         response = data.get("response", "")
         action = data.get("action", "revise")
@@ -426,10 +442,17 @@ class DirectorAgent(BaseAgent):
             {"role": "user", "content": "위 요구사항을 기반으로 에픽과 태스크를 분해해주세요."},
         ]
 
-        data, input_tokens, output_tokens = await self._llm.chat_json(
-            messages=messages, system=system, max_tokens=2048, temperature=0.3,
-        )
-        await self._publish_token_usage(input_tokens, output_tokens)
+        try:
+            data, input_tokens, output_tokens = await self._llm.chat_json(
+                messages=messages, system=system, max_tokens=2048, temperature=0.3,
+            )
+            await self._publish_token_usage(input_tokens, output_tokens)
+        except Exception as e:
+            log.error("Task breakdown LLM call failed", err=str(e))
+            await self._broadcast_director_message(
+                "태스크 분해 중 LLM 호출이 실패했습니다. 다시 시도해주세요."
+            )
+            return
 
         self._apply_task_update(plan, data)
         plan.updated_at = datetime.now(timezone.utc)
@@ -853,14 +876,21 @@ class DirectorAgent(BaseAgent):
             )
             return
 
-        # ---- Phase 7: 프로젝트 컨텍스트를 workspace에 저장 ----
-        await self._write_project_context(plan)
+        # ---- Phase 7: 프로젝트 컨텍스트를 workspace에 저장 (non-fatal) ----
+        try:
+            await self._write_project_context(plan)
+        except Exception as e:
+            log.warning("_write_project_context failed (non-fatal), continuing", err=str(e))
 
         # ---- Phase 8: COMMITTED — 업무 시작 대기 ----
         plan.stage = PlanStage.COMMITTED
         plan.updated_at = datetime.now(timezone.utc)
         await self._persist_plan()
-        await self._save_memories()
+        # 장기 기억 저장 (non-fatal — 실패해도 commit 완료로 처리)
+        try:
+            await self._save_memories()
+        except Exception as e:
+            log.warning("_save_memories failed (non-fatal)", err=str(e))
 
         log.info(
             "Epic committed (3-tier)",
@@ -962,6 +992,8 @@ class DirectorAgent(BaseAgent):
         )
         log.info("Execution started", ready_count=moved, session_id=plan.session_id)
         self._conversation.clear()
+        # 대화 기록 초기화 후 DB에 반영
+        await self._persist_plan()
 
     async def _generate_foundation_docs(self, plan: EpicPlan) -> None:
         """Worker 시작 전 foundation docs를 LLM으로 생성하여 workspace에 기록한다.
@@ -1131,12 +1163,13 @@ class DirectorAgent(BaseAgent):
                 if task.github_issue_number:
                     try:
                         await self._git_service.move_issue_to_column(task.github_issue_number, "Backlog")
-                        await self._git_service.add_issue_comment(
+                        await self._git_service.add_comment(
                             task.github_issue_number,
                             f"⚠️ {retry}회 실패 후 Backlog로 리셋합니다. retry 카운터 초기화.",
                         )
                     except Exception as e:
                         log.error("Board move to Backlog failed", task_id=task_id, err=str(e))
+                        return  # Board 실패 시 DB 불일치 방지
                 # Board=Backlog에 맞춰 DB도 backlog + retry 리셋
                 await self._state_store.update_task(task_id, {
                     "status": "backlog", "board_column": "Backlog", "retry_count": 0,
@@ -1155,12 +1188,13 @@ class DirectorAgent(BaseAgent):
             if task.github_issue_number:
                 try:
                     await self._git_service.move_issue_to_column(task.github_issue_number, "Backlog")
-                    await self._git_service.add_issue_comment(
+                    await self._git_service.add_comment(
                         task.github_issue_number,
                         f"⚠️ Director 리뷰에서 {retry}회 reject 후 Backlog로 리셋합니다. retry 카운터 초기화.",
                     )
                 except Exception as e:
                     log.error("Board move to Backlog failed", task_id=task_id, err=str(e))
+                    return  # Board 실패 시 DB 불일치 방지
             await self._state_store.update_task(task_id, {
                 "status": "backlog", "board_column": "Backlog", "retry_count": 0,
             })
@@ -1179,7 +1213,7 @@ class DirectorAgent(BaseAgent):
             )
             await self._finalize_review(task, approved=False, reason=reject_reason)
             if task.github_issue_number:
-                await self._git_service.add_issue_comment(
+                await self._git_service.add_comment(
                     task.github_issue_number,
                     f"**Director Review: Import Gate FAILED**\n\n{reject_reason}",
                 )
@@ -1191,7 +1225,7 @@ class DirectorAgent(BaseAgent):
             reject_reason = f"테스트 실패로 reject합니다.\n\n```\n{test_output[-1500:]}\n```"
             await self._finalize_review(task, approved=False, reason=reject_reason)
             if task.github_issue_number:
-                await self._git_service.add_issue_comment(
+                await self._git_service.add_comment(
                     task.github_issue_number,
                     f"**Director Review: Test Gate FAILED**\n\n{reject_reason}",
                 )
@@ -1581,9 +1615,14 @@ class DirectorAgent(BaseAgent):
             await proc.wait()
             log.warning(f"{label} gate timed out", work_dir=cwd)
             return False, f"{label} timed out after {timeout}s"
+        except FileNotFoundError as e:
+            # 도구 미설치 (ruff, pytest 등) — 환경 문제이므로 게이트 통과
+            log.warning(f"{label} gate skipped: tool not found", cmd=cmd[0], err=str(e))
+            return True, ""
         except Exception as e:
-            log.warning(f"{label} gate error", err=str(e))
-            return True, ""  # 실행 자체 실패하면 게이트 통과 (환경 문제)
+            # 런타임 에러 — 게이트 실패로 처리
+            log.warning(f"{label} gate error (runtime)", err=str(e))
+            return False, f"{label} error: {e}"
 
     async def run_full_test(self, work_dir: str) -> tuple[bool, str]:
         """MergeQueue.TestRunner 프로토콜 구현 — 전체 테스트를 실행한다."""
@@ -1593,12 +1632,12 @@ class DirectorAgent(BaseAgent):
         self, task: Any, artifacts: list[str], summary: str,
     ) -> tuple[bool, str]:
         """LLM으로 생성된 코드를 리뷰한다. (approved, review_note) 반환."""
-        # 생성된 파일 내용 읽기 (최대 5개, 각 2000자)
+        # 생성된 파일 내용 읽기 (최대 10개, 각 4000자)
         file_contents: list[str] = []
-        for fpath in artifacts[:5]:
+        for fpath in artifacts[:10]:
             try:
                 from pathlib import Path
-                content = Path(fpath).read_text(encoding="utf-8", errors="replace")[:2000]
+                content = Path(fpath).read_text(encoding="utf-8", errors="replace")[:4000]
                 file_contents.append(f"### {fpath}\n```\n{content}\n```")
             except Exception:
                 file_contents.append(f"### {fpath}\n(읽기 실패)")
@@ -1623,24 +1662,30 @@ class DirectorAgent(BaseAgent):
 
         prompt = (
             "You are the Director — PM, Tech Lead, and Architect of this project.\n"
-            "Review the following code with STRICT criteria.\n\n"
+            "Review the following code with PRODUCTION-LEVEL criteria.\n\n"
             f"## Task\nTitle: {task.title}\nDescription: {task.description or 'N/A'}\n\n"
             f"## Summary\n{summary}\n\n"
             f"{arch_section}"
             f"## Generated Files\n" + "\n\n".join(file_contents) + "\n\n"
-            "## Review Criteria\n"
-            "1. **TDD**: Test files included? REJECT only if NO tests at all.\n"
-            "2. **Task match**: Does the code address the task?\n"
-            "3. **Architecture**: Reasonable structure for the project?\n"
-            "4. **Security**: No hardcoded secrets?\n\n"
+            "## Review Criteria (ALL must pass)\n"
+            "1. **TDD**: Test files included with meaningful assertions? (not just imports)\n"
+            "2. **Task match**: Does the code fully address the task requirements?\n"
+            "3. **Architecture**: Consistent with existing project structure and patterns?\n"
+            "4. **Security**: No hardcoded secrets, no raw user input in queries/commands?\n"
+            "5. **Error handling**: No empty catch blocks, proper error propagation, "
+            "NOT_FOUND/404 only swallowed intentionally?\n"
+            "6. **Type safety**: Proper type annotations, minimal `as` casts, "
+            "no unsafe `any` where avoidable?\n"
+            "7. **Async safety**: cleanup handlers for setTimeout/subscribe, "
+            "no fire-and-forget promises for critical ops?\n"
+            "8. **No dead code**: No commented-out code, unused imports, or placeholder stubs?\n\n"
             "## Decision\n"
-            "- APPROVE if: core logic is correct and tests exist, even if incomplete or truncated.\n"
-            "- REJECT ONLY if: NO tests at all, completely wrong architecture, or security issue.\n"
-            "- **IMPORTANT**: Truncated files or missing minor files (like __init__.py, .gitkeep) are NOT reject reasons. "
-            "These can be fixed in follow-up tasks. Focus on whether the CORE implementation is correct.\n\n"
+            "- APPROVE if: all 8 criteria pass. Minor style issues are OK.\n"
+            "- REJECT if: any criterion fails significantly. Be specific about what to fix.\n"
+            "- Truncated files or missing minor files (__init__.py, .gitkeep) are NOT reject reasons.\n\n"
             "## Reject Feedback Format (MUST follow if rejecting)\n"
-            "If rejecting, your 'note' MUST include for EACH issue:\n"
-            "1. **File**: which file has the problem\n"
+            "For EACH issue include:\n"
+            "1. **File**: which file\n"
             "2. **Line/Section**: where exactly (function name or line range)\n"
             "3. **Problem**: what is wrong\n"
             "4. **Fix**: concrete fix instruction the Worker can follow\n"
@@ -1654,7 +1699,7 @@ class DirectorAgent(BaseAgent):
         try:
             data, inp, out = await self._llm.chat_json(
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=256, temperature=0.2,
+                max_tokens=1024, temperature=0.2,
             )
             await self._publish_token_usage(inp, out)
             approved = data.get("approved", True) if isinstance(data, dict) else True
@@ -1684,7 +1729,7 @@ class DirectorAgent(BaseAgent):
             await self._state_store.update_task(task.id, {
                 "status": "ready",
                 "board_column": "Ready",
-                "review_note": reason[:500],
+                "review_note": reason[:2000],
                 "retry_count_increment": 1,
             })
             log.info("Task review: rejected", task_id=task.id)
@@ -1732,7 +1777,7 @@ class DirectorAgent(BaseAgent):
         await self._state_store.update_task(task.id, {
             "status": "done",
             "board_column": "Done",
-            "review_note": reason[:500],
+            "review_note": reason[:2000],
         })
         log.info("Task review: approved + merged", task_id=task.id)
 
@@ -1790,16 +1835,15 @@ class DirectorAgent(BaseAgent):
             work_dir = self._git_service.work_dir
             agent_id = task.assigned_agent or "unknown"
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
-            entry = f"\n- [{timestamp}] {task.title}: {reason[:200]}\n"
+            entry = f"\n- [{timestamp}] {task.title}: {reason[:500]}\n"
 
             # 에이전트 전용 MD에 기록 (없으면 생성)
             agent_md = os.path.join(work_dir, "docs", "agents", f"{agent_id}.md")
             os.makedirs(os.path.dirname(agent_md), exist_ok=True)
-            await asyncio.to_thread(self._append_to_file, agent_md, entry)
-
-            # SHARED_LESSONS에도 기록
             shared_md = os.path.join(work_dir, "docs", "agents", "SHARED_LESSONS.md")
-            await asyncio.to_thread(self._append_to_file, shared_md, entry)
+            async with self._file_write_lock:
+                await asyncio.to_thread(self._append_to_file, agent_md, entry)
+                await asyncio.to_thread(self._append_to_file, shared_md, entry)
 
             log.info("Feedback written to agent MD", agent=agent_id, task_id=task.id)
         except Exception as e:
@@ -1823,7 +1867,7 @@ class DirectorAgent(BaseAgent):
             main_py = os.path.join(work_dir, "backend", "app", "main.py")
             registered_routers: list[str] = []
             if os.path.isfile(main_py):
-                content = Path(main_py).read_text(encoding="utf-8", errors="replace")
+                content = await asyncio.to_thread(Path(main_py).read_text, "utf-8", "replace")
                 for line in content.split("\n"):
                     if "include_router" in line:
                         registered_routers.append(line.strip())
@@ -1832,31 +1876,34 @@ class DirectorAgent(BaseAgent):
             models_init = os.path.join(work_dir, "backend", "app", "models", "__init__.py")
             model_exports: list[str] = []
             if os.path.isfile(models_init):
-                content = Path(models_init).read_text(encoding="utf-8", errors="replace")
+                content = await asyncio.to_thread(Path(models_init).read_text, "utf-8", "replace")
                 for line in content.split("\n"):
                     stripped = line.strip().rstrip(",")
                     if stripped and not stripped.startswith(("#", "from", "import", "__", ")", "\"", "'")):
                         model_exports.append(stripped)
 
-            # ARCHITECTURE.md 끝에 자동 갱신 섹션 추가/업데이트
-            arch_content = Path(arch_path).read_text(encoding="utf-8", errors="replace")
-            marker = "<!-- AUTO-UPDATED -->"
-            # 첫 번째 마커 이전까지만 유지 (중복 마커 누적 방지)
-            marker_idx = arch_content.find(marker)
-            if marker_idx >= 0:
-                arch_content = arch_content[:marker_idx].rstrip() + "\n\n"
+            # ARCHITECTURE.md 끝에 자동 갱신 섹션 추가/업데이트 (동시 쓰기 방지)
+            async with self._file_write_lock:
+                arch_content = await asyncio.to_thread(Path(arch_path).read_text, "utf-8", "replace")
+                marker = "<!-- AUTO-UPDATED -->"
+                # 첫 번째 마커 이전까지만 유지 (중복 마커 누적 방지)
+                marker_idx = arch_content.find(marker)
+                if marker_idx >= 0:
+                    arch_content = arch_content[:marker_idx].rstrip() + "\n\n"
 
-            auto_section = (
-                f"{marker}\n"
-                f"## 자동 갱신 ({datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC)\n\n"
-                f"### 등록된 라우터 (main.py)\n"
-                + ("\n".join(f"- `{r}`" for r in registered_routers) or "- 없음")
-                + f"\n\n### 모델 exports (models/__init__.py)\n"
-                + ("\n".join(f"- {m}" for m in model_exports) or "- 없음")
-                + "\n"
-            )
+                auto_section = (
+                    f"{marker}\n"
+                    f"## 자동 갱신 ({datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC)\n\n"
+                    f"### 등록된 라우터 (main.py)\n"
+                    + ("\n".join(f"- `{r}`" for r in registered_routers) or "- 없음")
+                    + f"\n\n### 모델 exports (models/__init__.py)\n"
+                    + ("\n".join(f"- {m}" for m in model_exports) or "- 없음")
+                    + "\n"
+                )
 
-            Path(arch_path).write_text(arch_content + auto_section, encoding="utf-8")
+                await asyncio.to_thread(
+                    Path(arch_path).write_text, arch_content + auto_section, encoding="utf-8",
+                )
             log.info("ARCHITECTURE.md updated", routers=len(registered_routers), models=len(model_exports))
         except Exception as e:
             log.warning("Failed to update ARCHITECTURE.md", err=str(e))
@@ -1898,8 +1945,10 @@ class DirectorAgent(BaseAgent):
 
         # fallback: 머지 큐 없이 직접 처리 (하위 호환)
         try:
+            # commit 메시지에 제어 문자(\n, \r) 삽입 방지
+            safe_title = re.sub(r"[\r\n]", " ", str(task.title))
             pr_num = await self._git_service.commit_and_pr(
-                f"feat: {task.title} (#{task.github_issue_number or '?'})",
+                f"feat: {safe_title} (#{task.github_issue_number or '?'})",
                 issue_number=task.github_issue_number,
             )
             if pr_num:
@@ -1914,6 +1963,7 @@ class DirectorAgent(BaseAgent):
         completed_task = await self._state_store.get_task(completed_task_id)
         epic_id = getattr(completed_task, "epic_id", None) if completed_task else None
         all_tasks = await self._state_store.get_all_tasks()
+        task_map = {t.id: t for t in all_tasks}
         for t in all_tasks:
             # 에픽 범위 필터링
             if epic_id and getattr(t, "epic_id", None) != epic_id:
@@ -1924,13 +1974,12 @@ class DirectorAgent(BaseAgent):
             if completed_task_id not in deps:
                 continue
 
-            # 이 태스크의 모든 의존성이 done/skipped인지 확인
-            all_deps_done = True
-            for dep_id in deps:
-                dep_task = await self._state_store.get_task(dep_id)
-                if dep_task is None or dep_task.status not in ("done", "skipped"):
-                    all_deps_done = False
-                    break
+            # 이 태스크의 모든 의존성이 done/skipped인지 확인 (N+1 쿼리 방지)
+            all_deps_done = all(
+                (dep := task_map.get(dep_id)) is not None
+                and dep.status in ("done", "skipped")
+                for dep_id in deps
+            )
 
             if all_deps_done:
                 # Board-first: Ready로 이동
@@ -2057,7 +2106,8 @@ class DirectorAgent(BaseAgent):
         """LLM 응답의 project_update를 EpicPlan.project에 반영한다."""
         project = plan.project
 
-        for field in ("topic", "purpose", "target_users", "scope", "existing_system"):
+        for field in ("topic", "purpose", "target_users", "scope", "existing_system",
+                      "coding_conventions", "special_rules"):
             if field in update and update[field]:
                 setattr(project, field, update[field])
 

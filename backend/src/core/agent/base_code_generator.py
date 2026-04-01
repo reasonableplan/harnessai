@@ -36,7 +36,7 @@ _DOMAIN_FILE_PATTERNS: dict[str, list[str]] = {
         "**/Makefile", "**/*.sh", "**/*.yml", "**/*.yaml",
     ],
     "docs": [
-        "**/*.md", "**/*.py", "**/*.ts",  # 문서 작성 시 코드 참조
+        "**/*.md",  # 문서 작성 시 기존 문서 참조
     ],
 }
 
@@ -285,7 +285,7 @@ class BaseCodeGeneratorAgent(BaseAgent):
                         task_id=task.id,
                     )
                     # CLI가 남긴 불완전한 파일 정리 후 fallback
-                    await self._reset_working_tree(str(effective_dir))
+                    await self._reset_working_tree(str(self._work_dir))
                     return await self._execute_json_mode(task, effective_dir)
                 return result
 
@@ -321,8 +321,13 @@ class BaseCodeGeneratorAgent(BaseAgent):
         agent_timeout_s = (self.config.task_timeout_ms or 360_000) / 1000
         cli_timeout = max(agent_timeout_s - 60, 60)
 
+        # Claude Code CLI는 worktree의 .git 파일을 따라 main workspace를 프로젝트
+        # 루트로 인식하고 파일을 main workspace에 쓴다.
+        # 따라서 HEAD 저장 및 변경 파일 수집은 main workspace 기준으로 수행해야 한다.
+        collect_dir = str(self._work_dir)
+
         # CLI 실행 전 HEAD SHA 저장 (CLI가 자동 커밋해도 diff 가능)
-        saved_head = await self._get_current_head(work_dir)
+        saved_head = await self._get_current_head(collect_dir)
 
         await self._publish_progress(task.id, "reading_docs", "문서 읽기 및 코드 작성 시작")
 
@@ -347,8 +352,9 @@ class BaseCodeGeneratorAgent(BaseAgent):
         await self._publish_progress(task.id, "collecting", "변경 파일 수집 중")
 
         # 성공: 변경된 파일 수집 (saved_head 기준 diff로 감지)
+        # collect_dir = main workspace (CLI가 실제로 파일을 쓰는 곳)
         artifact_paths = await self._collect_changed_files(
-            work_dir, task.id, base_ref=saved_head,
+            collect_dir, task.id, base_ref=saved_head,
         )
         self._log.info("Autonomous task complete", task_id=task.id, files=len(artifact_paths))
         await self._publish_progress(task.id, "done", f"완료 — {len(artifact_paths)}개 파일")
@@ -356,6 +362,7 @@ class BaseCodeGeneratorAgent(BaseAgent):
             success=True,
             data={"files": artifact_paths, "summary": output[-1000:]},
             artifacts=artifact_paths,
+            skip_sync=True,  # CLI가 main workspace에 직접 쓰므로 sync 불필요
         )
 
     @staticmethod
@@ -418,11 +425,15 @@ class BaseCodeGeneratorAgent(BaseAgent):
             stdout2, _ = await proc2.communicate()
             stdout_parts.append(stdout2)
 
-            changed = set()
+            # node_modules, .venv 등 대용량 디렉토리 제외
+            _SKIP_PREFIXES = ("node_modules/", ".venv/", "__pycache__/", ".ruff_cache/", ".omc/")
             combined = b"".join(stdout_parts).decode()
+            if not combined.strip():
+                return []
+            changed = set()
             for line in combined.strip().split("\n"):
                 line = line.strip()
-                if line:
+                if line and not any(line.startswith(p) or f"/{p}" in line for p in _SKIP_PREFIXES):
                     changed.add(line)
 
             artifact_paths: list[str] = []
@@ -440,7 +451,7 @@ class BaseCodeGeneratorAgent(BaseAgent):
                 if not os.path.isfile(abs_path):
                     continue
                 try:
-                    content = Path(abs_path).read_text(encoding="utf-8", errors="replace")
+                    content = await asyncio.to_thread(Path(abs_path).read_text, "utf-8", "replace")
                     await self._state_store.save_artifact({
                         "id": str(uuid.uuid4()),
                         "task_id": task_id,
@@ -575,7 +586,7 @@ class BaseCodeGeneratorAgent(BaseAgent):
         2. 통합 핵심 파일 (import 경로, DB, 앱 구조 — 반드시 포함)
         3. 도메인별 + 공유 패턴 파일 (남은 예산으로)
         """
-        scan_dir = self._effective_work_dir
+        scan_dir = self._work_dir
         if not scan_dir.exists():
             return ""
 

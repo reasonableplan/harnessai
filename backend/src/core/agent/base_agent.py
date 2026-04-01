@@ -229,8 +229,9 @@ class BaseAgent(ABC):
                             continue
                         try:
                             result = await self._execute_with_timeout(task)
-                            # 워크트리 파일을 공유 workspace로 복사 + artifact 경로 재매핑
-                            await self._sync_worktree_to_workspace(task)
+                            # CLI가 main workspace에 직접 쓴 경우 sync 건너뜀
+                            if not getattr(result, "skip_sync", False):
+                                await self._sync_worktree_to_workspace(task)
                             await self._remap_artifact_paths(task)
                             await self._on_task_complete(task, result)
                         except (TimeoutError, Exception) as exec_err:
@@ -429,7 +430,7 @@ class BaseAgent(ABC):
         try:
             from pathlib import Path
 
-            branch_name = f"task-{task.title}"
+            branch_name = "task"
             worktree_path = await self._git_service.create_worktree(
                 task.id, branch_name,
             )
@@ -474,19 +475,22 @@ class BaseAgent(ABC):
                     return
 
                 skip_dirs = {".git", ".venv", "node_modules", "__pycache__", ".worktrees"}
-                copied = 0
-                for src_file in wt.rglob("*"):
-                    if not src_file.is_file():
-                        continue
-                    # worktree 내부 상대 경로 기준으로 skip 판단
-                    rel = src_file.relative_to(wt)
-                    if any(d in rel.parts for d in skip_dirs):
-                        continue
-                    dst = ws / rel
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(str(src_file), str(dst))
-                    copied += 1
 
+                def _do_sync() -> int:
+                    count = 0
+                    for src_file in wt.rglob("*"):
+                        if not src_file.is_file():
+                            continue
+                        rel = src_file.relative_to(wt)
+                        if any(d in rel.parts for d in skip_dirs):
+                            continue
+                        dst = ws / rel
+                        dst.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(str(src_file), str(dst))
+                        count += 1
+                    return count
+
+                copied = await asyncio.to_thread(_do_sync)
                 self._log.info("Worktree synced to workspace",
                                task_id=task.id, files=copied)
             except Exception as e:
@@ -562,16 +566,18 @@ class BaseAgent(ABC):
             updates["completed_at"] = datetime.now(timezone.utc)
         await self._state_store.update_task(task.id, updates)
 
-        await self._message_bus.publish(
-            Message(
-                id=str(uuid.uuid4()),
-                type=MessageType.REVIEW_REQUEST,
-                from_agent=self.id,
-                payload={"taskId": task.id, "result": result.model_dump()},
-                trace_id=str(uuid.uuid4()),
-                timestamp=datetime.now(timezone.utc),
+        # 성공한 태스크만 Director 리뷰 요청 (실패 태스크는 Board=Failed로 이미 처리됨)
+        if result.success:
+            await self._message_bus.publish(
+                Message(
+                    id=str(uuid.uuid4()),
+                    type=MessageType.REVIEW_REQUEST,
+                    from_agent=self.id,
+                    payload={"taskId": task.id, "result": result.model_dump()},
+                    trace_id=str(uuid.uuid4()),
+                    timestamp=datetime.now(timezone.utc),
+                )
             )
-        )
 
     @abstractmethod
     async def execute_task(self, task: Task) -> TaskResult:

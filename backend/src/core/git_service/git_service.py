@@ -35,7 +35,8 @@ class GitService:
         self._project_id: str = ""
         self._status_field_id: str = ""
         self._status_options: dict[str, str] = {}  # column_name → option_id
-        self._item_id_cache: dict[int, str] = {}   # issue_number → project item ID
+        self._item_id_cache: dict[int, str] = {}   # issue_number → project item ID (FIFO, max 500)
+        self._CACHE_MAX = 500
         self._owner_gql_type: str = "user"         # "user" or "organization" — detected at startup
         self._field_cache_lock = asyncio.Lock()
 
@@ -218,6 +219,8 @@ class GitService:
                     field = fv.get("field", {})
                     if field.get("name", "").lower() == "status":
                         column = fv.get("name", "")
+                if len(self._item_id_cache) >= self._CACHE_MAX:
+                    self._item_id_cache.pop(next(iter(self._item_id_cache)))
                 self._item_id_cache[content["number"]] = node["id"]
                 items.append(BoardIssue(
                     issue_number=content["number"],
@@ -349,6 +352,8 @@ class GitService:
             project = item.get("project", {})
             if project.get("number") == self._project_number:
                 item_id = item["id"]
+                if len(self._item_id_cache) >= self._CACHE_MAX:
+                    self._item_id_cache.pop(next(iter(self._item_id_cache)))
                 self._item_id_cache[issue_number] = item_id
                 return item_id
         return None
@@ -394,6 +399,8 @@ class GitService:
         if not item_id:
             raise GitServiceError(f"Failed to add issue #{issue_number} to project")
 
+        if len(self._item_id_cache) >= self._CACHE_MAX:
+            self._item_id_cache.pop(next(iter(self._item_id_cache)))
         self._item_id_cache[issue_number] = item_id
 
         # 컬럼 설정
@@ -499,7 +506,11 @@ class GitService:
         if os.path.isdir(worktree_path):
             await self.remove_worktree(task_id, worktree_name)
         else:
-            # 디렉토리 없어도 고아 브랜치가 남아있을 수 있음
+            # 디렉토리 없어도 git 레지스트리/고아 브랜치가 남아있을 수 있음
+            try:
+                await self._run_git("worktree", "prune")
+            except GitServiceError:
+                pass
             try:
                 await self._run_git("branch", "-D", full_branch)
             except GitServiceError:
@@ -565,6 +576,8 @@ class GitService:
             # git worktree remove 실패 시 디렉토리 직접 삭제
             if os.path.isdir(worktree_path):
                 shutil.rmtree(worktree_path, ignore_errors=True)
+        finally:
+            # 성공/실패 모두 git 레지스트리 정리 (Windows 잠금 등으로 잔류 방지)
             try:
                 await self._run_git("worktree", "prune")
             except GitServiceError:
@@ -581,70 +594,44 @@ class GitService:
     async def cleanup_orphan_worktrees(self) -> None:
         """시스템 시작 시 이전 세션에서 남은 orphan worktree를 정리한다.
 
-        3단계:
-        1. .git/worktrees 레지스트리에서 실제 디렉토리 없는 항목 삭제
-        2. git worktree prune 실행
-        3. 모든 wt/ 브랜치를 삭제 (활성 worktree가 아닌 것만)
+        순서: 디렉토리 삭제 → 레지스트리 정리 → prune → 브랜치 삭제.
+        디렉토리를 먼저 삭제해야 git이 worktree를 "활성"으로 인식하지 않아
+        prune과 브랜치 삭제가 정상 동작한다.
         """
         worktrees_dir = os.path.join(self._work_dir, ".worktrees")
         git_worktrees_dir = os.path.join(self._work_dir, ".git", "worktrees")
 
-        # Step 1: .git/worktrees 레지스트리에서 실제 디렉토리 없는 항목 삭제
+        # Step 1: .worktrees 디렉토리 내 모든 디렉토리 삭제
+        if os.path.isdir(worktrees_dir):
+            for name in os.listdir(worktrees_dir):
+                full_path = os.path.join(worktrees_dir, name)
+                if os.path.isdir(full_path):
+                    shutil.rmtree(full_path, ignore_errors=True)
+                    log.info("Removed orphan worktree dir", path=full_path)
+
+        # Step 2: .git/worktrees 레지스트리에서 실제 디렉토리 없는 항목 삭제
         if os.path.isdir(git_worktrees_dir):
             for name in os.listdir(git_worktrees_dir):
                 reg_path = os.path.join(git_worktrees_dir, name)
-                if not os.path.isdir(reg_path):
-                    continue
-                wt_path = os.path.join(worktrees_dir, name) if os.path.isdir(worktrees_dir) else ""
-                if not os.path.isdir(wt_path):
+                if os.path.isdir(reg_path):
                     shutil.rmtree(reg_path, ignore_errors=True)
                     log.info("Removed orphan worktree registry", name=name)
 
-        # Step 2: git worktree prune
+        # Step 3: git worktree prune (레지스트리 완전 정리)
         try:
             await self._run_git("worktree", "prune")
         except GitServiceError:
             pass
 
-        # Step 3: 모든 wt/ 브랜치 정리 (활성 worktree 제외)
+        # Step 4: 모든 wt/ 브랜치 삭제 (worktree 해제 후이므로 안전)
         try:
             branch_output = await self._run_git("branch", "--list", "wt/*")
-            for line in branch_output.split("\n"):
-                branch = line.strip().lstrip("* +")
-                if not branch:
-                    continue
-                try:
-                    await self._run_git("branch", "-D", branch)
-                    log.info("Orphan branch deleted", branch=branch)
-                except GitServiceError:
-                    pass  # 활성 worktree에서 사용 중이면 삭제 불가 — 정상
-        except GitServiceError:
-            pass
-
-        # Step 4: .worktrees 디렉토리 내 orphan 디렉토리 삭제
-        if os.path.isdir(worktrees_dir):
-            active_paths: set[str] = set()
-            try:
-                wt_list = await self._run_git("worktree", "list", "--porcelain")
-                for line in wt_list.split("\n"):
-                    if line.startswith("worktree "):
-                        active_paths.add(os.path.normpath(line[9:].strip()))
-            except GitServiceError:
-                pass
-            for name in os.listdir(worktrees_dir):
-                full_path = os.path.join(worktrees_dir, name)
-                if os.path.isdir(full_path) and os.path.normpath(full_path) not in active_paths:
-                    shutil.rmtree(full_path, ignore_errors=True)
-                    log.info("Removed orphan worktree dir", path=full_path)
-
-        # 고아 브랜치 정리 (wt/ 접두사)
-        try:
-            branches_output = await self._run_git("branch", "--list", "wt/*")
-            for line in branches_output.strip().split("\n"):
-                branch = line.strip().lstrip("* ")
+            for line in branch_output.strip().split("\n"):
+                branch = line.strip().lstrip("*+ ")
                 if branch.startswith("wt/"):
                     try:
                         await self._run_git("branch", "-D", branch)
+                        log.info("Orphan branch deleted", branch=branch)
                     except GitServiceError:
                         pass
         except GitServiceError:
@@ -771,7 +758,7 @@ class GitService:
 
     async def commit_all(self, message: str) -> bool:
         """workspace의 모든 변경사항을 commit한다. 변경이 없으면 False 반환."""
-        await self._run_git("add", "-A")
+        await self._run_git("add", "-A", timeout_s=180.0)
         # .worktrees가 stage되지 않도록 안전장치
         try:
             await self._run_git("reset", "HEAD", "--", ".worktrees")
@@ -822,11 +809,11 @@ class GitService:
             stashed = False
 
         # main 최신 상태로
+        await self._run_git("checkout", "main")
         try:
-            await self._run_git("checkout", "main")
             await self._run_git("pull", "--rebase", "origin", "main")
-        except GitServiceError:
-            pass
+        except GitServiceError as e:
+            log.warning("pull --rebase failed, proceeding with local main", err=str(e))
 
         # 브랜치 생성 + stash 복원 + commit (기존 브랜치 있으면 로컬+리모트 삭제 후 재생성)
         try:
@@ -842,7 +829,12 @@ class GitService:
             try:
                 await self._run_git("stash", "pop")
             except GitServiceError as e:
-                log.error("Stash pop failed, work may be in stash", branch=branch_name, err=str(e))
+                log.error("Stash pop failed, dropping stash to prevent accumulation",
+                          branch=branch_name, err=str(e))
+                try:
+                    await self._run_git("stash", "drop")
+                except GitServiceError:
+                    pass
                 try:
                     await self._run_git("checkout", "main")
                 except GitServiceError:
@@ -897,7 +889,16 @@ class GitService:
             log.warning("PR auto-merge failed", pr=pr_number, err=str(e))
 
         # main으로 복귀 + 최신화
-        await self._run_git("checkout", "main")
+        # dirty working tree가 checkout을 막을 수 있으므로 stash 후 시도
+        try:
+            await self._run_git("checkout", "main")
+        except GitServiceError:
+            try:
+                await self._run_git("stash", "--include-untracked")
+                await self._run_git("checkout", "main")
+                await self._run_git("stash", "drop")
+            except GitServiceError as e2:
+                log.warning("checkout main failed after stash", err=str(e2))
         try:
             await self._run_git("pull", "--rebase", "origin", "main")
         except GitServiceError:

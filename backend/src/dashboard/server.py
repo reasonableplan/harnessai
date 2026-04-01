@@ -265,17 +265,17 @@ def create_app(
                         await ws.send_text('{"type":"error","message":"Only failed tasks can be retried"}')
                         continue
                     # Board-first: 외부(Board) 먼저 → 내부(DB) 나중
-                    if task_row.github_issue_number:
+                    issue_num = task_row.github_issue_number
+                    if issue_num:
                         try:
                             from src.bootstrap import get_system_context
                             git_service = get_system_context().git_service
-                            await git_service.move_issue_to_column(
-                                task_row.github_issue_number, "Ready"
-                            )
+                            await git_service.move_issue_to_column(issue_num, "Ready")
                         except Exception as e:
                             _log.error("Task retry: Board move failed, aborting retry", task_id=task_id, err=str(e))
                             await ws.send_text('{"type":"error","message":"Board move failed, retry aborted"}')
                             continue
+                    # Atomic WHERE 보호: update_task 내부에서 failed→ready 전이 유효성 검증
                     await store.update_task(
                         task_id, {"status": "ready", "board_column": "Ready"}
                     )
