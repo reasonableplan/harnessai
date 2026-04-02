@@ -1,42 +1,41 @@
+"""GET /api/stats — 시스템 요약 통계."""
 from __future__ import annotations
 
-import asyncio
+import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from pydantic import BaseModel
 
-from src.dashboard.routes.deps import get_state_store
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
 
 class SystemSummary(BaseModel):
     totalAgents: int
-    totalTasks: int
-    totalEpics: int
-    tasksByStatus: dict[str, int]
+    currentPhase: str
+    taskResultCount: int
 
 
 @router.get("/summary", response_model=SystemSummary)
-async def get_summary(store=Depends(get_state_store)):
-    # 3개 독립 쿼리를 병렬 실행 (return_exceptions로 부분 실패 허용)
-    results = await asyncio.gather(
-        store.get_all_agents(),
-        store.get_all_tasks(),
-        store.get_all_epics(),
-        return_exceptions=True,
-    )
-    agents_result = results[0] if not isinstance(results[0], Exception) else []
-    tasks_result = results[1] if not isinstance(results[1], Exception) else []
-    epics_result = results[2] if not isinstance(results[2], Exception) else []
+async def get_summary() -> SystemSummary:
+    """에이전트 수, 현재 Phase, task result 파일 수를 반환한다."""
+    from src.dashboard.routes.deps import get_config, get_phase_manager, get_state_manager
 
-    status_counts: dict[str, int] = {}
-    for t in tasks_result:
-        status_counts[t.status] = status_counts.get(t.status, 0) + 1
+    config = get_config()
+    pm = get_phase_manager()
+    sm = get_state_manager()
+
+    # results/ 디렉토리의 JSON 파일 수로 태스크 결과 수를 파악
+    results_dir = sm._results_dir
+    try:
+        task_count = sum(1 for p in results_dir.iterdir() if p.suffix == ".json")
+    except Exception as exc:
+        logger.warning("stats: results 디렉토리 읽기 실패: %s", exc)
+        task_count = 0
 
     return SystemSummary(
-        totalAgents=len(agents_result),
-        totalTasks=len(tasks_result),
-        totalEpics=len(epics_result),
-        tasksByStatus=status_counts,
+        totalAgents=len(config.all_agents()),
+        currentPhase=str(pm.current_phase),
+        taskResultCount=task_count,
     )

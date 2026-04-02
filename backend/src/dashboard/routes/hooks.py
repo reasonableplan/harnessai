@@ -1,24 +1,12 @@
+"""GET /api/hooks — 훅 목록 (새 구조에서 미구현, 빈 응답 반환)."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Path
-from pydantic import BaseModel
-
-from src.dashboard.routes.deps import get_state_store
+from fastapi import APIRouter
 
 router = APIRouter(prefix="/api/hooks", tags=["hooks"])
 
 
-class ToggleBody(BaseModel):
-    enabled: bool
-
-
 @router.get("")
-async def list_hooks(store=Depends(get_state_store)):
-    hooks = await store.get_all_hooks()
-    return [h.model_dump() for h in hooks]
-
-
-@router.put("/{hook_id}/toggle")
-async def toggle_hook(hook_id: str = Path(..., min_length=1, max_length=64), body: ToggleBody = ..., store=Depends(get_state_store)):
-    await store.toggle_hook(hook_id, body.enabled)
-    return {"ok": True}
+async def list_hooks() -> list:
+    """훅 목록을 반환한다. 새 구조에서 훅 기능은 미구현이므로 빈 리스트를 반환한다."""
+    return []

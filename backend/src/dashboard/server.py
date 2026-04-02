@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 import uuid
 from pathlib import Path
 
-import structlog
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -18,15 +18,19 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from src.core.logging.logger import get_logger
-from src.core.types import UserInput
 from src.dashboard.auth import make_auth_checker
 from src.dashboard.routes import agents, command, health, hooks, stats, tasks
-from src.dashboard.routes.deps import get_agent_by_id, get_all_agents, get_director
+from src.dashboard.routes.deps import get_phase_manager, get_runner, init_deps
 from src.dashboard.websocket_manager import WebSocketManager
 
-_log = get_logger("DashboardServer")
-_request_log = get_logger("RequestLog")
+logger = logging.getLogger(__name__)
+
+# structlog은 선택적 사용 — 없어도 서버는 정상 동작
+try:
+    import structlog as _structlog
+    _HAS_STRUCTLOG = True
+except ImportError:
+    _HAS_STRUCTLOG = False
 
 _ws_manager: WebSocketManager | None = None
 
@@ -38,32 +42,33 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         request_id = str(uuid.uuid4())
         start = time.monotonic()
 
-        structlog.contextvars.bind_contextvars(request_id=request_id)
+        if _HAS_STRUCTLOG:
+            _structlog.contextvars.bind_contextvars(request_id=request_id)
         try:
             response = await call_next(request)
             duration_ms = round((time.monotonic() - start) * 1000, 2)
-
             response.headers["X-Request-ID"] = request_id
-            _request_log.info(
-                "Request completed",
-                method=request.method,
-                path=request.url.path,
-                status=response.status_code,
-                duration_ms=duration_ms,
+            logger.info(
+                "Request completed method=%s path=%s status=%s duration_ms=%s",
+                request.method,
+                request.url.path,
+                response.status_code,
+                duration_ms,
             )
             return response
         except Exception:
             duration_ms = round((time.monotonic() - start) * 1000, 2)
-            _request_log.error(
-                "Request failed",
-                method=request.method,
-                path=request.url.path,
-                duration_ms=duration_ms,
+            logger.error(
+                "Request failed method=%s path=%s duration_ms=%s",
+                request.method,
+                request.url.path,
+                duration_ms,
                 exc_info=True,
             )
             raise
         finally:
-            structlog.contextvars.unbind_contextvars("request_id")
+            if _HAS_STRUCTLOG:
+                _structlog.contextvars.unbind_contextvars("request_id")
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -90,6 +95,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 def create_app(
     auth_token: str | None = None,
     cors_origins: list[str] | None = None,
+    project_dir: str | Path | None = None,
 ) -> FastAPI:
     limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 
@@ -97,13 +103,17 @@ def create_app(
     is_prod = auth_token is not None
     app = FastAPI(
         title="Agent Orchestration Dashboard",
-        version="1.0.0",
+        version="2.0.0",
         docs_url=None if is_prod else "/docs",
         redoc_url=None if is_prod else "/redoc",
         openapi_url=None if is_prod else "/openapi.json",
     )
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+    # 의존성 초기화 (project_dir 지정 시)
+    if project_dir is not None:
+        init_deps(project_dir)
 
     # 요청 로깅 (가장 바깥 → 전체 duration 측정)
     app.add_middleware(RequestLoggingMiddleware)
@@ -151,10 +161,10 @@ def create_app(
     def _on_bg_task_done(task: asyncio.Task) -> None:
         _ws_bg_tasks.discard(task)
         if not task.cancelled() and task.exception():
-            _log.error("WS background task failed", exc_info=task.exception())
+            logger.error("WS background task failed", exc_info=task.exception())
 
     @app.websocket("/ws")
-    async def websocket_endpoint(ws: WebSocket):
+    async def websocket_endpoint(ws: WebSocket) -> None:
         # 첫 메시지 기반 인증 (auth_token이 None이면 dev 모드 — 즉시 승인)
         ok = await _ws_manager.authenticate(ws, auth_token)
         if not ok:
@@ -184,122 +194,105 @@ def create_app(
                     continue
                 _ws_msg_times[ws_id].append(now)
 
-                if msg_type == "chat":
-                    content = msg.get("content", "").strip()[:4096]
+                if msg_type in ("chat", "user-input"):
+                    # "chat": content 필드 / "user-input": payload.text 필드
+                    if msg_type == "chat":
+                        content = msg.get("content", "").strip()[:4096]
+                    else:
+                        payload = msg.get("payload", {})
+                        content = str(payload.get("text", "")).strip()[:4096]
+
                     if not content:
                         continue
+
                     try:
-                        director = get_director()
+                        pm = get_phase_manager()
+                        runner = get_runner()
                     except RuntimeError:
-                        _log.error("DirectorAgent not available for chat")
+                        logger.error("PhaseManager/AgentRunner not available for %s", msg_type)
                         continue
-                    user_input = UserInput(source="dashboard", content=content)
-                    task = asyncio.create_task(director.handle_user_input(user_input))
+
+                    phase = pm.current_phase
+
+                    from src.dashboard.routes.command import _PHASE_AGENT_MAP
+                    agent = _PHASE_AGENT_MAP.get(str(phase))
+                    if agent is None:
+                        await ws.send_text(
+                            json.dumps({"type": "info", "message": f"no_agent_for_phase:{phase}"})
+                        )
+                        continue
+
+                    async def _run_chat(a: str = agent, c: str = content) -> None:
+                        try:
+                            result = await runner.run(a, c)
+                            logger.info("WS command completed agent=%s success=%s", a, result.success)
+                        except Exception:
+                            logger.error("WS command failed agent=%s", a, exc_info=True)
+
+                    task = asyncio.create_task(_run_chat())
                     _ws_bg_tasks.add(task)
                     task.add_done_callback(_on_bg_task_done)
 
                 elif msg_type in ("plan.approve", "plan.revise", "plan.commit", "plan.start"):
-                    action = msg_type.split(".")[1]  # "approve" / "revise" / "commit"
-                    content = msg.get("content", "")
+                    # Phase 전이 요청
+                    from src.orchestrator.phase import InvalidTransitionError, Phase
+
+                    action = msg_type.split(".")[1]
+                    _action_phase_map: dict[str, str] = {
+                        "start": "designing",
+                        "approve": "task_breakdown",
+                        "commit": "implementing",
+                    }
+                    target_phase_str = _action_phase_map.get(action)
+                    if target_phase_str is None:
+                        logger.warning("plan.%s: 지원하지 않는 액션", action)
+                        continue
+
                     try:
-                        director = get_director()
+                        pm = get_phase_manager()
+                        pm.transition(Phase(target_phase_str))
+                        logger.info("Phase transitioned to %s via plan.%s", target_phase_str, action)
                     except RuntimeError:
-                        _log.error("DirectorAgent not available for plan action")
-                        continue
-                    task = asyncio.create_task(
-                        director.handle_plan_action(action, content)
-                    )
-                    _ws_bg_tasks.add(task)
-                    task.add_done_callback(_on_bg_task_done)
-
-                elif msg_type == "agent-pause":
-                    payload = msg.get("payload", {})
-                    agent_id = str(payload.get("agentId", ""))[:64]
-                    if not agent_id:
-                        continue
-                    agent = get_agent_by_id(agent_id)
-                    if agent:
-                        task = asyncio.create_task(agent.pause())
-                        _ws_bg_tasks.add(task)
-                        task.add_done_callback(_on_bg_task_done)
-                        _log.info("Agent pause requested", agent_id=agent_id)
-
-                elif msg_type == "agent-resume":
-                    payload = msg.get("payload", {})
-                    agent_id = str(payload.get("agentId", ""))[:64]
-                    if not agent_id:
-                        continue
-                    agent = get_agent_by_id(agent_id)
-                    if agent:
-                        task = asyncio.create_task(agent.resume())
-                        _ws_bg_tasks.add(task)
-                        task.add_done_callback(_on_bg_task_done)
-                        _log.info("Agent resume requested", agent_id=agent_id)
-
-                elif msg_type == "system-pause":
-                    for agent in get_all_agents():
-                        task = asyncio.create_task(agent.pause())
-                        _ws_bg_tasks.add(task)
-                        task.add_done_callback(_on_bg_task_done)
-                    _log.info("System pause requested")
-
-                elif msg_type == "system-resume":
-                    for agent in get_all_agents():
-                        task = asyncio.create_task(agent.resume())
-                        _ws_bg_tasks.add(task)
-                        task.add_done_callback(_on_bg_task_done)
-                    _log.info("System resume requested")
+                        logger.error("PhaseManager not available for plan action")
+                    except InvalidTransitionError as exc:
+                        await ws.send_text(
+                            json.dumps({"type": "error", "message": str(exc)})
+                        )
 
                 elif msg_type == "task-retry":
                     payload = msg.get("payload", {})
-                    task_id = str(payload.get("taskId", "")).strip()
+                    task_id = str(payload.get("taskId", "")).strip()[:64]
                     if not task_id:
                         continue
-                    from src.dashboard.routes.deps import get_state_store
-                    store = get_state_store()
-                    task_row = await store.get_task(task_id)
-                    if task_row is None:
+
+                    try:
+                        from src.dashboard.routes.deps import get_state_manager
+                        sm = get_state_manager()
+                    except RuntimeError:
+                        logger.error("StateManager not available for task-retry")
+                        continue
+
+                    result = sm.load_task_result(task_id)
+                    if result is None:
                         await ws.send_text('{"type":"error","message":"Task not found"}')
                         continue
-                    if task_row.status not in ("failed", "error"):
-                        await ws.send_text('{"type":"error","message":"Only failed tasks can be retried"}')
-                        continue
-                    # Board-first: 외부(Board) 먼저 → 내부(DB) 나중
-                    issue_num = task_row.github_issue_number
-                    if issue_num:
-                        try:
-                            from src.bootstrap import get_system_context
-                            git_service = get_system_context().git_service
-                            await git_service.move_issue_to_column(issue_num, "Ready")
-                        except Exception as e:
-                            _log.error("Task retry: Board move failed, aborting retry", task_id=task_id, err=str(e))
-                            await ws.send_text('{"type":"error","message":"Board move failed, retry aborted"}')
-                            continue
-                    # Atomic WHERE 보호: update_task 내부에서 failed→ready 전이 유효성 검증
-                    await store.update_task(
-                        task_id, {"status": "ready", "board_column": "Ready"}
-                    )
-                    _log.info("Task retry requested", task_id=task_id)
 
-                elif msg_type == "user-input":
-                    payload = msg.get("payload", {})
-                    text = str(payload.get("text", "")).strip()[:4096]
-                    if not text:
+                    status = result.get("status", "")
+                    if status not in ("failed", "error"):
+                        await ws.send_text(
+                            '{"type":"error","message":"Only failed tasks can be retried"}'
+                        )
                         continue
-                    try:
-                        director = get_director()
-                    except RuntimeError:
-                        _log.error("DirectorAgent not available for user-input")
-                        continue
-                    user_input = UserInput(source="dashboard", content=text)
-                    task = asyncio.create_task(director.handle_user_input(user_input))
-                    _ws_bg_tasks.add(task)
-                    task.add_done_callback(_on_bg_task_done)
+
+                    # 태스크 결과를 "pending"으로 업데이트해서 재실행 신호
+                    result["status"] = "pending"
+                    sm.save_task_result(task_id, result)
+                    logger.info("Task retry requested task_id=%s", task_id)
 
         except WebSocketDisconnect:
-            _log.debug("WebSocket client disconnected", ws_id=id(ws))
-        except Exception as e:
-            _log.error("WS connection error", err=str(e))
+            logger.debug("WebSocket client disconnected ws_id=%s", id(ws))
+        except Exception as exc:
+            logger.error("WS connection error: %s", exc)
         finally:
             _ws_msg_times.pop(id(ws), None)
             _ws_manager.disconnect(ws)

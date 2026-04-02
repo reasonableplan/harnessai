@@ -1,79 +1,76 @@
+"""GET /api/agents — 에이전트 목록 및 설정 조회."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, HTTPException, Path
 from pydantic import BaseModel, Field, field_validator
 
-from src.core.llm.claude_client import ALLOWED_MODELS
-from src.dashboard.routes.deps import get_state_store
+from src.dashboard.routes.deps import get_config
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
+
+# agents.yaml에서 허용된 모델 목록 (claude_client 의존 제거)
+_ALLOWED_MODELS: frozenset[str] = frozenset({
+    "claude-opus-4-5",
+    "claude-sonnet-4-5",
+    "claude-haiku-3-5",
+    "claude-3-5-sonnet-20241022",
+    "claude-3-5-haiku-20241022",
+    "claude-3-opus-20240229",
+})
 
 
 class AgentSummary(BaseModel):
     id: str
-    domain: str
-    level: int
-    status: str
-    lastHeartbeat: str | None = None
+    provider: str
+    model: str
+    timeout_seconds: int
+    on_timeout: str
 
 
 class AgentConfigUpdate(BaseModel):
-    claude_model: str | None = Field(None, min_length=1, max_length=100)
-    max_tokens: int | None = Field(None, ge=256, le=32768)
-    temperature: float | None = Field(None, ge=0.0, le=2.0)
-    token_budget: int | None = Field(None, ge=1000)
-    task_timeout_ms: int | None = Field(None, ge=1000)
-    poll_interval_ms: int | None = Field(None, ge=500)
+    model: str | None = Field(None, min_length=1, max_length=100)
+    timeout_seconds: int | None = Field(None, ge=1, le=3600)
 
-    @field_validator("claude_model")
+    @field_validator("model")
     @classmethod
-    def validate_claude_model(cls, v: str | None) -> str | None:
-        if v is not None and v not in ALLOWED_MODELS:
-            raise ValueError(f"Unknown model. Allowed: {sorted(ALLOWED_MODELS)}")
+    def validate_model(cls, v: str | None) -> str | None:
+        if v is not None and v not in _ALLOWED_MODELS:
+            raise ValueError(f"Unknown model. Allowed: {sorted(_ALLOWED_MODELS)}")
         return v
 
 
 @router.get("", response_model=list[AgentSummary])
-async def list_agents(store=Depends(get_state_store)):
-    agents = await store.get_all_agents()
+async def list_agents() -> list[AgentSummary]:
+    """에이전트 목록을 반환한다."""
+    config = get_config()
     return [
         AgentSummary(
-            id=a.id,
-            domain=a.domain,
-            level=a.level,
-            status=a.status,
-            lastHeartbeat=a.last_heartbeat.isoformat() if a.last_heartbeat else None,
+            id=name,
+            provider=str(agent_cfg.provider),
+            model=agent_cfg.model,
+            timeout_seconds=agent_cfg.timeout_seconds,
+            on_timeout=str(agent_cfg.on_timeout),
         )
-        for a in agents
+        for name, agent_cfg in config.all_agents().items()
     ]
 
 
-@router.get("/{agent_id}/stats")
-async def get_agent_stats(agent_id: str = Path(..., min_length=1, max_length=64), store=Depends(get_state_store)):
-    agents = await store.get_all_agents()
-    if not any(a.id == agent_id for a in agents):
+@router.get("/{agent_id}")
+async def get_agent(
+    agent_id: str = Path(..., min_length=1, max_length=64),
+) -> dict:
+    """특정 에이전트 설정을 반환한다."""
+    config = get_config()
+    try:
+        agent_cfg = config.get_agent(agent_id)
+    except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
-    stats = await store.get_agent_stats(agent_id)
-    return stats.model_dump()
-
-
-@router.get("/{agent_id}/config")
-async def get_agent_config(agent_id: str = Path(..., min_length=1, max_length=64), store=Depends(get_state_store)):
-    config = await store.get_agent_config(agent_id)
-    if not config:
-        raise HTTPException(status_code=404, detail="Config not found")
-    return config.model_dump()
-
-
-@router.put("/{agent_id}/config")
-async def update_agent_config(
-    agent_id: str = Path(..., min_length=1, max_length=64), body: AgentConfigUpdate = ..., store=Depends(get_state_store),
-):
-    agents = await store.get_all_agents()
-    if not any(a.id == agent_id for a in agents):
-        raise HTTPException(status_code=404, detail="Agent not found")
-    updates = body.model_dump(exclude_none=True)
-    if not updates:
-        raise HTTPException(status_code=400, detail="No valid fields to update")
-    await store.upsert_agent_config(agent_id, updates)
-    return {"ok": True}
+    return {
+        "id": agent_id,
+        "provider": str(agent_cfg.provider),
+        "model": agent_cfg.model,
+        "timeout_seconds": agent_cfg.timeout_seconds,
+        "on_timeout": str(agent_cfg.on_timeout),
+        "max_retries_on_timeout": agent_cfg.max_retries_on_timeout,
+        "max_tokens": agent_cfg.max_tokens,
+    }

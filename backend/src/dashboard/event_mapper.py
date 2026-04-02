@@ -1,77 +1,62 @@
-"""MessageBus 메시지 → WebSocket 이벤트 변환."""
+"""에이전트 이벤트 → WebSocket 브로드캐스트 변환."""
 from __future__ import annotations
 
-from src.core.logging.logger import get_logger
-from src.core.messaging.message_bus import MessageBus
-from src.core.types import Message, MessageType
+import logging
+from typing import Any
 
-log = get_logger("EventMapper")
+logger = logging.getLogger(__name__)
 
 
 class EventMapper:
-    def __init__(self, message_bus: MessageBus, ws_manager) -> None:
+    """에이전트 실행 결과를 WebSocket 이벤트로 변환해서 브로드캐스트."""
+
+    def __init__(self, ws_manager: Any) -> None:
         self._ws = ws_manager
-        self._message_bus = message_bus
-        self._handler = self._on_message
-        message_bus.subscribe_all(self._handler)
 
-    def dispose(self) -> None:
-        """MessageBus 구독 해제 — 셧다운 시 호출."""
-        self._message_bus.unsubscribe_all(self._handler)
+    async def emit_phase_change(self, phase: str, data: dict[str, Any] | None = None) -> None:
+        """Phase 전이 이벤트."""
+        await self._ws.broadcast("phase.change", {
+            "phase": phase,
+            "data": data or {},
+        })
 
-    async def _on_message(self, msg: Message) -> None:
-        event_type, data = self._map(msg)
-        if event_type:
-            await self._ws.broadcast(event_type, data)
+    async def emit_agent_start(self, agent: str, prompt: str) -> None:
+        """에이전트 실행 시작."""
+        await self._ws.broadcast("agent.start", {
+            "agent": agent,
+            "prompt": prompt[:200],
+        })
 
-    def _map(self, msg: Message) -> tuple[str | None, dict]:
-        payload = msg.payload if isinstance(msg.payload, dict) else {}
+    async def emit_agent_complete(
+        self,
+        agent: str,
+        success: bool,
+        duration_ms: int,
+        error: str | None = None,
+    ) -> None:
+        """에이전트 실행 완료."""
+        await self._ws.broadcast("agent.complete", {
+            "agent": agent,
+            "success": success,
+            "durationMs": duration_ms,
+            "error": error,
+        })
 
-        if msg.type == MessageType.AGENT_STATUS:
-            return "agent.status", {
-                "agentId": msg.from_agent,
-                "status": payload.get("status"),
-                "taskId": payload.get("taskId"),
-            }
-        if msg.type == MessageType.TOKEN_USAGE:
-            return "token.usage", {
-                "agentId": msg.from_agent,
-                "inputTokens": payload.get("inputTokens", 0),
-                "outputTokens": payload.get("outputTokens", 0),
-            }
-        if msg.type == MessageType.BOARD_MOVE:
-            return "board.move", payload
-        if msg.type == MessageType.REVIEW_REQUEST:
-            return "review.request", {
-                "agentId": msg.from_agent,
-                "taskId": payload.get("taskId"),
-            }
-        if msg.type == MessageType.EPIC_PROGRESS:
-            return "epic.progress", payload
-        if msg.type == MessageType.DIRECTOR_MESSAGE:
-            return "director.message", {
-                "content": payload.get("content", ""),
-            }
-        if msg.type == MessageType.DIRECTOR_PLAN:
-            return "director.plan", payload
-        if msg.type == MessageType.DIRECTOR_COMMITTED:
-            return "director.committed", {
-                "epicId": payload.get("epicId"),
-                "epicTitle": payload.get("epicTitle"),
-                "issues": payload.get("issues", []),
-            }
-        if msg.type == MessageType.TASK_ARTIFACTS:
-            return "task.artifacts", {
-                "taskId": payload.get("task_id"),
-                "taskTitle": payload.get("task_title"),
-                "issueNumber": payload.get("issue_number"),
-                "files": payload.get("files", []),
-            }
-        if msg.type == MessageType.TASK_PROGRESS:
-            return "task.progress", {
-                "agentId": msg.from_agent,
-                "taskId": payload.get("taskId"),
-                "stage": payload.get("stage"),
-                "detail": payload.get("detail", ""),
-            }
-        return None, {}
+    async def emit_validation_result(self, checks: list[dict[str, Any]]) -> None:
+        """검증 파이프라인 결과."""
+        await self._ws.broadcast("validation.result", {
+            "checks": checks,
+        })
+
+    async def emit_task_update(
+        self,
+        task_id: str,
+        status: str,
+        agent: str | None = None,
+    ) -> None:
+        """태스크 상태 업데이트."""
+        await self._ws.broadcast("task.update", {
+            "taskId": task_id,
+            "status": status,
+            "agent": agent,
+        })

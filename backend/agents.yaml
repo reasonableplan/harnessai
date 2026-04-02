@@ -1,0 +1,62 @@
+architect:
+  provider: claude-cli
+  model: opus
+  prompt_path: agents/architect/CLAUDE.md
+  timeout_seconds: 300
+  on_timeout: escalate
+  max_retries_on_timeout: 1
+  max_tokens: 8192
+
+designer:
+  provider: claude-cli
+  model: opus
+  prompt_path: agents/designer/CLAUDE.md
+  timeout_seconds: 300
+  on_timeout: escalate
+  max_retries_on_timeout: 1
+  max_tokens: 8192
+
+orchestrator:
+  provider: claude-cli
+  model: opus
+  prompt_path: agents/orchestrator/CLAUDE.md
+  timeout_seconds: 180
+  on_timeout: retry
+  max_retries_on_timeout: 2
+  max_tokens: 4096
+
+backend_coder:
+  provider: claude-cli
+  model: sonnet
+  prompt_path: agents/backend_coder/CLAUDE.md
+  timeout_seconds: 600
+  on_timeout: retry
+  max_retries_on_timeout: 1
+  max_tokens: 16384
+
+frontend_coder:
+  provider: claude-cli
+  model: sonnet
+  prompt_path: agents/frontend_coder/CLAUDE.md
+  timeout_seconds: 600
+  on_timeout: retry
+  max_retries_on_timeout: 1
+  max_tokens: 16384
+
+reviewer:
+  provider: claude-cli
+  model: opus
+  prompt_path: agents/reviewer/CLAUDE.md
+  timeout_seconds: 300
+  on_timeout: escalate
+  max_retries_on_timeout: 0
+  max_tokens: 8192
+
+qa:
+  provider: claude-cli
+  model: opus
+  prompt_path: agents/qa/CLAUDE.md
+  timeout_seconds: 600
+  on_timeout: retry
+  max_retries_on_timeout: 1
+  max_tokens: 8192

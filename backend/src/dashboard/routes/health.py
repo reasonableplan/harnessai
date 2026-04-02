@@ -1,49 +1,50 @@
-"""GET /health — DB + GitHub 연결 상태 확인."""
+"""GET /health — 서버 상태 확인."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+import logging
+
+from fastapi import APIRouter
 from starlette.responses import JSONResponse
 
-from src.bootstrap import get_system_context
-from src.core.logging.logger import get_logger
-from src.dashboard.routes.deps import get_state_store
-
-log = get_logger("Health")
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["health"])
 
 
 @router.get("/health")
-async def health_check(store=Depends(get_state_store)):
-    """DB와 GitHub 연결 상태를 확인한다. 인증 불필요."""
+async def health_check() -> JSONResponse:
+    """서버 생존 여부와 현재 Phase 상태를 반환한다. 인증 불필요."""
     checks: dict[str, dict] = {}
 
-    # DB 확인
+    # Phase 상태 확인
     try:
-        await store.check_db_connection()
-        checks["database"] = {"status": "ok"}
-    except Exception as e:
-        log.error("Health: DB check failed", err=str(e))
-        checks["database"] = {"status": "error"}
+        from src.dashboard.routes.deps import get_phase_manager
+        pm = get_phase_manager()
+        checks["phase"] = {"status": "ok", "current": str(pm.current_phase)}
+    except RuntimeError:
+        # init_deps 호출 전(개발/테스트)에는 경고만
+        logger.warning("PhaseManager not initialized during health check")
+        checks["phase"] = {"status": "not_initialized"}
+    except Exception as exc:
+        logger.error("Health: phase check failed", exc_info=exc)
+        checks["phase"] = {"status": "error"}
 
-    # GitHub 확인
+    # config 확인
     try:
-        ctx = get_system_context()
-        await ctx.git_service.check_rate_limit()
-        checks["github"] = {"status": "ok"}
-    except Exception as e:
-        log.error("Health: GitHub check failed", err=str(e))
-        checks["github"] = {"status": "error"}
+        from src.dashboard.routes.deps import get_config
+        cfg = get_config()
+        checks["config"] = {"status": "ok", "agents": len(cfg.all_agents())}
+    except RuntimeError:
+        checks["config"] = {"status": "not_initialized"}
+    except Exception as exc:
+        logger.error("Health: config check failed", exc_info=exc)
+        checks["config"] = {"status": "error"}
 
-    # 에이전트 상태 요약
-    try:
-        agents = await store.get_all_agents()
-        checks["agents"] = {"status": "ok", "count": len(agents)}
-    except Exception as e:
-        log.error("Health: agents check failed", err=str(e))
-        checks["agents"] = {"status": "error"}
-
-    overall = "ok" if all(c["status"] == "ok" for c in checks.values()) else "degraded"
+    overall = (
+        "ok"
+        if all(c["status"] in ("ok", "not_initialized") for c in checks.values())
+        else "degraded"
+    )
     status_code = 200 if overall == "ok" else 503
 
     return JSONResponse(
