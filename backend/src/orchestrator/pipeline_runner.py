@@ -70,9 +70,12 @@ async def _ask_approval(question: str) -> bool:
     """비동기 컨텍스트에서 stdin 블로킹 없이 사용자 승인을 받는다."""
     loop = asyncio.get_running_loop()
     while True:
-        answer: str = await loop.run_in_executor(
-            None, lambda: input(f"\n{question} (y/n): ").strip().lower()
-        )
+        try:
+            answer: str = await loop.run_in_executor(
+                None, lambda: input(f"\n{question} (y/n): ").strip().lower()
+            )
+        except (EOFError, KeyboardInterrupt):
+            return False
         if answer in ("y", "yes", "ㅇ", "ㅇㅇ", "예", "네"):
             return True
         if answer in ("n", "no", "아니", "아니오", "ㄴ"):

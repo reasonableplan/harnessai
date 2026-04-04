@@ -336,8 +336,8 @@ class TestParsePhases:
         assert parse_phases("") == []
         assert parse_phases("관련 없는 텍스트") == []
 
-    def test_phase_header_with_no_tasks_excluded(self) -> None:
-        """태스크 없는 Phase는 결과에서 제외."""
+    def test_phase_header_with_no_tasks_preserves_numbering(self) -> None:
+        """태스크 없는 Phase도 포함 — Phase 번호 일관성 유지."""
         output = """\
 ### Phase 1 — MVP
 설명만 있고 테이블 없음
@@ -348,8 +348,9 @@ class TestParsePhases:
 | T-010 | frontend_coder | - | 구현 | 대기 |
 """
         phases = parse_phases(output)
-        assert len(phases) == 1
-        assert phases[0][0].id == "T-010"
+        assert len(phases) == 2
+        assert phases[0] == []        # Phase 1 — 태스크 없음
+        assert phases[1][0].id == "T-010"
 
     def test_depends_on_parsed(self) -> None:
         output = """\

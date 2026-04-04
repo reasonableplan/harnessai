@@ -247,8 +247,7 @@ def parse_phases(output: str) -> list[list[TaskItem]]:
         start = header.end()
         end = headers[i + 1].start() if i + 1 < len(headers) else len(output)
         tasks = parse_task_list(output[start:end])
-        if tasks:
-            phases.append(tasks)
+        phases.append(tasks)  # 빈 Phase도 포함 — Phase 번호 일관성 유지
 
     return phases
 
@@ -281,7 +280,9 @@ def extract_filled_sections(output: str) -> list[SkeletonSection]:
         if heading_match:
             section_num = heading_match.group(1)
             heading_m = re.match(r"^(#+)", lines[i])
-            assert heading_m is not None, f"섹션 헤딩 파싱 불일치: {lines[i]!r}"
+            if heading_m is None:
+                i += 1
+                continue
             heading_level = len(heading_m.group(1))
             start = i
             i += 1

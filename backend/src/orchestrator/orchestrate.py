@@ -320,7 +320,7 @@ class Orchestra:
             verify_result = await self.verify(
                 task_id,
                 is_frontend=is_frontend,
-                allowed_endpoints=allowed_endpoints or [],
+                allowed_endpoints=allowed_endpoints,
             )
             last_impl = impl_result
             last_verify = verify_result
@@ -470,12 +470,19 @@ class Orchestra:
         allowed_endpoints = self._extract_allowed_endpoints()
 
         for phase_num, phase_tasks in enumerate(phases, start=1):
+            if not phase_tasks:
+                logger.warning("Phase %d — 태스크 없음, 건너뜀", phase_num)
+                results.append({"phase_num": phase_num, "tasks": {}, "review": None, "passed": True})
+                continue
+
             phase_result: dict[str, Any] = {
                 "phase_num": phase_num,
                 "tasks": {},
                 "review": None,
                 "passed": False,
             }
+            # Phase 재시도 시 이미 통과한 태스크는 재실행하지 않음
+            passed_task_ids: set[str] = set()
 
             for phase_attempt in range(1, max_phase_retries + 1):
                 task_ids: list[str] = []
@@ -487,6 +494,10 @@ class Orchestra:
                     # TODO: TaskItem에 ref_files 필드 추가 시 여기서 참조 파일 주입
                     task_ids.append(task_id)
 
+                    if task_id in passed_task_ids:
+                        logger.debug("태스크 %s 이미 통과 — 재실행 생략", task_id)
+                        continue
+
                     try:
                         task_result = await self.implement_with_retry(
                             task_id,
@@ -494,12 +505,14 @@ class Orchestra:
                             task_prompt,
                             max_retries=max_task_retries,
                             is_frontend=is_frontend,
-                            allowed_endpoints=allowed_endpoints or None,
+                            allowed_endpoints=allowed_endpoints,
                         )
                     except Exception as e:
                         logger.error("태스크 %s 실행 중 예외: %s", task_id, e)
                         task_result = {"output": "", "error": str(e), "passed": False}
                     phase_result["tasks"][task_id] = task_result
+                    if task_result.get("passed", False):
+                        passed_task_ids.add(task_id)
 
                 review = await self.review_phase(phase_num, task_ids)
                 phase_result["review"] = review
