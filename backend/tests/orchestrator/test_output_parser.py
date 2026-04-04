@@ -10,6 +10,7 @@ from src.orchestrator.output_parser import (
     TaskItem,
     extract_filled_sections,
     parse_phase_review,
+    parse_phases,
     parse_pr_review,
     parse_task_list,
 )
@@ -278,3 +279,118 @@ class TestExtractFilledSections:
         sections = extract_filled_sections(output)
         assert "섹션 7" not in sections[0].content
         assert "섹션 6" not in sections[1].content
+
+
+# ---------------------------------------------------------------------------
+# parse_phases()
+# ---------------------------------------------------------------------------
+
+_SINGLE_PHASE_OUTPUT = """\
+### Phase 1 — MVP
+| ID | 에이전트 | 의존성 | 설명 | 상태 |
+|---|---|---|---|---|
+| T-001 | backend_coder | - | DB 모델 구현 | 대기 |
+| T-002 | backend_coder | T-001 | API 엔드포인트 구현 | 대기 |
+"""
+
+_TWO_PHASE_OUTPUT = """\
+### Phase 1 — MVP
+| ID | 에이전트 | 의존성 | 설명 | 상태 |
+|---|---|---|---|---|
+| T-001 | backend_coder | - | DB 모델 구현 | 대기 |
+
+### Phase 2 — 확장
+| ID | 에이전트 | 의존성 | 설명 | 상태 |
+|---|---|---|---|---|
+| T-010 | frontend_coder | - | 프론트엔드 구현 | 대기 |
+"""
+
+
+class TestParsePhases:
+    def test_single_phase(self) -> None:
+        phases = parse_phases(_SINGLE_PHASE_OUTPUT)
+        assert len(phases) == 1
+        assert len(phases[0]) == 2
+        assert phases[0][0].id == "T-001"
+        assert phases[0][0].agent == "backend_coder"
+
+    def test_two_phases(self) -> None:
+        phases = parse_phases(_TWO_PHASE_OUTPUT)
+        assert len(phases) == 2
+        assert phases[0][0].id == "T-001"
+        assert phases[1][0].id == "T-010"
+        assert phases[1][0].agent == "frontend_coder"
+
+    def test_no_phase_header_fallback_to_single(self) -> None:
+        """Phase 헤더 없으면 전체를 단일 Phase로 처리."""
+        output = """\
+| ID | 에이전트 | 의존성 | 설명 | 상태 |
+|---|---|---|---|---|
+| T-001 | backend_coder | - | DB 모델 | 대기 |
+"""
+        phases = parse_phases(output)
+        assert len(phases) == 1
+        assert phases[0][0].id == "T-001"
+
+    def test_empty_output_returns_empty(self) -> None:
+        assert parse_phases("") == []
+        assert parse_phases("관련 없는 텍스트") == []
+
+    def test_phase_header_with_no_tasks_excluded(self) -> None:
+        """태스크 없는 Phase는 결과에서 제외."""
+        output = """\
+### Phase 1 — MVP
+설명만 있고 테이블 없음
+
+### Phase 2 — 확장
+| ID | 에이전트 | 의존성 | 설명 | 상태 |
+|---|---|---|---|---|
+| T-010 | frontend_coder | - | 구현 | 대기 |
+"""
+        phases = parse_phases(output)
+        assert len(phases) == 1
+        assert phases[0][0].id == "T-010"
+
+    def test_depends_on_parsed(self) -> None:
+        output = """\
+### Phase 1 — MVP
+| ID | 에이전트 | 의존성 | 설명 | 상태 |
+|---|---|---|---|---|
+| T-002 | backend_coder | T-001 | API 구현 | 대기 |
+"""
+        phases = parse_phases(output)
+        assert phases[0][0].depends_on == ["T-001"]
+
+    def test_depends_on_dash_is_empty(self) -> None:
+        """`-`는 의존성 없음을 의미 — 빈 리스트여야 함."""
+        output = """\
+### Phase 1 — MVP
+| ID | 에이전트 | 의존성 | 설명 | 상태 |
+|---|---|---|---|---|
+| T-001 | backend_coder | - | DB 모델 | 대기 |
+"""
+        phases = parse_phases(output)
+        assert phases[0][0].depends_on == []
+
+    def test_preamble_text_before_phase_header(self) -> None:
+        """Phase 헤더 앞 설명 텍스트가 있어도 올바르게 파싱."""
+        output = (
+            "태스크를 다음과 같이 분해합니다:\n\n"
+            "### Phase 1 — MVP\n"
+            "| ID | 에이전트 | 의존성 | 설명 | 상태 |\n"
+            "|---|---|---|---|---|\n"
+            "| T-001 | backend_coder | - | DB 모델 | 대기 |\n"
+        )
+        phases = parse_phases(output)
+        assert len(phases) == 1
+        assert phases[0][0].id == "T-001"
+
+    def test_phase_header_case_insensitive(self) -> None:
+        output = """\
+### phase 1 — MVP
+| ID | 에이전트 | 의존성 | 설명 | 상태 |
+|---|---|---|---|---|
+| T-001 | backend_coder | - | 구현 | 대기 |
+"""
+        phases = parse_phases(output)
+        assert len(phases) == 1

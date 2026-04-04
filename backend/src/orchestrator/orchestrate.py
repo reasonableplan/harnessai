@@ -13,8 +13,10 @@ from src.orchestrator.logger import AgentLogger
 from src.orchestrator.output_parser import (
     PhaseReviewResult,
     ReviewVerdict,
+    TaskItem,
     extract_filled_sections,
     parse_phase_review,
+    parse_phases,
     parse_pr_review,
 )
 from src.orchestrator.security_hooks import SecurityHooks, SecurityResult
@@ -403,25 +405,23 @@ class Orchestra:
     async def run_pipeline_with_phases(
         self,
         requirements: str,
-        phases: list[list[dict[str, str]]],
         max_task_retries: int = 3,
         max_phase_retries: int = 2,
     ) -> dict[str, Any]:
         """Phase 분리 전체 파이프라인.
 
+        Architect + Designer가 skeleton을 설계하고, Orchestrator가 skeleton을 바탕으로
+        Phase별 태스크를 동적으로 분해한다.
+
         Args:
             requirements: PM 요구사항
-            phases: Phase별 태스크 목록.
-                예: [
-                    [{"id": "T-001", "agent": "backend_coder", "prompt": "..."}],  # Phase 1
-                    [{"id": "T-010", "agent": "frontend_coder", "prompt": "..."}], # Phase 2
-                ]
             max_task_retries: 태스크당 최대 재시도 횟수
             max_phase_retries: Phase 리뷰 reject 시 최대 재시도 횟수
 
         Returns:
             {
                 "design": dict,
+                "breakdown": dict,
                 "phases": [{
                     "phase_num": int,
                     "tasks": dict,
@@ -433,6 +433,7 @@ class Orchestra:
         """
         pipeline_results: dict[str, Any] = {
             "design": {},
+            "breakdown": {},
             "phases": [],
             "success": False,
         }
@@ -456,7 +457,16 @@ class Orchestra:
         )
         breakdown_result = await self.runner.run("orchestrator", breakdown_prompt)
         self._log_result("orchestrator", breakdown_result)
-        self.state.save_task_result("task_breakdown", self._result_to_dict(breakdown_result))
+        breakdown_dict = self._result_to_dict(breakdown_result)
+        self.state.save_task_result("task_breakdown", breakdown_dict)
+        pipeline_results["breakdown"] = breakdown_dict
+
+        # Orchestrator 출력 → Phase별 태스크 목록
+        phases: list[list[TaskItem]] = parse_phases(breakdown_result.output)
+        if not phases:
+            logger.warning("Orchestrator 태스크 분해 실패 — 파싱된 Phase 없음")
+            pipeline_results["success"] = False
+            return pipeline_results
 
         # 3. Phase별 실행
         all_phases_passed = True
@@ -473,30 +483,11 @@ class Orchestra:
                 # 태스크 실행
                 task_ids: list[str] = []
                 for task in phase_tasks:
-                    task_id: str = task["id"]
-                    agent: str = task["agent"]
-                    task_prompt: str = task["prompt"]
-                    ref_files: list[str] = task.get("ref_files", [])
+                    task_id: str = task.id
+                    agent: str = task.agent
+                    task_prompt: str = task.description
+                    # TODO: TaskItem에 ref_files 필드 추가 시 여기서 참조 파일 주입
                     task_ids.append(task_id)
-
-                    # 참조 파일 내용을 프롬프트에 주입 (Golden Principle #8 Preserve Style)
-                    if ref_files:
-                        ref_contents: list[str] = []
-                        for ref_path in ref_files:
-                            full_path = self.project_dir / ref_path
-                            if full_path.exists():
-                                content = full_path.read_text(encoding="utf-8")
-                                ref_contents.append(f"# {ref_path}\n```\n{content}\n```")
-                            else:
-                                logger.warning("참조 파일 없음: %s", ref_path)
-                        if ref_contents:
-                            task_prompt = (
-                                f"{task_prompt}\n\n"
-                                f"<reference_files>\n"
-                                f"아래 파일들의 기존 패턴을 따라라.\n\n"
-                                + "\n\n".join(ref_contents)
-                                + "\n</reference_files>"
-                            )
 
                     try:
                         task_result = await self.implement_with_retry(

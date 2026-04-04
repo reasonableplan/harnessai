@@ -184,6 +184,8 @@ _TASK_TABLE_ROW = re.compile(
     re.MULTILINE,
 )
 _TASK_HEADER_ROW = re.compile(r"^\|\s*ID\s*\|", re.MULTILINE | re.IGNORECASE)
+# Phase 헤더 — "### Phase 1", "## Phase 2 — 확장" 등
+_PHASE_HEADER = re.compile(r"^#{1,4}\s+Phase\s+(\d+)", re.MULTILINE | re.IGNORECASE)
 _TASK_SEPARATOR_ROW = re.compile(r"^\|[-| ]+\|", re.MULTILINE)
 
 
@@ -209,7 +211,7 @@ def parse_task_list(output: str) -> list[TaskItem]:
             continue
 
         depends_on = (
-            [d.strip() for d in depends_raw.split(",") if d.strip()]
+            [d.strip() for d in depends_raw.split(",") if d.strip() and d.strip() != "-"]
             if depends_raw
             else []
         )
@@ -223,6 +225,32 @@ def parse_task_list(output: str) -> list[TaskItem]:
         ))
 
     return tasks
+
+
+def parse_phases(output: str) -> list[list[TaskItem]]:
+    """Orchestrator 출력에서 Phase별 태스크 목록을 파싱한다.
+
+    ``### Phase N`` 헤딩 아래 마크다운 테이블로 구성된 태스크를 읽는다.
+    Phase 헤딩이 없으면 전체를 단일 Phase로 처리한다.
+
+    Returns:
+        Phase별 TaskItem 리스트. 태스크가 하나도 없으면 빈 리스트.
+    """
+    headers = list(_PHASE_HEADER.finditer(output))
+
+    if not headers:
+        tasks = parse_task_list(output)
+        return [tasks] if tasks else []
+
+    phases: list[list[TaskItem]] = []
+    for i, header in enumerate(headers):
+        start = header.end()
+        end = headers[i + 1].start() if i + 1 < len(headers) else len(output)
+        tasks = parse_task_list(output[start:end])
+        if tasks:
+            phases.append(tasks)
+
+    return phases
 
 
 # ---------------------------------------------------------------------------

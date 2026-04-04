@@ -13,6 +13,25 @@ from src.orchestrator.phase import InvalidTransitionError, Phase
 from src.orchestrator.pipeline import CheckResult, CheckStatus, ValidationResult
 from src.orchestrator.runner import RunResult
 
+# Orchestrator가 내려줘야 할 표준 breakdown 출력 (파서 호환)
+_BREAKDOWN_SINGLE_PHASE = (
+    "### Phase 1 — MVP\n"
+    "| ID | 에이전트 | 의존성 | 설명 | 상태 |\n"
+    "|---|---|---|---|---|\n"
+    "| T-001 | backend_coder | - | 백엔드 구현 | 대기 |\n"
+)
+_BREAKDOWN_TWO_PHASES = (
+    "### Phase 1 — MVP\n"
+    "| ID | 에이전트 | 의존성 | 설명 | 상태 |\n"
+    "|---|---|---|---|---|\n"
+    "| T-001 | backend_coder | - | 백엔드 구현 | 대기 |\n"
+    "\n"
+    "### Phase 2 — 확장\n"
+    "| ID | 에이전트 | 의존성 | 설명 | 상태 |\n"
+    "|---|---|---|---|---|\n"
+    "| T-010 | frontend_coder | - | 프론트엔드 구현 | 대기 |\n"
+)
+
 
 # ── 픽스처 ──────────────────────────────────────────────────────────────────
 
@@ -479,6 +498,8 @@ class TestReviewPhase:
 class TestRunPipelineWithPhases:
     async def test_single_phase_approve(self, orchestra: Orchestra) -> None:
         async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            if agent == "orchestrator":
+                return _make_run_result(agent, output=_BREAKDOWN_SINGLE_PHASE)
             if agent == "reviewer":
                 return _make_run_result(
                     agent,
@@ -493,8 +514,7 @@ class TestRunPipelineWithPhases:
         orchestra.runner.run = mock_run  # type: ignore[method-assign]
         orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=True))  # type: ignore[method-assign]
 
-        phases = [[{"id": "T-001", "agent": "backend_coder", "prompt": "구현"}]]
-        result = await orchestra.run_pipeline_with_phases("요구사항", phases)
+        result = await orchestra.run_pipeline_with_phases("요구사항")
 
         assert result["success"] is True
         assert len(result["phases"]) == 1
@@ -502,6 +522,8 @@ class TestRunPipelineWithPhases:
 
     async def test_phase_reject_stops_pipeline(self, orchestra: Orchestra) -> None:
         async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            if agent == "orchestrator":
+                return _make_run_result(agent, output=_BREAKDOWN_TWO_PHASES)
             if agent == "reviewer":
                 return _make_run_result(
                     agent,
@@ -516,11 +538,7 @@ class TestRunPipelineWithPhases:
         orchestra.runner.run = mock_run  # type: ignore[method-assign]
         orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=True))  # type: ignore[method-assign]
 
-        phases = [
-            [{"id": "T-001", "agent": "backend_coder", "prompt": "구현"}],
-            [{"id": "T-010", "agent": "frontend_coder", "prompt": "구현"}],
-        ]
-        result = await orchestra.run_pipeline_with_phases("요구사항", phases, max_phase_retries=1)
+        result = await orchestra.run_pipeline_with_phases("요구사항", max_phase_retries=1)
 
         assert result["success"] is False
         # Phase 1 실패로 Phase 2는 실행 안 됨
@@ -528,6 +546,8 @@ class TestRunPipelineWithPhases:
 
     async def test_design_result_included(self, orchestra: Orchestra) -> None:
         async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            if agent == "orchestrator":
+                return _make_run_result(agent, output=_BREAKDOWN_SINGLE_PHASE)
             if agent == "reviewer":
                 return _make_run_result(
                     agent,
@@ -542,8 +562,7 @@ class TestRunPipelineWithPhases:
         orchestra.runner.run = mock_run  # type: ignore[method-assign]
         orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=True))  # type: ignore[method-assign]
 
-        phases = [[{"id": "T-001", "agent": "backend_coder", "prompt": "구현"}]]
-        result = await orchestra.run_pipeline_with_phases("요구사항", phases)
+        result = await orchestra.run_pipeline_with_phases("요구사항")
 
         assert "design" in result
         assert "architect" in result["design"]
@@ -552,6 +571,8 @@ class TestRunPipelineWithPhases:
         phase_review_counts: dict[int, int] = {1: 0, 2: 0}
 
         async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            if agent == "orchestrator":
+                return _make_run_result(agent, output=_BREAKDOWN_TWO_PHASES)
             if agent == "reviewer" and "Phase 1" in prompt:
                 phase_review_counts[1] += 1
                 return _make_run_result(
@@ -579,11 +600,7 @@ class TestRunPipelineWithPhases:
         orchestra.runner.run = mock_run  # type: ignore[method-assign]
         orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=True))  # type: ignore[method-assign]
 
-        phases = [
-            [{"id": "T-001", "agent": "backend_coder", "prompt": "구현"}],
-            [{"id": "T-010", "agent": "frontend_coder", "prompt": "구현"}],
-        ]
-        result = await orchestra.run_pipeline_with_phases("요구사항", phases)
+        result = await orchestra.run_pipeline_with_phases("요구사항")
 
         assert result["success"] is True
         assert len(result["phases"]) == 2
@@ -593,6 +610,8 @@ class TestRunPipelineWithPhases:
     async def test_phase_done_on_success(self, orchestra: Orchestra) -> None:
         """전체 성공 시 Phase.DONE으로 전환되는지 확인."""
         async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            if agent == "orchestrator":
+                return _make_run_result(agent, output=_BREAKDOWN_SINGLE_PHASE)
             if agent == "reviewer":
                 return _make_run_result(
                     agent,
@@ -607,16 +626,15 @@ class TestRunPipelineWithPhases:
         orchestra.runner.run = mock_run  # type: ignore[method-assign]
         orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=True))  # type: ignore[method-assign]
 
-        await orchestra.run_pipeline_with_phases(
-            "요구사항",
-            [[{"id": "T-001", "agent": "backend_coder", "prompt": "구현"}]],
-        )
+        await orchestra.run_pipeline_with_phases("요구사항")
 
         assert orchestra.phase_manager.current_phase == Phase.DONE
 
     async def test_phase_not_done_on_failure(self, orchestra: Orchestra) -> None:
         """Phase 실패 시 Phase.DONE으로 전환하지 않는지 확인."""
         async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            if agent == "orchestrator":
+                return _make_run_result(agent, output=_BREAKDOWN_SINGLE_PHASE)
             if agent == "reviewer":
                 return _make_run_result(
                     agent,
@@ -631,10 +649,7 @@ class TestRunPipelineWithPhases:
         orchestra.runner.run = mock_run  # type: ignore[method-assign]
         orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=True))  # type: ignore[method-assign]
 
-        result = await orchestra.run_pipeline_with_phases(
-            "요구사항",
-            [[{"id": "T-001", "agent": "backend_coder", "prompt": "구현"}]],
-        )
+        result = await orchestra.run_pipeline_with_phases("요구사항")
 
         assert result["success"] is False
         assert orchestra.phase_manager.current_phase != Phase.DONE
@@ -691,6 +706,8 @@ class TestMaterializeSkeleton:
         async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
             if agent == "architect":
                 return _make_run_result(agent, output="## 6. DB 스키마\n| id | UUID |\n")
+            if agent == "orchestrator":
+                return _make_run_result(agent, output=_BREAKDOWN_SINGLE_PHASE)
             if agent == "reviewer":
                 return _make_run_result(
                     agent,
@@ -707,10 +724,7 @@ class TestMaterializeSkeleton:
 
         import asyncio
         asyncio.get_event_loop().run_until_complete(
-            orchestra.run_pipeline_with_phases(
-                "요구사항",
-                [[{"id": "T-001", "agent": "backend_coder", "prompt": "구현"}]],
-            )
+            orchestra.run_pipeline_with_phases("요구사항")
         )
 
         skeleton_path = tmp_path / "docs" / "skeleton.md"
