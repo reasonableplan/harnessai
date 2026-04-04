@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from src.orchestrator.config import OrchestratorConfig, load_agents_config
-from src.orchestrator.context import build_context, fill_skeleton_template
+from src.orchestrator.context import build_context, extract_section, fill_skeleton_template
 from src.orchestrator.logger import AgentLogger
 from src.orchestrator.output_parser import (
     PhaseReviewResult,
@@ -293,6 +294,9 @@ class Orchestra:
         agent: str,
         prompt: str,
         max_retries: int = 3,
+        *,
+        is_frontend: bool = False,
+        allowed_endpoints: list[str] | None = None,
     ) -> dict[str, Any]:
         """구현 + 검증을 Reviewer APPROVE까지 재시도한다.
 
@@ -301,6 +305,8 @@ class Orchestra:
             agent: 실행할 에이전트 (backend_coder / frontend_coder)
             prompt: 태스크 프롬프트
             max_retries: 최대 재시도 횟수 (기본 3)
+            is_frontend: 프론트엔드 코드면 True (의존성/스타일 규칙 적용)
+            allowed_endpoints: skeleton 섹션 7에서 추출한 허용 엔드포인트 목록
 
         Returns:
             {"implement": RunResult, "verify": dict, "attempts": int, "passed": bool}
@@ -311,7 +317,11 @@ class Orchestra:
 
         for attempt in range(1, max_retries + 1):
             impl_result = await self.implement(task_id, agent, prompt)
-            verify_result = await self.verify(task_id)
+            verify_result = await self.verify(
+                task_id,
+                is_frontend=is_frontend,
+                allowed_endpoints=allowed_endpoints or [],
+            )
             last_impl = impl_result
             last_verify = verify_result
 
@@ -470,6 +480,7 @@ class Orchestra:
 
         # 3. Phase별 실행
         all_phases_passed = True
+        allowed_endpoints = self._extract_allowed_endpoints()
 
         for phase_num, phase_tasks in enumerate(phases, start=1):
             phase_result: dict[str, Any] = {
@@ -486,16 +497,22 @@ class Orchestra:
                     task_id: str = task.id
                     agent: str = task.agent
                     task_prompt: str = task.description
+                    is_frontend: bool = (agent == "frontend_coder")
                     # TODO: TaskItem에 ref_files 필드 추가 시 여기서 참조 파일 주입
                     task_ids.append(task_id)
 
                     try:
                         task_result = await self.implement_with_retry(
-                            task_id, agent, task_prompt, max_retries=max_task_retries
+                            task_id,
+                            agent,
+                            task_prompt,
+                            max_retries=max_task_retries,
+                            is_frontend=is_frontend,
+                            allowed_endpoints=allowed_endpoints or None,
                         )
                     except Exception as e:
                         logger.error("태스크 %s 실행 중 예외: %s", task_id, e)
-                        task_result = {"error": str(e), "passed": False}
+                        task_result = {"output": "", "error": str(e), "passed": False}
                     phase_result["tasks"][task_id] = task_result
 
                 # Phase 리뷰
@@ -572,3 +589,31 @@ class Orchestra:
             "error": result.error,
             "escalated": result.escalated,
         }
+
+    # skeleton 섹션 7 마크다운 테이블에서 엔드포인트 행 추출
+    # | GET | /api/projects | ... |  → "GET /api/projects"
+    _ENDPOINT_ROW = re.compile(
+        r"^\|\s*(GET|POST|PUT|PATCH|DELETE)\s*\|\s*(/[^|\s]+)",
+        re.MULTILINE | re.IGNORECASE,
+    )
+
+    def _extract_allowed_endpoints(self) -> list[str]:
+        """skeleton.md 섹션 7(API 스키마)에서 허용된 엔드포인트 목록을 추출한다.
+
+        Returns:
+            ["GET /api/projects", "POST /api/issues", ...] 형태 리스트.
+            skeleton.md 없으면 빈 리스트 (contract validator 비활성화됨).
+        """
+        skeleton_path = self.project_dir / "docs" / "skeleton.md"
+        if not skeleton_path.exists():
+            return []
+
+        skeleton_text = skeleton_path.read_text(encoding="utf-8")
+        section7 = extract_section(skeleton_text, 7)
+        if not section7:
+            return []
+
+        return [
+            f"{m.group(1).upper()} {m.group(2).rstrip()}"
+            for m in self._ENDPOINT_ROW.finditer(section7)
+        ]

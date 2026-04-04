@@ -70,6 +70,7 @@ class ClaudeCliProvider(BaseProvider):
             "claude",
             "-p", prompt,
             "--model", config.model,
+            "--max-tokens", str(config.max_tokens),
         ]
 
         if system_prompt:

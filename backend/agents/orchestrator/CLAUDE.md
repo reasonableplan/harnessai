@@ -35,7 +35,8 @@
 - `### Phase N — 이름` 헤더로 Phase를 구분한다
 - 테이블 열 순서: ID, 에이전트, 의존성, 설명, 상태
 - 의존성 없으면 `-`
-- 에이전트는 반드시: `backend_coder`, `frontend_coder`, `reviewer`, `qa` 중 하나
+- 에이전트는 반드시: `backend_coder`, `frontend_coder`, `qa` 중 하나
+- **`reviewer` 태스크는 출력 금지** — Phase 리뷰는 파이프라인이 자동으로 처리함
 - skeleton 섹션 17에도 동일 내용 기록
 
 ## 필수 규칙
