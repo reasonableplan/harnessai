@@ -178,6 +178,14 @@ architect:
 
 ## 6. DB 스키마 (Architect 작성)
 
+### DB 설계 필수 규칙 (Architect가 채우기 전 확인)
+- **ID 타입**: Integer auto-increment / UUID 중 선택 명시 (SQLModel 기본값 = Integer)
+- **datetime**: 모든 컬럼 `DateTime(timezone=True)` — timezone-naive TIMESTAMP 금지
+- **`updated_at` 갱신 방식**: `onupdate=func.now()` 또는 서비스 명시적 갱신 중 선택 명시
+- **FK ondelete**: CASCADE / SET NULL / RESTRICT 중 명시 필수
+- **index**: 자주 조회하는 FK 컬럼에 `index=True`
+- **limit 상한**: 화면별 최대 표시 개수 API 설계 시 명시 (보드/백로그 ≥ 500, 일반 목록 ≤ 50)
+
 ### 테이블
 | 테이블명 | 컬럼 | 타입 | 제약조건 | 설명 |
 |---------|------|------|---------|------|
@@ -235,9 +243,10 @@ architect:
 (Designer가 채움)
 
 ### 상태 관리 설계
-- **전역 상태 (Zustand)**: (인증 정보, 테마, 사이드바 열림 등)
-- **서버 상태 (React Query)**: (API 데이터 — 목록, 상세, 검색 결과 등)
-- **로컬 상태**: (폼 입력, 모달, 드롭다운 등)
+- **서버 데이터 + UI 상태 (Zustand)**: store action이 API 직접 호출. per-feature store는 `containers/feature/store/`
+- **전역 상태 (shared/store)**: 인증 정보, 앱 전반 UI 상태만 (사이드바, 전역 필터 등)
+- **로컬 상태**: 폼 입력, 모달, 드롭다운 등
+- **URL params = source of truth**: projectId/issueId 등 영구 컨텍스트는 useParams()로. Zustand는 폴백만
 
 ### 디자인 가이드
 - **색상 팔레트**:
@@ -703,10 +712,26 @@ logs/
 
 ## 17. 태스크 분해 (Orchestrator 작성)
 
-### 태스크 목록
-| ID | 담당 | 의존성 | 설명 | 상태 |
-|----|------|--------|------|------|
-|    |      |        |      |      |
+### Phase 구조
+
+| Phase | 범위 | 목표 |
+|-------|------|------|
+| Phase 1 | MVP — 핵심 기능만 | 이 Phase만으로 사용자가 핵심 흐름 완료 가능 |
+| Phase 2+ | 확장 — MVP 이후 | Phase 1 완료 + Phase 리뷰 통과 후 시작 |
+
+> **Phase 완료 조건**: 해당 Phase 전체 태스크 merge + Reviewer Phase 리뷰 APPROVE → 다음 Phase 시작
+
+### Phase 1 태스크 (MVP)
+| ID | 담당 | 의존성 | 설명 | 참조 파일 | 상태 |
+|----|------|--------|------|-----------|------|
+|    |      |        |      |           |      |
+| P1-REVIEW | Reviewer | Phase 1 전체 | Phase 1 리뷰 | — | 대기 |
+
+### Phase 2 태스크 (Phase 1 리뷰 통과 후 시작)
+| ID | 담당 | 의존성 | 설명 | 참조 파일 | 상태 |
+|----|------|--------|------|-----------|------|
+|    |      |        |      |           |      |
+| P2-REVIEW | Reviewer | Phase 2 전체 | Phase 2 리뷰 | — | 대기 |
 
 ## 18. 규칙 (Rules)
 

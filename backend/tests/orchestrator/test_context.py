@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from src.orchestrator.context import SECTION_MAP, build_context, extract_section
+from src.orchestrator.context import SECTION_MAP, build_context, extract_section, fill_skeleton_template
 
 SAMPLE_SKELETON = """\
 # Project Skeleton
@@ -171,3 +171,51 @@ class TestBuildContext:
         )
 
         assert "JWT 선택 사유" in result
+
+
+# ── fill_skeleton_template() ─────────────────────────────────────────────────
+
+SAMPLE_TEMPLATE = """\
+## 1. 개요
+- 프로젝트명: _미정_
+
+## 6. DB 스키마
+_미작성_
+
+## 7. API 스키마
+_미작성_
+"""
+
+
+class TestFillSkeletonTemplate:
+    def test_replaces_matching_section(self) -> None:
+        sections = [{"section_num": "6", "content": "## 6. DB 스키마\n| 컬럼 | 타입 |\n|------|------|\n| id | UUID |"}]
+        result = fill_skeleton_template(SAMPLE_TEMPLATE, sections)
+
+        assert "| id | UUID |" in result
+        assert "_미작성_" not in result.split("## 7.")[0]  # 섹션 6의 _미작성_ 교체됨
+
+    def test_untouched_sections_preserved(self) -> None:
+        sections = [{"section_num": "6", "content": "## 6. DB 스키마\n채워짐"}]
+        result = fill_skeleton_template(SAMPLE_TEMPLATE, sections)
+
+        assert "## 7. API 스키마" in result
+        assert "_미작성_" in result  # 섹션 7은 그대로
+
+    def test_empty_sections_returns_template(self) -> None:
+        result = fill_skeleton_template(SAMPLE_TEMPLATE, [])
+        assert result == SAMPLE_TEMPLATE
+
+    def test_later_section_overwrites_earlier(self) -> None:
+        sections = [
+            {"section_num": "6", "content": "## 6. DB 스키마\n첫 번째"},
+            {"section_num": "6", "content": "## 6. DB 스키마\n두 번째"},
+        ]
+        result = fill_skeleton_template(SAMPLE_TEMPLATE, sections)
+        assert "두 번째" in result
+        assert "첫 번째" not in result
+
+    def test_unknown_section_ignored(self) -> None:
+        sections = [{"section_num": "99", "content": "## 99. 없는 섹션\n내용"}]
+        result = fill_skeleton_template(SAMPLE_TEMPLATE, sections)
+        assert result == SAMPLE_TEMPLATE

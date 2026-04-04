@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.orchestrator.orchestrate import Orchestra
+from src.orchestrator.output_parser import PhaseReviewResult, ReviewVerdict
 from src.orchestrator.phase import InvalidTransitionError, Phase
 from src.orchestrator.pipeline import CheckResult, CheckStatus, ValidationResult
 from src.orchestrator.runner import RunResult
@@ -279,7 +280,7 @@ class TestVerify:
 
         await orchestra.verify("task-001")
 
-        # passed=True → VERIFYING 유지 (DEPLOYING 전이는 run_full_pipeline에서)
+        # passed=True → VERIFYING 유지 (DEPLOYING 전이는 run_pipeline_with_phases에서)
         # passed=False → IMPLEMENTING으로 되돌아감
         # 여기서는 passed=True이므로 VERIFYING
         assert orchestra.phase_manager.current_phase == Phase.VERIFYING
@@ -303,7 +304,6 @@ class TestRunPhase:
 
     async def test_designing_runs_designer_last(self, orchestra: Orchestra) -> None:
         """DESIGNING Phase — 마지막 에이전트(designer) 결과 반환."""
-        designer_result = _make_run_result("designer", output="UI 설계")
         call_order: list[str] = []
 
         async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
@@ -343,65 +343,376 @@ class TestRunPhase:
         assert called_with == ["orchestrator"]
 
 
-# ── run_full_pipeline() ──────────────────────────────────────────────────────
+# ── implement_with_retry() ───────────────────────────────────────────────────
 
 
-class TestRunFullPipeline:
-    async def test_full_pipeline_runs_all_stages(self, orchestra: Orchestra) -> None:
-        run_calls: list[str] = []
+class TestImplementWithRetry:
+    async def test_approve_on_first_attempt(self, orchestra: Orchestra) -> None:
+        orchestra.phase_manager._current = Phase.TASK_BREAKDOWN
+        orchestra.runner.run = AsyncMock(
+            return_value=_make_run_result("backend_coder", output="## Review Result: APPROVE")
+        )  # type: ignore[method-assign]
+        orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=True))  # type: ignore[method-assign]
+
+        result = await orchestra.implement_with_retry("T-001", "backend_coder", "구현")
+
+        assert result["passed"] is True
+        assert result["attempts"] == 1
+
+    async def test_max_retries_exceeded_returns_failed(self, orchestra: Orchestra) -> None:
+        orchestra.phase_manager._current = Phase.TASK_BREAKDOWN
+        orchestra.runner.run = AsyncMock(
+            return_value=_make_run_result("reviewer", output="## Review Result: REJECT")
+        )  # type: ignore[method-assign]
+        orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=True))  # type: ignore[method-assign]
+
+        result = await orchestra.implement_with_retry("T-001", "backend_coder", "구현", max_retries=2)
+
+        assert result["passed"] is False
+        assert result["attempts"] == 2
+
+    async def test_retry_prompt_includes_violations(self, orchestra: Orchestra) -> None:
+        orchestra.phase_manager._current = Phase.TASK_BREAKDOWN
+        captured_prompts: list[str] = []
 
         async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
-            run_calls.append(agent)
+            if agent == "backend_coder":
+                captured_prompts.append(prompt)
+                return _make_run_result(agent)
+            if agent == "reviewer":
+                if len(captured_prompts) == 1:
+                    return _make_run_result(
+                        agent,
+                        output="## Review Result: REJECT\n### 위반 사항\n1. raw SQL 사용",
+                    )
+                return _make_run_result(agent, output="## Review Result: APPROVE")
             return _make_run_result(agent)
 
         orchestra.runner.run = mock_run  # type: ignore[method-assign]
         orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=True))  # type: ignore[method-assign]
 
-        tasks = [
-            {"id": "task-001", "agent": "backend_coder", "prompt": "API 구현"},
-            {"id": "task-002", "agent": "frontend_coder", "prompt": "UI 구현"},
-        ]
-        result = await orchestra.run_full_pipeline("요구사항", tasks)
+        await orchestra.implement_with_retry("T-001", "backend_coder", "구현", max_retries=3)
 
-        assert "architect" in run_calls
-        assert "designer" in run_calls
-        assert "orchestrator" in run_calls
-        assert "backend_coder" in run_calls
-        assert "frontend_coder" in run_calls
-        assert "reviewer" in run_calls
+        assert len(captured_prompts) >= 2
+        assert "review_feedback" in captured_prompts[1]
+        assert "raw SQL" in captured_prompts[1]
 
-        assert "design" in result
-        assert "tasks" in result
-        assert "task-001" in result["tasks"]
-        assert "task-002" in result["tasks"]
-
-    async def test_full_pipeline_success_flag_true_when_all_pass(
-        self, orchestra: Orchestra
-    ) -> None:
-        orchestra.runner.run = AsyncMock(return_value=_make_run_result("agent"))  # type: ignore[method-assign]
+    async def test_passed_true_on_pipeline_and_approve(self, orchestra: Orchestra) -> None:
+        orchestra.phase_manager._current = Phase.TASK_BREAKDOWN
+        orchestra.runner.run = AsyncMock(
+            return_value=_make_run_result("reviewer", output="## Review Result: APPROVE")
+        )  # type: ignore[method-assign]
         orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=True))  # type: ignore[method-assign]
 
-        tasks = [{"id": "task-001", "agent": "backend_coder", "prompt": "구현"}]
-        result = await orchestra.run_full_pipeline("요구사항", tasks)
+        result = await orchestra.implement_with_retry("T-002", "frontend_coder", "UI")
+
+        assert result["passed"] is True
+        assert "implement" in result
+        assert "verify" in result
+
+
+# ── review_phase() ───────────────────────────────────────────────────────────
+
+
+class TestReviewPhase:
+    async def test_approve_returns_phase_review_result(self, orchestra: Orchestra) -> None:
+        orchestra.phase_manager._current = Phase.IMPLEMENTING
+        orchestra.runner.run = AsyncMock(
+            return_value=_make_run_result(
+                "reviewer",
+                output="## Phase 1 Review Result: APPROVE\n\n### 다음 Phase 진행 가능 여부\n- 가능",
+            )
+        )  # type: ignore[method-assign]
+        orchestra.state.save_task_result("T-001", {"output": "구현 완료"})
+
+        result = await orchestra.review_phase(1, ["T-001"])
+
+        assert result is not None
+        assert result.verdict == ReviewVerdict.APPROVE
+        assert result.can_proceed is True
+
+    async def test_reject_returns_phase_review_result(self, orchestra: Orchestra) -> None:
+        orchestra.phase_manager._current = Phase.IMPLEMENTING
+        orchestra.runner.run = AsyncMock(
+            return_value=_make_run_result(
+                "reviewer",
+                output=(
+                    "## Phase 1 Review Result: REJECT\n\n"
+                    "### 미구현 항목\n- API: POST /issues — 구현 없음\n\n"
+                    "### 다음 Phase 진행 가능 여부\n- 불가"
+                ),
+            )
+        )  # type: ignore[method-assign]
+
+        result = await orchestra.review_phase(1, ["T-001"])
+
+        assert result is not None
+        assert result.verdict == ReviewVerdict.REJECT
+        assert result.can_proceed is False
+        assert len(result.missing_items) == 1
+
+    async def test_parse_failure_returns_none(self, orchestra: Orchestra) -> None:
+        orchestra.phase_manager._current = Phase.IMPLEMENTING
+        orchestra.runner.run = AsyncMock(
+            return_value=_make_run_result("reviewer", output="리뷰 결과 없음")
+        )  # type: ignore[method-assign]
+
+        result = await orchestra.review_phase(1, [])
+
+        assert result is None
+
+    async def test_saves_result_to_state(self, orchestra: Orchestra) -> None:
+        orchestra.phase_manager._current = Phase.IMPLEMENTING
+        orchestra.runner.run = AsyncMock(
+            return_value=_make_run_result("reviewer", output="## Phase 2 Review Result: APPROVE")
+        )  # type: ignore[method-assign]
+
+        await orchestra.review_phase(2, [])
+
+        saved = orchestra.state.load_task_result("phase_2_review")
+        assert saved is not None
+
+
+# ── run_pipeline_with_phases() ───────────────────────────────────────────────
+
+
+class TestRunPipelineWithPhases:
+    async def test_single_phase_approve(self, orchestra: Orchestra) -> None:
+        async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            if agent == "reviewer":
+                return _make_run_result(
+                    agent,
+                    output=(
+                        "## Review Result: APPROVE\n"
+                        "## Phase 1 Review Result: APPROVE\n"
+                        "### 다음 Phase 진행 가능 여부\n- 가능"
+                    ),
+                )
+            return _make_run_result(agent)
+
+        orchestra.runner.run = mock_run  # type: ignore[method-assign]
+        orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=True))  # type: ignore[method-assign]
+
+        phases = [[{"id": "T-001", "agent": "backend_coder", "prompt": "구현"}]]
+        result = await orchestra.run_pipeline_with_phases("요구사항", phases)
 
         assert result["success"] is True
+        assert len(result["phases"]) == 1
+        assert result["phases"][0]["passed"] is True
 
-    async def test_full_pipeline_success_false_when_verify_fails(
-        self, orchestra: Orchestra
-    ) -> None:
-        orchestra.runner.run = AsyncMock(return_value=_make_run_result("agent"))  # type: ignore[method-assign]
-        orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=False))  # type: ignore[method-assign]
+    async def test_phase_reject_stops_pipeline(self, orchestra: Orchestra) -> None:
+        async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            if agent == "reviewer":
+                return _make_run_result(
+                    agent,
+                    output=(
+                        "## Review Result: APPROVE\n"
+                        "## Phase 1 Review Result: REJECT\n"
+                        "### 다음 Phase 진행 가능 여부\n- 불가"
+                    ),
+                )
+            return _make_run_result(agent)
 
-        tasks = [{"id": "task-001", "agent": "backend_coder", "prompt": "구현"}]
-        result = await orchestra.run_full_pipeline("요구사항", tasks)
+        orchestra.runner.run = mock_run  # type: ignore[method-assign]
+        orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=True))  # type: ignore[method-assign]
+
+        phases = [
+            [{"id": "T-001", "agent": "backend_coder", "prompt": "구현"}],
+            [{"id": "T-010", "agent": "frontend_coder", "prompt": "구현"}],
+        ]
+        result = await orchestra.run_pipeline_with_phases("요구사항", phases, max_phase_retries=1)
 
         assert result["success"] is False
+        # Phase 1 실패로 Phase 2는 실행 안 됨
+        assert len(result["phases"]) == 1
 
-    async def test_full_pipeline_empty_tasks(self, orchestra: Orchestra) -> None:
-        orchestra.runner.run = AsyncMock(return_value=_make_run_result("agent"))  # type: ignore[method-assign]
+    async def test_design_result_included(self, orchestra: Orchestra) -> None:
+        async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            if agent == "reviewer":
+                return _make_run_result(
+                    agent,
+                    output=(
+                        "## Review Result: APPROVE\n"
+                        "## Phase 1 Review Result: APPROVE\n"
+                        "### 다음 Phase 진행 가능 여부\n- 가능"
+                    ),
+                )
+            return _make_run_result(agent)
+
+        orchestra.runner.run = mock_run  # type: ignore[method-assign]
         orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=True))  # type: ignore[method-assign]
 
-        result = await orchestra.run_full_pipeline("요구사항", [])
+        phases = [[{"id": "T-001", "agent": "backend_coder", "prompt": "구현"}]]
+        result = await orchestra.run_pipeline_with_phases("요구사항", phases)
+
+        assert "design" in result
+        assert "architect" in result["design"]
+
+    async def test_two_phases_both_approve(self, orchestra: Orchestra) -> None:
+        phase_review_counts: dict[int, int] = {1: 0, 2: 0}
+
+        async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            if agent == "reviewer" and "Phase 1" in prompt:
+                phase_review_counts[1] += 1
+                return _make_run_result(
+                    agent,
+                    output=(
+                        "## Review Result: APPROVE\n"
+                        "## Phase 1 Review Result: APPROVE\n"
+                        "### 다음 Phase 진행 가능 여부\n- 가능"
+                    ),
+                )
+            if agent == "reviewer" and "Phase 2" in prompt:
+                phase_review_counts[2] += 1
+                return _make_run_result(
+                    agent,
+                    output=(
+                        "## Review Result: APPROVE\n"
+                        "## Phase 2 Review Result: APPROVE\n"
+                        "### 다음 Phase 진행 가능 여부\n- 가능"
+                    ),
+                )
+            if agent == "reviewer":
+                return _make_run_result(agent, output="## Review Result: APPROVE")
+            return _make_run_result(agent)
+
+        orchestra.runner.run = mock_run  # type: ignore[method-assign]
+        orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=True))  # type: ignore[method-assign]
+
+        phases = [
+            [{"id": "T-001", "agent": "backend_coder", "prompt": "구현"}],
+            [{"id": "T-010", "agent": "frontend_coder", "prompt": "구현"}],
+        ]
+        result = await orchestra.run_pipeline_with_phases("요구사항", phases)
 
         assert result["success"] is True
-        assert result["tasks"] == {}
+        assert len(result["phases"]) == 2
+        assert result["phases"][0]["passed"] is True
+        assert result["phases"][1]["passed"] is True
+
+    async def test_phase_done_on_success(self, orchestra: Orchestra) -> None:
+        """전체 성공 시 Phase.DONE으로 전환되는지 확인."""
+        async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            if agent == "reviewer":
+                return _make_run_result(
+                    agent,
+                    output=(
+                        "## Review Result: APPROVE\n"
+                        "## Phase 1 Review Result: APPROVE\n"
+                        "### 다음 Phase 진행 가능 여부\n- 가능"
+                    ),
+                )
+            return _make_run_result(agent)
+
+        orchestra.runner.run = mock_run  # type: ignore[method-assign]
+        orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=True))  # type: ignore[method-assign]
+
+        await orchestra.run_pipeline_with_phases(
+            "요구사항",
+            [[{"id": "T-001", "agent": "backend_coder", "prompt": "구현"}]],
+        )
+
+        assert orchestra.phase_manager.current_phase == Phase.DONE
+
+    async def test_phase_not_done_on_failure(self, orchestra: Orchestra) -> None:
+        """Phase 실패 시 Phase.DONE으로 전환하지 않는지 확인."""
+        async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            if agent == "reviewer":
+                return _make_run_result(
+                    agent,
+                    output=(
+                        "## Review Result: REJECT\n"
+                        "## Phase 1 Review Result: REJECT\n"
+                        "### 다음 Phase 진행 가능 여부\n- 불가"
+                    ),
+                )
+            return _make_run_result(agent)
+
+        orchestra.runner.run = mock_run  # type: ignore[method-assign]
+        orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=True))  # type: ignore[method-assign]
+
+        result = await orchestra.run_pipeline_with_phases(
+            "요구사항",
+            [[{"id": "T-001", "agent": "backend_coder", "prompt": "구현"}]],
+        )
+
+        assert result["success"] is False
+        assert orchestra.phase_manager.current_phase != Phase.DONE
+
+
+# ── materialize_skeleton() ───────────────────────────────────────────────────
+
+
+class TestMaterializeSkeleton:
+    def test_creates_skeleton_md(self, orchestra: Orchestra, tmp_path: Path) -> None:
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "skeleton_template.md").write_text(
+            "## 6. DB 스키마\n_미작성_\n\n## 7. API 스키마\n_미작성_\n",
+            encoding="utf-8",
+        )
+
+        architect_out = "## 6. DB 스키마\n| id | UUID |\n"
+        designer_out = "## 7. API 스키마\n| GET | /api |\n"
+
+        path = orchestra.materialize_skeleton(architect_out, designer_out)
+
+        assert path.exists()
+        content = path.read_text(encoding="utf-8")
+        assert "| id | UUID |" in content
+        assert "| GET | /api |" in content
+
+    def test_no_template_creates_empty_skeleton(self, orchestra: Orchestra) -> None:
+        path = orchestra.materialize_skeleton("출력 A", "출력 B")
+
+        assert path.exists()
+
+    def test_no_sections_extracted_copies_template(
+        self, orchestra: Orchestra, tmp_path: Path
+    ) -> None:
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        template_content = "## 6. DB 스키마\n_미작성_\n"
+        (docs_dir / "skeleton_template.md").write_text(template_content, encoding="utf-8")
+
+        # 섹션 헤딩 없는 출력
+        orchestra.materialize_skeleton("일반 텍스트", "일반 텍스트")
+
+        skeleton_path = tmp_path / "docs" / "skeleton.md"
+        assert skeleton_path.read_text(encoding="utf-8") == template_content
+
+    def test_run_pipeline_with_phases_calls_materialize(
+        self, orchestra: Orchestra, tmp_path: Path
+    ) -> None:
+        """run_pipeline_with_phases가 design() 후 skeleton.md를 생성하는지 확인."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+
+        async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            if agent == "architect":
+                return _make_run_result(agent, output="## 6. DB 스키마\n| id | UUID |\n")
+            if agent == "reviewer":
+                return _make_run_result(
+                    agent,
+                    output=(
+                        "## Review Result: APPROVE\n"
+                        "## Phase 1 Review Result: APPROVE\n"
+                        "### 다음 Phase 진행 가능 여부\n- 가능"
+                    ),
+                )
+            return _make_run_result(agent)
+
+        orchestra.runner.run = mock_run  # type: ignore[method-assign]
+        orchestra.pipeline.run_all = AsyncMock(return_value=_make_validation_result(passed=True))  # type: ignore[method-assign]
+
+        import asyncio
+        asyncio.get_event_loop().run_until_complete(
+            orchestra.run_pipeline_with_phases(
+                "요구사항",
+                [[{"id": "T-001", "agent": "backend_coder", "prompt": "구현"}]],
+            )
+        )
+
+        skeleton_path = tmp_path / "docs" / "skeleton.md"
+        assert skeleton_path.exists()
+        assert "| id | UUID |" in skeleton_path.read_text(encoding="utf-8")

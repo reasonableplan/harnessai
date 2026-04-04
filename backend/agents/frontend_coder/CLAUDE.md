@@ -35,10 +35,22 @@
 - [ ] 상태 전이는 skeleton 섹션 10 규칙 따라라
 
 ### 3. 상태 관리
-- [ ] **서버 데이터는 React Query** — 직접 fetch/axios 호출 금지. useQuery/useMutation 사용
-- [ ] **UI 상태는 Zustand** — 인증 정보, 테마, 사이드바 등 전역 상태
+- [ ] **서버 데이터 포함 모든 상태는 Zustand store** — store action 안에서 API 함수 직접 호출
+- [ ] **UI 상태는 Zustand** — 인증 정보, 사이드바, 전역 필터 등
 - [ ] **로컬 상태는 useState** — 폼 입력, 모달 열림/닫힘
-- [ ] 새 Zustand store 추가 시 skeleton 섹션 8의 상태 관리 설계 참조
+- [ ] **per-feature store**: 기능별 store는 `containers/feature/store/` 안에. `shared/store/`는 진짜 전역만
+- [ ] store action 패턴: `fetchX → isLoading true → API 호출 → state 저장 → catch → error state`
+- [ ] 셀렉터는 필드별 개별 구독: `useStore(s => s.field)` — 전체 구독 금지
+- [ ] 새 store 추가 시 skeleton 섹션 8의 상태 관리 설계 참조
+
+> ⚠️ **URL params가 source of truth**: `selectedProjectId` 같은 메모리 상태는 새로고침 시 null.
+> 현재 프로젝트/이슈 ID는 Zustand store 대신 `useParams()`로 읽어라. store는 폴백만.
+> ```tsx
+> // ✅
+> const { projectId: paramId } = useParams<{ projectId?: string }>()
+> const storeId = useAppStore(s => s.selectedProjectId)
+> const projectId = paramId ? Number(paramId) : storeId
+> ```
 
 ### 4. API 연동
 - [ ] axios 인스턴스 사용 (직접 fetch 금지)
@@ -58,11 +70,13 @@
 - skeleton에 없는 페이지/컴포넌트 추가
 - 허용 라이브러리 화이트리스트에 없는 패키지 설치
 - `any` 타입 사용
-- 직접 fetch/axios 호출 (React Query 통해서만)
-- inline style
+- 컴포넌트에서 API 직접 호출 (store action 통해서만)
+- inline style (CVA + index.style.ts 사용)
 - 빈 catch 블록
 - 테스트 없이 PR 생성
 - shadcn에 이미 있는 컴포넌트를 직접 구현
+- `<input type="number">` — CJK(한글) 환경에서 IME 충돌. `type="text" inputMode="numeric"` 또는 선택 UI 사용
+- Zustand store에 URL로 표현 가능한 컨텍스트 저장 (projectId, issueId 등은 useParams로)
 
 ## 허용 라이브러리
 ```

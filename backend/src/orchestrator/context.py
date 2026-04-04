@@ -20,12 +20,25 @@ SECTION_MAP: dict[str, list[int | str]] = {
 # 에이전트별 추가 문서
 EXTRA_DOCS: dict[str, list[str]] = {
     "architect": ["conventions.md", "shared-lessons.md", "adr/"],
-    "designer": ["shared-lessons.md"],
-    "orchestrator": ["shared-lessons.md"],
-    "backend_coder": ["conventions.md", "shared-lessons.md"],
-    "frontend_coder": ["conventions.md", "shared-lessons.md"],
+    "designer": ["conventions.md", "shared-lessons.md", "guidelines/frontend/style.md"],
+    "orchestrator": ["conventions.md", "shared-lessons.md"],
+    "backend_coder": [
+        "conventions.md",
+        "shared-lessons.md",
+        "guidelines/backend/structure.md",
+        "guidelines/backend/services.md",
+        "guidelines/backend/api.md",
+    ],
+    "frontend_coder": [
+        "conventions.md",
+        "shared-lessons.md",
+        "guidelines/frontend/components.md",
+        "guidelines/frontend/state.md",
+        "guidelines/frontend/api.md",
+        "guidelines/frontend/style.md",
+    ],
     "reviewer": ["conventions.md", "shared-lessons.md", "adr/"],
-    "qa": ["shared-lessons.md"],
+    "qa": ["conventions.md", "shared-lessons.md"],
 }
 
 
@@ -79,6 +92,51 @@ def extract_section(skeleton_text: str, section_num: int | str) -> str:
             break
 
     return "\n".join(lines[start_idx:end_idx]).strip()
+
+
+def fill_skeleton_template(
+    template_text: str,
+    sections: list[dict[str, str]],
+) -> str:
+    """템플릿의 섹션을 채워진 내용으로 교체한다.
+
+    Args:
+        template_text: skeleton_template.md 전체 텍스트
+        sections: [{"section_num": "6", "content": "..."}, ...] 형태의 채워진 섹션 목록
+
+    Returns:
+        섹션이 교체된 skeleton 텍스트
+    """
+    if not sections:
+        return template_text
+
+    # section_num → content 매핑 (나중에 온 것이 이전 것을 덮어씀)
+    filled: dict[str, str] = {s["section_num"]: s["content"] for s in sections}
+    lines = template_text.split("\n")
+    result: list[str] = []
+    i = 0
+
+    while i < len(lines):
+        heading_match = re.match(r"^(#{2,4})\s+(\d+(?:-\d+)?)[.\s]", lines[i])
+        if heading_match:
+            section_num = heading_match.group(2)
+            heading_level = len(heading_match.group(1))
+
+            if section_num in filled:
+                result.append(filled[section_num])
+                # 템플릿 내 해당 섹션 범위 스킵
+                i += 1
+                while i < len(lines):
+                    nxt = re.match(r"^(#{2,4})\s+\d", lines[i])
+                    if nxt and len(nxt.group(1)) <= heading_level:
+                        break
+                    i += 1
+                continue
+
+        result.append(lines[i])
+        i += 1
+
+    return "\n".join(result)
 
 
 def build_context(

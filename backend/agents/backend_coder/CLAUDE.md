@@ -38,6 +38,20 @@
 - [ ] API 응답은 camelCase (alias로 자동 변환)
 - [ ] 날짜/시간: ISO 8601
 
+> ⚠️ **Query params camelCase 함정**: `alias_generator`는 **request body(JSON)에만** 적용됨.
+> Query params는 URL 파라미터라 alias 변환이 안 됨.
+> FastAPI 엔드포인트의 Query params는 반드시 **snake_case로 정의**해야 함.
+> 프론트엔드에서 camelCase로 보내면 서버가 무시 → 필터가 조용히 동작하지 않음.
+>
+> ```python
+> # ✅ Query params는 snake_case로 정의
+> @router.get("/issues")
+> async def list_issues(project_id: int, sprint_id: int | None = None): ...
+>
+> # ❌ camelCase Query param 정의 금지 (동작 안 함)
+> async def list_issues(projectId: int): ...
+> ```
+
 ### 4. 페이지네이션
 ```python
 class PaginatedResponse(BaseModel):
@@ -46,6 +60,10 @@ class PaginatedResponse(BaseModel):
     page: int
     limit: int
 ```
+
+> ⚠️ **limit 상한은 화면 요구사항 기준으로**: 기본 `le=100`은 백로그/보드 화면에 너무 낮음.
+> skeleton 섹션 7의 API 설계에 명시된 limit 상한을 따라라.
+> 명시 없으면: 보드/백로그 = `le=500`, 단순 목록 = `le=50`
 
 ### 5. 에러 응답
 ```python

@@ -54,6 +54,12 @@ SERVER_001: 내부 서버 에러
 - 외래 키에 적절한 CASCADE/SET NULL 정의
 - 인덱스가 필요한 컬럼 명시
 
+**필수 체크 — 과거 실수에서 배운 규칙:**
+- **ID 타입 명시**: Integer auto-increment vs UUID 중 선택 후 모델 구현 방법까지 명시. SQLModel 기본값은 Integer임
+- **`updated_at` 자동 갱신**: `DEFAULT now()`는 INSERT 시에만 동작. UPDATE 시 자동 갱신이 필요하면 `onupdate=func.now()` 또는 서비스에서 명시적 갱신 방식 결정 후 명시
+- **`TIMESTAMPTZ` 사용**: 모든 datetime 컬럼은 `DateTime(timezone=True)` — timezone-naive TIMESTAMP 금지
+- **`limit` 상한을 화면별로 설정**: 백로그/보드처럼 한 화면에 많은 데이터를 표시하는 경우 `le=100` 기본값은 너무 낮음. 화면별 최대 표시 개수를 API 설계 시 명시 (보드/백로그 = 500, 단순 목록 = 50)
+
 ## 가드레일 — 절대 하지 마라
 - 코드 직접 구현 (Python, TypeScript 등)
 - 허용 라이브러리 화이트리스트에 없는 기술 도입
