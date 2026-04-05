@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
@@ -9,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from src.orchestrator.config import OrchestratorConfig, load_agents_config
-from src.orchestrator.context import build_context, extract_section, fill_skeleton_template
+from src.orchestrator.context import extract_section, fill_skeleton_template
 from src.orchestrator.logger import AgentLogger
 from src.orchestrator.output_parser import (
     PhaseReviewResult,
@@ -20,19 +21,31 @@ from src.orchestrator.output_parser import (
     parse_phases,
     parse_pr_review,
 )
-from src.orchestrator.security_hooks import SecurityHooks, SecurityResult
 from src.orchestrator.phase import InvalidTransitionError, Phase, PhaseManager
 from src.orchestrator.pipeline import ValidationPipeline, ValidationResult
 from src.orchestrator.runner import AgentRunner, RunResult
+from src.orchestrator.security_hooks import SecurityHooks, SecurityResult
 from src.orchestrator.state import StateManager
 
 logger = logging.getLogger(__name__)
 
-# Phase별 에이전트 매핑 (순서가 있는 경우 tuple)
+# Phase별 에이전트 매핑 (순서가 있는 경우 tuple) — 파이프라인 내부용
 _PHASE_AGENTS: dict[Phase, tuple[str, ...]] = {
     Phase.DESIGNING: ("architect", "designer"),
     Phase.TASK_BREAKDOWN: ("orchestrator",),
     Phase.VERIFYING: ("reviewer",),
+}
+
+# Phase → 단일 에이전트 매핑 — 대시보드 REST/WS 명령 디스패치용
+# None이면 해당 Phase에서 에이전트 직접 실행 안 함
+PHASE_AGENT_MAP: dict[str, str | None] = {
+    "planning": None,
+    "designing": "architect",
+    "task_breakdown": "orchestrator",
+    "implementing": "backend_coder",
+    "verifying": "reviewer",
+    "deploying": None,
+    "done": None,
 }
 
 
@@ -47,6 +60,8 @@ class Orchestra:
     runner: AgentRunner = field(init=False)
     pipeline: ValidationPipeline = field(init=False)
     agent_logger: AgentLogger = field(init=False)
+    # implement_with_retry 직렬화 Lock — 동시 Phase 전이 오염 방지
+    _impl_lock: asyncio.Lock = field(init=False)
 
     def __post_init__(self) -> None:
         self.project_dir = Path(self.project_dir).resolve()
@@ -60,47 +75,12 @@ class Orchestra:
             logger=self.agent_logger,
         )
         self.pipeline = ValidationPipeline(self.project_dir)
+        self._impl_lock = asyncio.Lock()
 
     @classmethod
     def from_project_dir(cls, project_dir: str | Path) -> Orchestra:
         """팩토리 메서드 — project_dir로 Orchestra 인스턴스 생성."""
         return cls(project_dir=Path(project_dir))
-
-    async def run_phase(
-        self,
-        phase: Phase,
-        prompt: str,
-        **kwargs: Any,
-    ) -> RunResult | None:
-        """현재 Phase에 맞는 에이전트를 실행하고 결과를 state에 저장한다.
-
-        Args:
-            phase: 실행할 Phase
-            prompt: 에이전트에 전달할 프롬프트
-            **kwargs: IMPLEMENTING Phase에서 agent 이름을 받을 때 사용 (agent="backend_coder")
-
-        Returns:
-            실행 결과. PLANNING/DEPLOYING/DONE은 에이전트 없이 None 반환.
-        """
-        if phase in (Phase.PLANNING, Phase.DEPLOYING, Phase.DONE):
-            return None
-
-        if phase == Phase.IMPLEMENTING:
-            agent_name: str = kwargs.get("agent", "backend_coder")
-            result = await self.runner.run(agent_name, prompt)
-            self._log_result(agent_name, result)
-            task_id: str = kwargs.get("task_id", agent_name)
-            self.state.save_task_result(task_id, self._result_to_dict(result))
-            return result
-
-        agents = _PHASE_AGENTS.get(phase, ())
-        last_result: RunResult | None = None
-        for agent_name in agents:
-            last_result = await self.runner.run(agent_name, prompt)
-            self._log_result(agent_name, last_result)
-            self.state.save_task_result(f"{phase}_{agent_name}", self._result_to_dict(last_result))
-
-        return last_result
 
     async def design(self, requirements: str) -> dict[str, RunResult]:
         """설계 Phase — Architect → Designer 순서로 실행.
@@ -115,6 +95,17 @@ class Orchestra:
 
         architect_result = await self.runner.run("architect", requirements)
         self._log_result("architect", architect_result)
+
+        if not architect_result.success or not architect_result.output.strip():
+            logger.error("Architect 실패 또는 빈 출력 — design() 중단")
+            return {
+                "architect": architect_result,
+                "designer": RunResult(
+                    agent="designer", output="", success=False,
+                    duration_ms=0, attempts=0,
+                    error="Architect 실패로 인해 Designer 실행 취소",
+                ),
+            }
 
         # Architect 출력을 Designer의 컨텍스트로 활용
         designer_prompt = (
@@ -163,6 +154,11 @@ class Orchestra:
         raw_sections += extract_filled_sections(designer_output)
         sections = [{"section_num": s.section_num, "content": s.content} for s in raw_sections]
 
+        if not sections:
+            raise ValueError(
+                "skeleton 섹션 추출 실패 — Architect/Designer 출력에서 유효한 섹션을 찾을 수 없음"
+            )
+
         if template_text:
             filled_text = fill_skeleton_template(template_text, sections)
         else:
@@ -170,12 +166,13 @@ class Orchestra:
             filled_text = "\n\n".join(s["content"] for s in sections)
 
         skeleton_path.parent.mkdir(parents=True, exist_ok=True)
-        skeleton_path.write_text(filled_text, encoding="utf-8")
+        try:
+            skeleton_path.write_text(filled_text, encoding="utf-8")
+        except OSError as exc:
+            logger.error("skeleton.md 쓰기 실패: %s", exc)
+            raise
 
         logger.info("skeleton.md 생성 완료 — %d개 섹션 채움", len(sections))
-        if not sections:
-            logger.warning("skeleton 섹션 추출 실패 — 빈 skeleton.md 생성됨")
-
         return skeleton_path
 
     async def implement(self, task_id: str, agent: str, prompt: str) -> RunResult:
@@ -315,58 +312,65 @@ class Orchestra:
         last_verify: dict[str, Any] = {}
         original_prompt = prompt  # 원본 보존 — 재시도마다 중첩 방지
 
-        for attempt in range(1, max_retries + 1):
-            impl_result = await self.implement(task_id, agent, prompt)
-            verify_result = await self.verify(
-                task_id,
-                is_frontend=is_frontend,
-                allowed_endpoints=allowed_endpoints,
-            )
-            last_impl = impl_result
-            last_verify = verify_result
+        # _impl_lock: Phase 전이 직렬화 — 동시 WS/REST 명령이 implement→verify 사이클을
+        # 겹쳐서 실행하면 PhaseManager 상태가 오염됨. Lock은 단일 사이클이 완료될 때까지
+        # 다음 사이클을 블록함. max_retries × LLM timeout 시 수 분 홀딩 가능.
+        # 여러 태스크 동시 실행 필요 시 per-task-id Lock으로 교체 권장 (TODOS.md).
+        async with self._impl_lock:
+            for attempt in range(1, max_retries + 1):
+                impl_result = await self.implement(task_id, agent, prompt)
+                verify_result = await self.verify(
+                    task_id,
+                    is_frontend=is_frontend,
+                    allowed_endpoints=allowed_endpoints,
+                )
+                last_impl = impl_result
+                last_verify = verify_result
 
-            if verify_result.get("passed", False):
-                logger.info("태스크 %s APPROVE (시도 %d/%d)", task_id, attempt, max_retries)
-                return {
-                    "implement": impl_result,
-                    "verify": verify_result,
-                    "attempts": attempt,
-                    "passed": True,
-                }
+                if verify_result.get("passed", False):
+                    logger.info("태스크 %s APPROVE (시도 %d/%d)", task_id, attempt, max_retries)
+                    return {
+                        "implement": impl_result,
+                        "verify": verify_result,
+                        "attempts": attempt,
+                        "passed": True,
+                    }
 
-            if attempt < max_retries:
-                raw_reviewer = verify_result.get("reviewer")
-                violations: list[str] = []
-                if isinstance(raw_reviewer, RunResult):
-                    parsed_review = parse_pr_review(raw_reviewer.output)
-                    violations = parsed_review.violations if parsed_review else []
-                # 항상 원본 프롬프트 기준으로 피드백 추가 — 중첩 방지
-                prompt = (
-                    f"{original_prompt}\n\n"
-                    f"<review_feedback>\n"
-                    f"이전 구현이 REJECT되었습니다 (시도 {attempt}/{max_retries}).\n"
-                    f"수정 사항:\n" + "\n".join(f"- {v}" for v in violations) +
-                    f"\n</review_feedback>"
-                )
-                logger.warning(
-                    "태스크 %s REJECT — 재시도 %d/%d", task_id, attempt, max_retries
-                )
-            else:
-                logger.error(
-                    "태스크 %s — 최대 재시도 %d회 초과. 에스컬레이션 필요.", task_id, max_retries
-                )
-                self.agent_logger.log_escalation(
-                    agent=agent,
-                    reason=f"태스크 {task_id} REJECT {max_retries}회 — PM 에스컬레이션",
-                    escalated_to="PM",
-                )
+                if attempt < max_retries:
+                    raw_reviewer = verify_result.get("reviewer")
+                    violations: list[str] = []
+                    if isinstance(raw_reviewer, RunResult):
+                        parsed_review = parse_pr_review(raw_reviewer.output)
+                        violations = parsed_review.violations if parsed_review else []
+                        if not violations and raw_reviewer.output:
+                            violations = [raw_reviewer.output[:500]]
+                    # 항상 원본 프롬프트 기준으로 피드백 추가 — 중첩 방지
+                    prompt = (
+                        f"{original_prompt}\n\n"
+                        f"<review_feedback>\n"
+                        f"이전 구현이 REJECT되었습니다 (시도 {attempt}/{max_retries}).\n"
+                        f"수정 사항:\n" + "\n".join(f"- {v}" for v in violations) +
+                        "\n</review_feedback>"
+                    )
+                    logger.warning(
+                        "태스크 %s REJECT — 재시도 %d/%d", task_id, attempt, max_retries
+                    )
+                else:
+                    logger.error(
+                        "태스크 %s — 최대 재시도 %d회 초과. 에스컬레이션 필요.", task_id, max_retries
+                    )
+                    self.agent_logger.log_escalation(
+                        agent=agent,
+                        reason=f"태스크 {task_id} REJECT {max_retries}회 — PM 에스컬레이션",
+                        escalated_to="PM",
+                    )
 
-        return {
-            "implement": last_impl,
-            "verify": last_verify,
-            "attempts": max_retries,
-            "passed": False,
-        }
+            return {
+                "implement": last_impl,
+                "verify": last_verify,
+                "attempts": max_retries,
+                "passed": False,
+            }
 
     async def review_phase(
         self,
@@ -557,10 +561,17 @@ class Orchestra:
         """
         # 1. 설계
         design_results = await self.design(requirements)
-        self.materialize_skeleton(
-            architect_output=design_results["architect"].output,
-            designer_output=design_results["designer"].output,
-        )
+        if not design_results["architect"].success:
+            logger.error("Architect 실패 — run_pipeline_with_phases() 중단")
+            return {"design": design_results, "breakdown": {}, "phases": [], "success": False}
+        try:
+            self.materialize_skeleton(
+                architect_output=design_results["architect"].output,
+                designer_output=design_results["designer"].output,
+            )
+        except ValueError as exc:
+            logger.error("skeleton 생성 실패 — run_pipeline_with_phases() 중단: %s", exc)
+            return {"design": design_results, "breakdown": {}, "phases": [], "success": False}
 
         # 2. 태스크 분해
         phases, breakdown_dict = await self.run_breakdown(requirements, design_results)

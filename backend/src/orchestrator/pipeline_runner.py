@@ -129,10 +129,20 @@ async def run(
     print("Architect + Designer 에이전트를 실행 중입니다...\n")
 
     design_results = await orchestra.design(requirements)
-    orchestra.materialize_skeleton(
-        architect_output=design_results["architect"].output,
-        designer_output=design_results["designer"].output,
-    )
+
+    if not design_results["architect"].success:
+        print("\n❌ Architect 실패 — 설계를 진행할 수 없습니다.")
+        print(design_results["architect"].error or "출력 없음")
+        return False
+
+    try:
+        orchestra.materialize_skeleton(
+            architect_output=design_results["architect"].output,
+            designer_output=design_results["designer"].output,
+        )
+    except ValueError as exc:
+        print(f"\n❌ skeleton 생성 실패 — Architect/Designer 출력에 유효한 섹션 없음: {exc}")
+        return False
 
     skeleton_path = project_dir / "docs" / "skeleton.md"
     print(f"\n✅ skeleton.md 생성 완료: {skeleton_path}")

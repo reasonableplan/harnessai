@@ -97,8 +97,12 @@ class StateManager:
         if not path.exists():
             return None
 
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)  # type: ignore[no-any-return]
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)  # type: ignore[no-any-return]
+        except json.JSONDecodeError as exc:
+            logger.warning("load_phase_data: %s 파싱 실패, None 반환: %s", path.name, exc)
+            return None
 
     @staticmethod
     def _safe_filename(name: str) -> str:
@@ -119,8 +123,12 @@ class StateManager:
         if not path.exists():
             return None
 
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)  # type: ignore[no-any-return]
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)  # type: ignore[no-any-return]
+        except json.JSONDecodeError:
+            logger.warning("load_task_result: %s 파싱 실패 — None 반환", path)
+            return None
 
     def list_task_results(self) -> list[dict[str, Any]]:
         """모든 태스크 결과를 반환."""

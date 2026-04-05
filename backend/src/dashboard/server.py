@@ -21,8 +21,9 @@ from starlette.responses import Response
 from src.dashboard.auth import make_auth_checker
 from src.dashboard.event_mapper import EventMapper
 from src.dashboard.routes import agents, command, health, hooks, stats, tasks
-from src.dashboard.routes.deps import get_phase_manager, get_runner, init_deps
+from src.dashboard.routes.deps import get_orchestra, get_phase_manager, init_deps
 from src.dashboard.websocket_manager import WebSocketManager
+from src.orchestrator.phase import Phase
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +173,7 @@ def create_app(
         ok = await _ws_manager.authenticate(ws, auth_token)
         if not ok:
             return
+        _ws_msg_times[id(ws)] = []  # 재연결 시 이전 rate-limit 윈도우 초기화
         try:
             while True:
                 raw = await ws.receive_text()
@@ -209,39 +211,61 @@ def create_app(
                         continue
 
                     try:
-                        pm = get_phase_manager()
-                        runner = get_runner()
+                        orchestra = get_orchestra()
                     except RuntimeError:
-                        logger.error("PhaseManager/AgentRunner not available for %s", msg_type)
+                        logger.error("Orchestra not available for %s", msg_type)
                         await ws.send_text(json.dumps({"type": "error", "message": "Server not initialized"}))
                         continue
 
-                    phase = pm.current_phase
+                    phase = orchestra.phase_manager.current_phase
 
-                    from src.dashboard.routes.command import _PHASE_AGENT_MAP
-                    agent = _PHASE_AGENT_MAP.get(str(phase))
+                    from src.orchestrator.orchestrate import PHASE_AGENT_MAP
+                    agent = PHASE_AGENT_MAP.get(str(phase))
                     if agent is None:
                         await ws.send_text(
                             json.dumps({"type": "info", "message": f"no_agent_for_phase:{phase}"})
                         )
                         continue
 
-                    async def _run_chat(a: str = agent, c: str = content) -> None:
+                    async def _run_chat(
+                        a: str = agent,
+                        c: str = content,
+                        p: Phase = phase,
+                        o=orchestra,
+                        em=_event_mapper,
+                    ) -> None:
+                        success = False
+                        error: str | None = "내부 오류"
+                        duration = 0
                         try:
-                            await _event_mapper.emit_agent_start(a, c)
-                            result = await runner.run(a, c)
-                            await _event_mapper.emit_agent_complete(
-                                a, result.success, result.duration_ms, result.error
-                            )
-                            logger.info("WS command completed agent=%s success=%s", a, result.success)
-                        except Exception:
+                            await em.emit_agent_start(a, c)
+                            if p == Phase.IMPLEMENTING:
+                                task_id = f"ws_{uuid.uuid4().hex[:8]}"
+                                res = await o.implement_with_retry(task_id, a, c)
+                                impl = res.get("implement")
+                                duration = impl.duration_ms if impl is not None else 0
+                                success = res.get("passed", False)
+                                error = None if success else "검증 실패"
+                            else:
+                                result = await o.runner.run(a, c)
+                                success = result.success
+                                duration = result.duration_ms
+                                error = result.error
+                            logger.info("WS command completed agent=%s phase=%s", a, p)
+                        except Exception as exc:
+                            error = str(exc) or "내부 오류"
                             logger.error("WS command failed agent=%s", a, exc_info=True)
+                        finally:
+                            try:
+                                await em.emit_agent_complete(a, success, duration, error)
+                            except Exception:
+                                logger.error("emit_agent_complete failed agent=%s", a, exc_info=True)
 
                     task = asyncio.create_task(_run_chat())
                     _ws_bg_tasks.add(task)
                     task.add_done_callback(_on_bg_task_done)
 
-                elif msg_type in ("plan.approve", "plan.revise", "plan.commit", "plan.start"):
+                elif msg_type in ("plan.approve", "plan.commit", "plan.start"):
                     # Phase 전이 요청
                     from src.orchestrator.phase import InvalidTransitionError, Phase
 

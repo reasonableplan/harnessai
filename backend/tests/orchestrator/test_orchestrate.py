@@ -305,63 +305,6 @@ class TestVerify:
         assert orchestra.phase_manager.current_phase == Phase.VERIFYING
 
 
-# ── run_phase() ──────────────────────────────────────────────────────────────
-
-
-class TestRunPhase:
-    async def test_planning_returns_none(self, orchestra: Orchestra) -> None:
-        result = await orchestra.run_phase(Phase.PLANNING, "프롬프트")
-        assert result is None
-
-    async def test_deploying_returns_none(self, orchestra: Orchestra) -> None:
-        result = await orchestra.run_phase(Phase.DEPLOYING, "프롬프트")
-        assert result is None
-
-    async def test_done_returns_none(self, orchestra: Orchestra) -> None:
-        result = await orchestra.run_phase(Phase.DONE, "프롬프트")
-        assert result is None
-
-    async def test_designing_runs_designer_last(self, orchestra: Orchestra) -> None:
-        """DESIGNING Phase — 마지막 에이전트(designer) 결과 반환."""
-        call_order: list[str] = []
-
-        async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
-            call_order.append(agent)
-            return _make_run_result(agent)
-
-        orchestra.runner.run = mock_run  # type: ignore[method-assign]
-
-        await orchestra.run_phase(Phase.DESIGNING, "설계해줘")
-
-        assert call_order == ["architect", "designer"]
-
-    async def test_implementing_uses_agent_kwarg(self, orchestra: Orchestra) -> None:
-        called_with: list[str] = []
-
-        async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
-            called_with.append(agent)
-            return _make_run_result(agent)
-
-        orchestra.runner.run = mock_run  # type: ignore[method-assign]
-
-        await orchestra.run_phase(Phase.IMPLEMENTING, "코드 작성", agent="frontend_coder")
-
-        assert called_with == ["frontend_coder"]
-
-    async def test_task_breakdown_runs_orchestrator(self, orchestra: Orchestra) -> None:
-        called_with: list[str] = []
-
-        async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
-            called_with.append(agent)
-            return _make_run_result(agent)
-
-        orchestra.runner.run = mock_run  # type: ignore[method-assign]
-
-        await orchestra.run_phase(Phase.TASK_BREAKDOWN, "태스크 분류")
-
-        assert called_with == ["orchestrator"]
-
-
 # ── implement_with_retry() ───────────────────────────────────────────────────
 
 
@@ -496,6 +439,13 @@ class TestReviewPhase:
 
 
 class TestRunPipelineWithPhases:
+    @pytest.fixture(autouse=True)
+    def _patch_materialize(self, orchestra: Orchestra) -> None:
+        """pipeline 흐름 테스트에서 skeleton 생성은 별도 테스트 — no-op으로 대체."""
+        orchestra.materialize_skeleton = MagicMock(  # type: ignore[method-assign]
+            return_value=orchestra.project_dir / "docs" / "skeleton.md"
+        )
+
     async def test_single_phase_approve(self, orchestra: Orchestra) -> None:
         async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
             if agent == "orchestrator":
@@ -677,24 +627,43 @@ class TestMaterializeSkeleton:
         assert "| id | UUID |" in content
         assert "| GET | /api |" in content
 
-    def test_no_template_creates_empty_skeleton(self, orchestra: Orchestra) -> None:
-        path = orchestra.materialize_skeleton("출력 A", "출력 B")
+    def test_no_sections_extracted_raises(self, orchestra: Orchestra) -> None:
+        """섹션 헤딩 없는 출력 → ValueError (빈 skeleton 방지)."""
+        with pytest.raises(ValueError, match="skeleton 섹션 추출 실패"):
+            orchestra.materialize_skeleton("출력 A", "출력 B")
 
-        assert path.exists()
-
-    def test_no_sections_extracted_copies_template(
+    def test_no_sections_with_template_raises(
         self, orchestra: Orchestra, tmp_path: Path
     ) -> None:
+        """템플릿이 있어도 섹션 헤딩 없는 출력 → ValueError."""
         docs_dir = tmp_path / "docs"
         docs_dir.mkdir()
-        template_content = "## 6. DB 스키마\n_미작성_\n"
-        (docs_dir / "skeleton_template.md").write_text(template_content, encoding="utf-8")
+        (docs_dir / "skeleton_template.md").write_text(
+            "## 6. DB 스키마\n_미작성_\n", encoding="utf-8"
+        )
 
-        # 섹션 헤딩 없는 출력
-        orchestra.materialize_skeleton("일반 텍스트", "일반 텍스트")
+        with pytest.raises(ValueError, match="skeleton 섹션 추출 실패"):
+            orchestra.materialize_skeleton("일반 텍스트", "일반 텍스트")
 
-        skeleton_path = tmp_path / "docs" / "skeleton.md"
-        assert skeleton_path.read_text(encoding="utf-8") == template_content
+    async def test_pipeline_returns_failure_on_empty_skeleton(
+        self, orchestra: Orchestra
+    ) -> None:
+        """materialize_skeleton이 ValueError 발생 시 파이프라인이 success=False 반환."""
+        async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            if agent == "architect":
+                return _make_run_result(agent, output="## 6. DB 스키마\n| id | UUID |\n")
+            return _make_run_result(agent)
+
+        orchestra.runner.run = mock_run  # type: ignore[method-assign]
+        # materialize_skeleton이 ValueError 발생하도록 강제
+        orchestra.materialize_skeleton = MagicMock(  # type: ignore[method-assign]
+            side_effect=ValueError("섹션 없음")
+        )
+
+        result = await orchestra.run_pipeline_with_phases("요구사항")
+
+        assert result["success"] is False
+        assert result["phases"] == []
 
     def test_run_pipeline_with_phases_calls_materialize(
         self, orchestra: Orchestra, tmp_path: Path
