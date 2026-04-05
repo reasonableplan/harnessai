@@ -60,3 +60,21 @@ class EventMapper:
             "status": status,
             "agent": agent,
         })
+
+    async def emit_phase_message(self, from_agent: str, content: str) -> None:
+        """Phase 진행 중 에이전트 메시지."""
+        await self._ws.broadcast("phase.message", {
+            "from": from_agent,
+            "content": content,
+        })
+
+    async def emit_phase_plan(self, plan: dict[str, Any]) -> None:
+        """Phase 태스크 분해 결과 (plan 구조체)."""
+        await self._ws.broadcast("phase.plan", plan)
+
+    async def emit_phase_committed(self, phase_num: int, task_ids: list[str]) -> None:
+        """Phase 완료 — 모든 태스크 커밋됨."""
+        await self._ws.broadcast("phase.committed", {
+            "phaseNum": phase_num,
+            "taskIds": task_ids,
+        })
