@@ -249,6 +249,8 @@ architect:
 - **URL params = source of truth**: projectId/issueId 등 영구 컨텍스트는 useParams()로. Zustand는 폴백만
 
 ### 디자인 가이드
+- **디자인 시스템 소스**: (shadcn/ui 기본 테마 / 커스텀 — 커스텀 시 Mobbin/Dribbble 레퍼런스 URL 첨부 필수)
+  > Designer가 직접 색상/간격을 정의하면 시각적 품질 보장 불가 (LESSON-014). shadcn/ui 기본 테마 권장.
 - **색상 팔레트**:
 - **폰트**:
 - **레이아웃 방향**:
@@ -349,11 +351,28 @@ services:
 ### 로컬 개발 셋업
 ```bash
 # 1. 클론
-# 2. 환경변수 설정
+# 2. 환경변수 설정 (.env.example → .env)
 # 3. DB 마이그레이션
-# 4. 백엔드 실행
+# 4. 백엔드 실행 (Architect가 채움 — 반드시 실제 명령어 명시)
+#    예: uv run uvicorn main:app --reload --port 8000
 # 5. 프론트엔드 실행
+#    예: npm run dev
 ```
+> ⚠️ 실행 명령어 미명시는 LESSON-012 위반. Backend Coder는 `main.py`에 uvicorn 블록 추가 필수.
+
+### 테스트 전략 (Architect 작성)
+> 이 섹션이 비어있으면 Orchestrator는 테스트 태스크를 task breakdown에 포함하지 않음 → 프론트 테스트 0개로 완료됨 (LESSON-013)
+
+**백엔드:**
+- 테스트 프레임워크: pytest + httpx AsyncClient
+- 커버리지 목표:
+- 필수 테스트 범위: (예: 모든 API 엔드포인트 happy path + 주요 에러 케이스)
+
+**프론트엔드:**
+- 테스트 프레임워크: vitest + @testing-library/react
+- 커버리지 목표:
+- 필수 테스트 범위: (예: store action, 핵심 비즈니스 로직 계산 함수)
+- 화이트리스트 추가: `vitest`, `@testing-library/react`, `@testing-library/user-event`, `jsdom`
 
 ## 13. 비기능 요구사항
 - **동시 사용자**:

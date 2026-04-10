@@ -11,7 +11,7 @@ from src.orchestrator.logger import AgentLogger
 from src.orchestrator.runner import AgentRunner, RunResult
 
 
-def _make_config(**overrides: object) -> OrchestratorConfig:
+def _make_config(max_concurrent: int = 2, **overrides: object) -> OrchestratorConfig:
     """테스트용 OrchestratorConfig 생성."""
     base = {
         "provider": "claude-cli",
@@ -31,6 +31,7 @@ def _make_config(**overrides: object) -> OrchestratorConfig:
         frontend_coder=AgentConfig(**agent),
         reviewer=AgentConfig(**agent),
         qa=AgentConfig(**agent),
+        max_concurrent=max_concurrent,
     )
 
 
@@ -105,10 +106,10 @@ class TestRun:
         assert "CLI 실패" in result.error
 
     async def test_semaphore_limits_concurrency(self, tmp_path: Path) -> None:
-        config = _make_config()
+        config = _make_config(max_concurrent=1)
         runner = AgentRunner(
             config=config, project_dir=tmp_path,
-            logger=AgentLogger(tmp_path / "logs"), max_concurrent=1,
+            logger=AgentLogger(tmp_path / "logs"),
         )
 
         call_count = 0
@@ -142,10 +143,10 @@ class TestRun:
 
 class TestRunMany:
     async def test_parallel_execution(self, tmp_path: Path) -> None:
-        config = _make_config()
+        config = _make_config(max_concurrent=2)
         runner = AgentRunner(
             config=config, project_dir=tmp_path,
-            logger=AgentLogger(tmp_path / "logs"), max_concurrent=2,
+            logger=AgentLogger(tmp_path / "logs"),
         )
 
         mock_provider = AsyncMock()
@@ -167,7 +168,7 @@ class TestRunMany:
         config = _make_config()
         runner = AgentRunner(
             config=config, project_dir=tmp_path,
-            logger=AgentLogger(tmp_path / "logs"), max_concurrent=2,
+            logger=AgentLogger(tmp_path / "logs"),
         )
 
         ok_provider = AsyncMock()
@@ -197,7 +198,7 @@ class TestRunMany:
         config = _make_config()
         runner = AgentRunner(
             config=config, project_dir=tmp_path,
-            logger=AgentLogger(tmp_path / "logs"), max_concurrent=2,
+            logger=AgentLogger(tmp_path / "logs"),
         )
 
         fail_provider = AsyncMock()

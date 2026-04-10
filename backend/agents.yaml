@@ -1,6 +1,8 @@
+max_concurrent: 2  # 동시 실행 에이전트 수 제한
+
 architect:
   provider: claude-cli
-  model: opus
+  model: claude-opus-4-6
   prompt_path: agents/architect/CLAUDE.md
   timeout_seconds: 300
   on_timeout: escalate
@@ -9,7 +11,7 @@ architect:
 
 designer:
   provider: claude-cli
-  model: opus
+  model: claude-opus-4-6
   prompt_path: agents/designer/CLAUDE.md
   timeout_seconds: 300
   on_timeout: escalate
@@ -18,16 +20,16 @@ designer:
 
 orchestrator:
   provider: claude-cli
-  model: opus
+  model: claude-opus-4-6
   prompt_path: agents/orchestrator/CLAUDE.md
   timeout_seconds: 180
   on_timeout: retry
   max_retries_on_timeout: 2
-  max_tokens: 4096
+  max_tokens: 8192
 
 backend_coder:
   provider: claude-cli
-  model: sonnet
+  model: claude-sonnet-4-6
   prompt_path: agents/backend_coder/CLAUDE.md
   timeout_seconds: 600
   on_timeout: retry
@@ -36,7 +38,7 @@ backend_coder:
 
 frontend_coder:
   provider: claude-cli
-  model: sonnet
+  model: claude-haiku-4-5-20251001
   prompt_path: agents/frontend_coder/CLAUDE.md
   timeout_seconds: 600
   on_timeout: retry
@@ -45,16 +47,16 @@ frontend_coder:
 
 reviewer:
   provider: claude-cli
-  model: opus
+  model: claude-opus-4-6
   prompt_path: agents/reviewer/CLAUDE.md
   timeout_seconds: 300
   on_timeout: escalate
-  max_retries_on_timeout: 0
+  max_retries_on_timeout: 1
   max_tokens: 8192
 
 qa:
   provider: claude-cli
-  model: opus
+  model: claude-opus-4-6
   prompt_path: agents/qa/CLAUDE.md
   timeout_seconds: 600
   on_timeout: retry

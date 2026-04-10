@@ -13,6 +13,7 @@ from pydantic import BaseModel, model_validator
 class Provider(StrEnum):
     CLAUDE_CLI = "claude-cli"
     GEMINI = "gemini"
+    GEMINI_CLI = "gemini-cli"
     OPENAI = "openai"
     LOCAL = "local"
 
@@ -59,6 +60,7 @@ class OrchestratorConfig(BaseModel):
     frontend_coder: AgentConfig
     reviewer: AgentConfig
     qa: AgentConfig
+    max_concurrent: int = 2  # 동시 실행 에이전트 수 제한
 
     def get_agent(self, name: str) -> AgentConfig:
         """에이전트 이름으로 설정 조회."""
@@ -70,7 +72,8 @@ class OrchestratorConfig(BaseModel):
         """전체 에이전트 설정을 dict로 반환."""
         return {
             field: getattr(self, field)
-            for field in type(self).model_fields
+            for field, info in type(self).model_fields.items()
+            if info.annotation is AgentConfig
         }
 
 

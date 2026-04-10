@@ -1,4 +1,4 @@
-"""Claude CLI provider — subprocess로 Claude CLI 실행."""
+"""Gemini CLI provider — subprocess로 Gemini CLI 실행."""
 
 from __future__ import annotations
 
@@ -12,8 +12,12 @@ from src.orchestrator.config import AgentConfig
 from src.orchestrator.providers.base import BaseProvider
 
 
-class ClaudeCliProvider(BaseProvider):
-    """Claude CLI를 subprocess로 실행하는 provider."""
+class GeminiCliProvider(BaseProvider):
+    """Gemini CLI를 subprocess로 실행하는 provider.
+
+    환경변수 GEMINI_API_KEY가 필요하다.
+    gemini -p <prompt> -m <model> -o text -y
+    """
 
     async def execute(
         self,
@@ -24,58 +28,65 @@ class ClaudeCliProvider(BaseProvider):
         system_prompt: str | None = None,
         working_dir: Path | None = None,
     ) -> str:
-        cmd = self._build_command(config, system_prompt)
+        cmd = self._build_command(config)
+
+        # Gemini CLI는 --system-prompt 플래그가 없음 — 프롬프트 앞에 붙임
+        full_prompt = (
+            f"{system_prompt}\n\n---\n\n{prompt}" if system_prompt else prompt
+        )
+
+        env = {**os.environ}
+        # GEMINI_API_KEY가 환경에 없으면 명시적 경고
+        if "GEMINI_API_KEY" not in env:
+            raise RuntimeError(
+                "GEMINI_API_KEY 환경변수가 설정되어 있지 않습니다."
+            )
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
-            stdin=asyncio.subprocess.PIPE,   # 프롬프트를 stdin으로 전달 — Windows cmd.exe 8191자 제한 우회
+            stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(working_dir) if working_dir else None,
-            # Unix에서 새 프로세스 그룹 생성 — SIGTERM을 트리 전체에 전달하기 위해
+            env=env,
             **({"start_new_session": True} if sys.platform != "win32" else {}),
         )
 
         try:
             stdout, stderr = await asyncio.wait_for(
-                proc.communicate(input=prompt.encode("utf-8")),
+                proc.communicate(input=full_prompt.encode("utf-8")),
                 timeout=config.timeout_seconds,
             )
         except asyncio.TimeoutError:
             await self._kill_process_tree(proc)
             await proc.wait()
-            raise TimeoutError(f"{agent_name} 타임아웃: {config.timeout_seconds}초 초과")
+            raise TimeoutError(
+                f"{agent_name} 타임아웃: {config.timeout_seconds}초 초과"
+            )
 
         if proc.returncode != 0:
             error_msg = stderr.decode("utf-8", errors="replace").strip()
             raise RuntimeError(
-                f"{agent_name} CLI 실행 실패 (exit {proc.returncode}): {error_msg}"
+                f"{agent_name} Gemini CLI 실행 실패 (exit {proc.returncode}): {error_msg}"
             )
 
         return stdout.decode("utf-8", errors="replace").strip()
 
-    def _build_command(
-        self,
-        config: AgentConfig,
-        system_prompt: str | None,
-    ) -> list[str]:
-        """Claude CLI 명령어 구성.
+    def _build_command(self, config: AgentConfig) -> list[str]:
+        """Gemini CLI 명령어 구성.
 
-        프롬프트는 stdin으로 전달 — Windows .cmd 래퍼가 cmd.exe를 거칠 때 발생하는
-        8191자 커맨드라인 제한을 우회한다. -p (print mode) + stdin 조합.
+        프롬프트는 stdin으로 전달 (-p 플래그 없이 stdin만 사용).
+        -y: 모든 tool 승인 자동화 (비대화형 실행에 필수)
+        -o text: ANSI 이스케이프 없는 순수 텍스트 출력
         """
-        # Windows에서 npm CLI는 .cmd 래퍼로 설치됨 — create_subprocess_exec은 .cmd 직접 실행 불가
-        cli = "claude.cmd" if sys.platform == "win32" else "claude"
-        cmd = [
+        cli = "gemini.cmd" if sys.platform == "win32" else "gemini"
+        return [
             cli,
-            "-p",                           # non-interactive print 모드, stdin에서 prompt 읽음
-            "--model", config.model,
+            "-p", "",       # 비대화형 모드 활성화 (실제 프롬프트는 stdin)
+            "-m", config.model,
+            "-o", "text",   # 순수 텍스트 출력
+            "-y",           # 모든 tool 자동 승인
         ]
-
-        if system_prompt:
-            cmd.extend(["--system-prompt", system_prompt])
-
-        return cmd
 
     async def _kill_process_tree(self, proc: asyncio.subprocess.Process) -> None:
         """프로세스와 자식 프로세스 트리를 종료."""
@@ -84,7 +95,6 @@ class ClaudeCliProvider(BaseProvider):
             return
         try:
             if sys.platform == "win32":
-                # Windows: taskkill로 프로세스 트리 전체 강제 종료
                 kill_proc = await asyncio.create_subprocess_exec(
                     "taskkill", "/T", "/F", "/PID", str(pid),
                     stdout=asyncio.subprocess.DEVNULL,
@@ -92,7 +102,6 @@ class ClaudeCliProvider(BaseProvider):
                 )
                 await kill_proc.wait()
             else:
-                # Unix: 새 세션 그룹 전체에 SIGTERM 전달
                 os.killpg(os.getpgid(pid), signal.SIGTERM)
         except (ProcessLookupError, OSError):
             pass

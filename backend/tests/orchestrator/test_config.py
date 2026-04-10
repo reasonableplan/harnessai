@@ -136,6 +136,6 @@ class TestLoadAgentsConfig:
             pytest.skip("agents.yaml 없음")
 
         cfg = load_agents_config(real_path)
-        assert cfg.architect.model == "opus"
-        assert cfg.backend_coder.model == "sonnet"
+        assert cfg.architect.model == "claude-opus-4-6"
+        assert cfg.backend_coder.model == "claude-sonnet-4-6"
         assert cfg.orchestrator.on_timeout == OnTimeout.RETRY

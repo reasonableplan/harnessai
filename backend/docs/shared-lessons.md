@@ -111,3 +111,130 @@ const projectId = paramId ? Number(paramId) : storeId
 
 **규칙**: 모든 에러 응답은 `{"error": "...", "code": "ERROR_CODE", "details": {}}` 형식 통일.
 `init_exception_handlers(app)`으로 전역 등록.
+
+---
+
+## LESSON-011: Tailwind v4 — @layer 밖의 CSS가 유틸리티를 덮어씀
+
+**문제**: `tokens.css`에 `* { margin: 0 }` 같은 리셋을 `@layer` 밖에 두면,
+Tailwind v4의 `@layer utilities` 클래스보다 cascade 우선순위가 높아짐.
+`mx-auto`, `px-4` 등 마진/패딩 유틸리티가 무시됨 → 레이아웃 깨짐.
+
+**규칙**: `@import "tailwindcss"` 이후 커스텀 CSS 리셋/베이스 스타일은 반드시 `@layer base {}` 안에 작성.
+
+```css
+/* ✅ */
+@import "tailwindcss";
+@layer base {
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg-base); }
+}
+
+/* ❌ @layer 밖 — mx-auto 등 유틸리티 무력화 */
+@import "tailwindcss";
+* { margin: 0; padding: 0; }
+```
+
+---
+
+## LESSON-012: 백엔드 서버 실행 명령어 미명시
+
+**문제**: `main.py`에 `if __name__ == "__main__"` 블록이 없으면 `python -m main`이 안 됨.
+skeleton에 실행 명령을 명시하지 않으면 개발자가 명령을 직접 찾아야 함.
+
+**규칙**: skeleton 및 README에 서버 실행 명령어 반드시 명시. Backend Coder는 `main.py`에 uvicorn 블록 추가.
+
+```python
+# ✅ main.py 하단에 필수 추가
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+```
+
+---
+
+## LESSON-013: 프론트엔드 테스트 전략 사전 미정의
+
+**문제**: task breakdown에 프론트엔드 테스트 태스크가 없었고 화이트리스트에 vitest가 없었음.
+프론트엔드 테스트 0개로 완료 → 시각적 회귀 및 로직 버그 자동 감지 불가.
+
+**규칙**: skeleton 섹션 11(테스트)에서 프론트엔드 테스트 전략 명시 필수.
+- 화이트리스트에 `vitest`, `@testing-library/react` 포함
+- 핵심 비즈니스 로직(계산, 상태 전이)은 단위 테스트 필수
+- Orchestrator는 프론트엔드 테스트 태스크를 task breakdown에 포함
+
+---
+
+## LESSON-015: React Native — 비동기 재시작 루프에 동시 진입 방지 플래그 필수
+
+**문제**: STT 세션 재시작 같은 루프에서 타이머와 에러 이벤트가 동시에 트리거되면
+`_restartSession()`이 중복 진입 → 고아 프로세스 생성.
+
+**규칙**: 재진입 가능한 비동기 루프에는 반드시 모듈 레벨 boolean 플래그로 가드.
+
+```typescript
+let _isRestarting = false
+
+async function _restartSession(): Promise<void> {
+  if (_isRestarting) return   // ← 이중 진입 방지
+  _isRestarting = true
+  try {
+    await stopStt()
+    // stopAudio가 호출됐으면 bail out
+    const { status } = store.getState()
+    if (status === 'idle' || status === 'failed') return
+    await startStt()
+  } finally {
+    _isRestarting = false    // ← 반드시 finally에서 해제
+  }
+}
+```
+
+---
+
+## LESSON-016: React Native — await 후 stale reference 가드
+
+**문제**: `await` 이후 store 상태가 바뀌어 있을 수 있음.
+`await Promise.allSettled([speakerId, saveClip])` 후 다른 게임의 detection이 추가되는 버그.
+
+**규칙**: await 이후 참조하는 객체가 "내가 시작할 때의 그것"인지 반드시 재확인.
+
+```typescript
+const { currentGame } = store.getState()  // await 전 snapshot
+const [speakerResult, clipResult] = await Promise.allSettled([...])
+
+// await 후 — 게임이 바뀌었을 수 있음
+const { currentGame: gameAfterAwait } = store.getState()
+if (!gameAfterAwait || gameAfterAwait.id !== currentGame.id) return  // ← 폐기
+```
+
+---
+
+## LESSON-017: React Native — float 비교 대신 반올림 정수 비교
+
+**문제**: `similarity=0.845`를 `Math.round(0.845 * 100) = 85`로 변환 후
+`0.845 >= 0.85` 비교 → false. UI에는 confidence=85 표시되는데 confirmedBy=null.
+
+**규칙**: float 임계값 비교는 표시값과 같은 단위(정수)로 변환 후 비교.
+
+```typescript
+const confidence = Math.round(similarity * 100)  // 85
+
+// ❌ float 비교 — 표시값과 불일치 가능
+confirmedBy: similarity >= AUTO_CONFIRM_THRESHOLD ? 'auto' : null
+
+// ✅ 정수 비교 — confidence 표시값과 항상 일치
+confirmedBy: confidence >= Math.round(AUTO_CONFIRM_THRESHOLD * 100) ? 'auto' : null
+```
+
+---
+
+## LESSON-014: Designer가 디자인 시스템 소스를 직접 정의하면 품질 미보장
+
+**문제**: Designer가 색상/간격을 처음부터 직접 정의하면 검증된 시각적 품질 보장 불가.
+"기능은 되지만 디자인은 밋밋한" 수준에 머무름.
+
+**규칙**: skeleton 섹션 8 디자인 가이드에 디자인 시스템 소스를 반드시 명시.
+- `shadcn/ui 기본 테마 사용` (권장 — 접근성 검증됨)
+- 커스텀 시: Mobbin/Dribbble 레퍼런스 URL 첨부 필수
+- Designer가 색상을 직접 정의하는 경우 Reviewer가 레퍼런스 없으면 reject

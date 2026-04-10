@@ -253,6 +253,58 @@ def parse_phases(output: str) -> list[list[TaskItem]]:
 
 
 # ---------------------------------------------------------------------------
+# QA 리포트 파싱
+# ---------------------------------------------------------------------------
+
+_QA_HEALTH_SCORE = re.compile(
+    r"###\s+Health\s+Score\s*:\s*(\d+)\s*/\s*10",
+    re.IGNORECASE,
+)
+_QA_ISSUE_BLOCK = re.compile(
+    r"###\s+발견된\s*이슈.*?\n(.*?)(?=###|\Z)",
+    re.DOTALL | re.IGNORECASE,
+)
+
+# QA 통과 기준 — health score 이 값 이상이면 통과
+QA_PASS_THRESHOLD = 7
+
+
+@dataclass
+class QaResult:
+    """QA 에이전트 리포트 결과."""
+
+    health_score: int  # 0-10
+    passed: bool       # health_score >= QA_PASS_THRESHOLD
+    issues: list[str] = field(default_factory=list)
+    raw: str = ""
+
+
+def parse_qa_report(output: str) -> QaResult | None:
+    """QA 에이전트 리포트 출력을 파싱한다.
+
+    Returns:
+        QaResult, 또는 Health Score 헤딩을 찾을 수 없으면 None.
+    """
+    score_match = _QA_HEALTH_SCORE.search(output)
+    if not score_match:
+        return None
+
+    health_score = int(score_match.group(1))
+
+    issues: list[str] = []
+    issue_match = _QA_ISSUE_BLOCK.search(output)
+    if issue_match:
+        issues = _NUMBERED_LINE.findall(issue_match.group(1))
+
+    return QaResult(
+        health_score=health_score,
+        passed=health_score >= QA_PASS_THRESHOLD,
+        issues=issues,
+        raw=output,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Skeleton 섹션 파싱
 # ---------------------------------------------------------------------------
 

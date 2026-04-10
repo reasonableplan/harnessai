@@ -14,12 +14,14 @@ from src.orchestrator.context import extract_section, fill_skeleton_template
 from src.orchestrator.logger import AgentLogger
 from src.orchestrator.output_parser import (
     PhaseReviewResult,
+    QaResult,
     ReviewVerdict,
     TaskItem,
     extract_filled_sections,
     parse_phase_review,
     parse_phases,
     parse_pr_review,
+    parse_qa_report,
 )
 from src.orchestrator.phase import InvalidTransitionError, Phase, PhaseManager
 from src.orchestrator.pipeline import ValidationPipeline, ValidationResult
@@ -60,8 +62,8 @@ class Orchestra:
     runner: AgentRunner = field(init=False)
     pipeline: ValidationPipeline = field(init=False)
     agent_logger: AgentLogger = field(init=False)
-    # implement_with_retry 직렬화 Lock — 동시 Phase 전이 오염 방지
-    _impl_lock: asyncio.Lock = field(init=False)
+    # implement_with_retry per-task Lock — task_id별 직렬화, 병렬 태스크 간 간섭 방지
+    _task_locks: dict[str, asyncio.Lock] = field(init=False)
 
     def __post_init__(self) -> None:
         self.project_dir = Path(self.project_dir).resolve()
@@ -75,7 +77,13 @@ class Orchestra:
             logger=self.agent_logger,
         )
         self.pipeline = ValidationPipeline(self.project_dir)
-        self._impl_lock = asyncio.Lock()
+        self._task_locks: dict[str, asyncio.Lock] = {}
+
+    def _get_task_lock(self, task_id: str) -> asyncio.Lock:
+        """task_id별 Lock을 반환한다. 없으면 새로 생성."""
+        if task_id not in self._task_locks:
+            self._task_locks[task_id] = asyncio.Lock()
+        return self._task_locks[task_id]
 
     @classmethod
     def from_project_dir(cls, project_dir: str | Path) -> Orchestra:
@@ -213,7 +221,12 @@ class Orchestra:
             {"security": SecurityResult, "pipeline": ValidationResult, "reviewer": RunResult, "passed": bool}
             security BLOCK 또는 pipeline 실패 또는 reviewer reject → IMPLEMENTING으로 전이
         """
-        self.phase_manager.transition(Phase.VERIFYING)
+        if self.phase_manager.current_phase != Phase.VERIFYING:
+            try:
+                self.phase_manager.transition(Phase.VERIFYING)
+            except InvalidTransitionError:
+                # 병렬 태스크에서 다른 태스크가 이미 VERIFYING으로 전이한 경우 — 무시
+                logger.debug("VERIFYING 전이 생략 — 현재 Phase: %s", self.phase_manager.current_phase)
 
         # 1. 보안 훅 — 에이전트 출력 코드 분석
         task_result = self.state.load_task_result(task_id)
@@ -312,11 +325,9 @@ class Orchestra:
         last_verify: dict[str, Any] = {}
         original_prompt = prompt  # 원본 보존 — 재시도마다 중첩 방지
 
-        # _impl_lock: Phase 전이 직렬화 — 동시 WS/REST 명령이 implement→verify 사이클을
-        # 겹쳐서 실행하면 PhaseManager 상태가 오염됨. Lock은 단일 사이클이 완료될 때까지
-        # 다음 사이클을 블록함. max_retries × LLM timeout 시 수 분 홀딩 가능.
-        # 여러 태스크 동시 실행 필요 시 per-task-id Lock으로 교체 권장 (TODOS.md).
-        async with self._impl_lock:
+        # per-task-id Lock: 동일 태스크의 재시도 사이클을 직렬화.
+        # 서로 다른 task_id는 병렬 실행 가능 — PhaseManager 전이는 각자 best-effort.
+        async with self._get_task_lock(task_id):
             for attempt in range(1, max_retries + 1):
                 impl_result = await self.implement(task_id, agent, prompt)
                 verify_result = await self.verify(
@@ -416,6 +427,61 @@ class Orchestra:
             logger.warning("Phase %d 리뷰 결과 파싱 실패.", phase_num)
         return parsed
 
+    async def qa_phase(
+        self,
+        phase_num: int,
+        task_ids: list[str],
+    ) -> QaResult | None:
+        """Phase QA — 구현 코드의 API 계약·상태 흐름·문서 일치를 검증한다.
+
+        review_phase() APPROVE 이후에 호출한다. QA 에이전트는 기능 코드를 수정하지 않고
+        테스트만 작성하며, health score(0-10)와 이슈 목록을 반환한다.
+
+        Args:
+            phase_num: Phase 번호
+            task_ids: 해당 Phase에 속한 태스크 ID 목록
+
+        Returns:
+            QaResult. 파싱 실패 시 None (통과로 처리).
+        """
+        task_summaries: list[str] = []
+        for tid in task_ids:
+            result = self.state.load_task_result(tid)
+            if result:
+                output = result.get("output", "")[:500]
+                task_summaries.append(f"[{tid}]\n{output}")
+
+        skeleton_path = self.project_dir / "docs" / "skeleton.md"
+        skeleton_text = (
+            skeleton_path.read_text(encoding="utf-8") if skeleton_path.exists() else ""
+        )
+
+        qa_prompt = (
+            f"Phase {phase_num} QA를 수행하세요.\n\n"
+            f"<skeleton>\n{skeleton_text}\n</skeleton>\n\n"
+            f"<phase_tasks>\n" +
+            "\n\n".join(task_summaries) +
+            f"\n</phase_tasks>\n\n"
+            f"QA Report 형식으로 결과를 출력하세요."
+        )
+
+        qa_result = await self.runner.run("qa", qa_prompt)
+        self._log_result("qa", qa_result)
+        self.state.save_task_result(
+            f"qa_{phase_num}",
+            self._result_to_dict(qa_result),
+        )
+
+        parsed = parse_qa_report(qa_result.output)
+        if parsed is None:
+            logger.warning("Phase %d QA 리포트 파싱 실패 — 통과 처리.", phase_num)
+        else:
+            logger.info(
+                "Phase %d QA — health_score=%d/10 passed=%s issues=%d",
+                phase_num, parsed.health_score, parsed.passed, len(parsed.issues),
+            )
+        return parsed
+
     async def run_breakdown(
         self,
         requirements: str,
@@ -483,48 +549,67 @@ class Orchestra:
                 "phase_num": phase_num,
                 "tasks": {},
                 "review": None,
+                "qa": None,
                 "passed": False,
             }
             # Phase 재시도 시 이미 통과한 태스크는 재실행하지 않음
             passed_task_ids: set[str] = set()
 
             for phase_attempt in range(1, max_phase_retries + 1):
-                task_ids: list[str] = []
-                for task in phase_tasks:
-                    task_id: str = task.id
-                    agent: str = task.agent
-                    task_prompt: str = task.description
-                    is_frontend: bool = (agent == "frontend_coder")
-                    # TODO: TaskItem에 ref_files 필드 추가 시 여기서 참조 파일 주입
-                    task_ids.append(task_id)
+                task_ids: list[str] = [t.id for t in phase_tasks]
+                pending = [t for t in phase_tasks if t.id not in passed_task_ids]
 
-                    if task_id in passed_task_ids:
-                        logger.debug("태스크 %s 이미 통과 — 재실행 생략", task_id)
-                        continue
+                if not pending:
+                    logger.debug("Phase %d — 모든 태스크 이미 통과", phase_num)
+                else:
+                    async def _run_task(task: TaskItem) -> tuple[str, dict[str, Any]]:
+                        tid = task.id
+                        is_frontend: bool = task.agent == "frontend_coder"
+                        try:
+                            result = await self.implement_with_retry(
+                                tid,
+                                task.agent,
+                                task.description,
+                                max_retries=max_task_retries,
+                                is_frontend=is_frontend,
+                                allowed_endpoints=allowed_endpoints,
+                            )
+                        except Exception as exc:
+                            logger.error("태스크 %s 실행 중 예외: %s", tid, exc)
+                            result = {"output": "", "error": str(exc), "passed": False}
+                        return tid, result
 
-                    try:
-                        task_result = await self.implement_with_retry(
-                            task_id,
-                            agent,
-                            task_prompt,
-                            max_retries=max_task_retries,
-                            is_frontend=is_frontend,
-                            allowed_endpoints=allowed_endpoints,
-                        )
-                    except Exception as e:
-                        logger.error("태스크 %s 실행 중 예외: %s", task_id, e)
-                        task_result = {"output": "", "error": str(e), "passed": False}
-                    phase_result["tasks"][task_id] = task_result
-                    if task_result.get("passed", False):
-                        passed_task_ids.add(task_id)
+                    batch = await asyncio.gather(
+                        *[_run_task(t) for t in pending],
+                        return_exceptions=True,
+                    )
+                    for item in batch:
+                        if isinstance(item, BaseException):
+                            logger.error("병렬 태스크 예외 (gather): %s", item)
+                            continue
+                        tid, task_result = item
+                        phase_result["tasks"][tid] = task_result
+                        if task_result.get("passed", False):
+                            passed_task_ids.add(tid)
 
                 review = await self.review_phase(phase_num, task_ids)
                 phase_result["review"] = review
 
                 if review is not None and review.verdict == ReviewVerdict.APPROVE:
-                    phase_result["passed"] = True
-                    logger.info("Phase %d APPROVE (시도 %d/%d)", phase_num, phase_attempt, max_phase_retries)
-                    break
+                    # Reviewer APPROVE → QA 검증 (API 계약·상태 흐름·문서 일치)
+                    qa = await self.qa_phase(phase_num, task_ids)
+                    phase_result["qa"] = qa
+                    qa_passed = qa is None or qa.passed  # 파싱 실패 시 통과 처리
+                    if qa_passed:
+                        phase_result["passed"] = True
+                        logger.info("Phase %d APPROVE + QA PASS (시도 %d/%d)", phase_num, phase_attempt, max_phase_retries)
+                        break
+                    logger.warning(
+                        "Phase %d QA FAIL — health_score=%d/10 issues=%s",
+                        phase_num,
+                        qa.health_score if qa else 0,
+                        [i[:80] for i in (qa.issues if qa else [])],
+                    )
 
                 if phase_attempt < max_phase_retries:
                     logger.warning("Phase %d REJECT — 재시도 %d/%d", phase_num, phase_attempt, max_phase_retries)

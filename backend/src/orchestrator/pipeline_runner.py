@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import os
 import sys
@@ -9,6 +10,7 @@ from pathlib import Path
 
 from src.orchestrator.orchestrate import Orchestra
 from src.orchestrator.phase import Phase
+from src.orchestrator.runner import RunResult
 
 # ---------------------------------------------------------------------------
 # 게이트별 리뷰 에이전트 프롬프트
@@ -91,6 +93,7 @@ async def run(
     requirements: str,
     project_dir: Path,
     *,
+    from_skeleton: bool = False,
     max_task_retries: int = 3,
     max_phase_retries: int = 2,
 ) -> bool:
@@ -108,6 +111,83 @@ async def run(
         True: 전체 파이프라인 성공, False: 중단 또는 실패
     """
     orchestra = Orchestra(project_dir=project_dir)
+    # 이전 실행 잔여 state 초기화 — 항상 PLANNING에서 시작
+    orchestra.state.save(Phase.PLANNING)
+    orchestra.phase_manager._current = Phase.PLANNING
+
+    # ── FROM SKELETON 모드: 설계 단계 건너뜀 ────────────────────────────────
+    if from_skeleton:
+        skeleton_path = project_dir / "docs" / "skeleton.md"
+        if not skeleton_path.exists():
+            print(f"\n❌ skeleton.md를 찾을 수 없습니다: {skeleton_path}")
+            print("   /office-hours 등으로 skeleton.md를 먼저 작성하세요.")
+            return False
+
+        skeleton_text = skeleton_path.read_text(encoding="utf-8")
+        _hr("FROM SKELETON 모드 — 설계 단계 건너뜀")
+        print(f"✅ skeleton.md 로드: {skeleton_path}")
+        print(f"   ({len(skeleton_text)}자)")
+
+        # skeleton 내용을 architect/designer 출력으로 사용
+        mock_result = RunResult(
+            agent="skeleton",
+            output=skeleton_text,
+            success=True,
+            duration_ms=0,
+            attempts=1,
+        )
+        design_results: dict[str, RunResult] = {
+            "architect": mock_result,
+            "designer": mock_result,
+        }
+
+        approved = await _ask_approval("skeleton.md를 확인했습니다. 태스크 분해를 시작할까요?")
+        if not approved:
+            print("\n파이프라인 중단.")
+            return False
+
+        # PHASE 2로 바로 이동
+        _hr("PHASE 2 — 태스크 분해")
+        print("Orchestrator 에이전트가 태스크를 분해 중입니다...\n")
+
+        phases, breakdown_dict = await orchestra.run_breakdown(requirements, design_results)
+
+        if not phases:
+            print("\n❌ 태스크 분해 실패 — Orchestrator 출력을 확인하세요.")
+            print(breakdown_dict.get("output", "출력 없음"))
+            return False
+
+        total_tasks = sum(len(p) for p in phases)
+        print(f"\n✅ {len(phases)}개 Phase, {total_tasks}개 태스크 분해 완료")
+        for i, phase_tasks in enumerate(phases, start=1):
+            print(f"  Phase {i}: {len(phase_tasks)}개 태스크 "
+                  f"({', '.join(t.id for t in phase_tasks)})")
+
+        approved = await _ask_approval("태스크 분해 결과를 확인했습니다. 구현을 시작할까요?")
+        if not approved:
+            print("\n파이프라인 중단.")
+            return False
+
+        _hr("PHASE 3 — 구현")
+        print("구현을 시작합니다...\n")
+
+        phase_results = await orchestra.run_phases(
+            phases,
+            max_task_retries=max_task_retries,
+            max_phase_retries=max_phase_retries,
+        )
+
+        if phase_results["success"]:
+            orchestra.phase_manager.transition(Phase.DEPLOYING)
+            orchestra.phase_manager.transition(Phase.DONE)
+            _hr("✅ 전체 파이프라인 완료")
+            print(f"  성공한 Phase: {len(phase_results['phases'])}개")
+            return True
+
+        failed = [r for r in phase_results["phases"] if not r["passed"]]
+        _hr("❌ 파이프라인 실패")
+        print(f"  실패한 Phase: {[r['phase_num'] for r in failed]}")
+        return False
 
     # ── GATE 1: 요구사항 검토 ─────────────────────────────────────────────────
     _hr("GATE 1 — 요구사항 검토")
@@ -148,8 +228,6 @@ async def run(
     print(f"\n✅ skeleton.md 생성 완료: {skeleton_path}")
 
     # ── GATE 2: 엔지니어링 리뷰 ──────────────────────────────────────────────
-    # TODO: architect가 자신의 설계를 리뷰하는 self-review 구조.
-    #       독립적 리뷰를 위해 별도 reviewer 에이전트 역할 분리 권장.
     _hr("GATE 2 — 엔지니어링 리뷰")
     print("skeleton 설계를 리뷰 중입니다...\n")
 
@@ -157,7 +235,7 @@ async def run(
         skeleton_path.read_text(encoding="utf-8") if skeleton_path.exists() else ""
     )
     eng_result = await orchestra.runner.run(
-        "architect",
+        "reviewer",
         _ENGINEERING_REVIEW_PROMPT.format(skeleton=skeleton_text),
     )
     print(eng_result.output)
@@ -217,8 +295,29 @@ async def run(
 
 def main() -> None:
     """CLI 진입점 — 요구사항을 stdin 또는 인자로 받는다."""
-    if len(sys.argv) > 1:
-        requirements = " ".join(sys.argv[1:])
+    sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]  # Windows cp949 대비
+
+    parser = argparse.ArgumentParser(description="오케스트라 파이프라인 러너")
+    parser.add_argument(
+        "requirements",
+        nargs="*",
+        help="요구사항 텍스트 (생략 시 stdin에서 읽음)",
+    )
+    parser.add_argument(
+        "--from-skeleton",
+        action="store_true",
+        help="skeleton.md가 이미 있으면 설계 단계를 건너뛰고 구현부터 시작",
+    )
+    parser.add_argument(
+        "--project-dir",
+        type=Path,
+        default=None,
+        help="프로젝트 루트 디렉토리 (기본: PROJECT_DIR 환경변수 또는 backend/)",
+    )
+    args = parser.parse_args()
+
+    if args.requirements:
+        requirements = " ".join(args.requirements)
     else:
         print("요구사항을 입력하세요 (여러 줄 가능, 빈 줄로 종료):")
         lines: list[str] = []
@@ -236,8 +335,14 @@ def main() -> None:
         print("요구사항이 비어 있습니다.")
         sys.exit(1)
 
-    project_dir = Path(os.environ.get("PROJECT_DIR", Path(__file__).parents[3]))
-    success = asyncio.run(run(requirements, project_dir))
+    project_dir: Path = (
+        args.project_dir
+        or Path(os.environ.get("PROJECT_DIR", ""))
+        or Path(__file__).parents[2]
+    )
+    success = asyncio.run(
+        run(requirements, project_dir, from_skeleton=args.from_skeleton)
+    )
     sys.exit(0 if success else 1)
 
 

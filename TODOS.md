@@ -1,4 +1,4 @@
-# TODOS — Agent Orchestrator
+# TODOS — HarnessAI
 
 향후 개선 항목. 현재 스코프 밖이지만 기록해둠.
 
@@ -17,19 +17,22 @@
   - `AgentRunner.run_many()`가 이미 구현되어 있음
   - `run_phases()` 에서 위상 정렬(topological sort) 후 독립 태스크 병렬 실행
   - 예: `[T-001(backend), T-002(backend), T-003(frontend)]`에서 T-002, T-003이 T-001에만 의존 → T-001 완료 후 T-002+T-003 동시 실행
-  - **주의**: 세마포어 `max_concurrent=2` 도 함께 설정화 필요 (`agents.yaml` 또는 env)
 
 ## 에이전트
 
-- [ ] **self-review 구조 개선**
-  - `pipeline_runner.py` GATE 2에서 architect가 자신의 설계를 리뷰 중 (self-review)
-  - 독립적 리뷰를 위해 별도 `reviewer` 에이전트 역할 분리 권장
-  - 파일: `backend/src/orchestrator/pipeline_runner.py:142`
+- [x] **self-review 구조 개선** ✅ 완료
+  - GATE 1 엔지니어링 리뷰를 architect(self-review) → reviewer 에이전트로 교체
+  - 파일: `backend/src/orchestrator/pipeline_runner.py`
+
+- [x] **QA 에이전트 파이프라인 연결** ✅ 완료
+  - Reviewer APPROVE 이후 `qa_phase()` 자동 실행
+  - API 계약·상태흐름·타입 대조, health score 0-10 산출
+  - health score < 7이면 Phase 재시도
+  - 파일: `backend/src/orchestrator/orchestrate.py`, `output_parser.py`
 
 - [ ] **TaskItem.ref_files 필드**
   - 태스크별 참조 파일 목록을 프롬프트에 주입하는 기능
-  - `orchestrate.py:run_phases()` 내 TODO 주석 참조
-  - 파일: `backend/src/orchestrator/orchestrate.py:494`
+  - 파일: `backend/src/orchestrator/orchestrate.py`
 
 ## 동시성
 
@@ -47,14 +50,14 @@
   - `implement_with_retry()` 재시도 비용 절감
   - **주의**: 캐시 무효화 전략 필요 (프롬프트 해시 기반)
 
-- [ ] **max_concurrent 설정화**
-  - `runner.py:AgentRunner.max_concurrent=2` 하드코딩
-  - `agents.yaml` 또는 환경변수로 이동
+- [x] **max_concurrent 설정화** ✅ 완료
+  - `agents.yaml`의 `max_concurrent` 필드로 이동
+  - 기본값 2, 환경에 따라 조정 가능
 
-## CEO 리뷰 플랜 스코프 (구현 예정)
+## 기능 확장
 
-- [ ] QA 에이전트 파이프라인 연결 (`run_qa()`)
-- [ ] 대시보드 ↔ 오케스트레이터 실시간 연결 (EventMapper 주입)
-- [ ] GitHub 연동 (branch/commit/PR 자동 생성)
-- [ ] Pipeline 재개 (state.json 기반 resume)
-- [ ] --dry-run 모드 (DryRunProvider)
+- [ ] **대시보드 ↔ 오케스트레이터 실시간 연결** (EventMapper 주입)
+- [ ] **GitHub 연동** (branch/commit/PR 자동 생성)
+- [ ] **Pipeline 재개** (state.json 기반 resume)
+- [ ] **--dry-run 모드** (DryRunProvider — LLM 호출 없이 파이프라인 구조 검증)
+- [ ] **Claude API (HTTP) provider** — CLI subprocess 없이 직접 REST API 호출, 토큰 비용 추적

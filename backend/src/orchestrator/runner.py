@@ -12,6 +12,8 @@ from src.orchestrator.context import build_context
 from src.orchestrator.logger import AgentLogger
 from src.orchestrator.providers.base import BaseProvider
 from src.orchestrator.providers.claude_cli import ClaudeCliProvider
+from src.orchestrator.providers.gemini_api import GeminiApiProvider
+from src.orchestrator.providers.gemini_cli import GeminiCliProvider
 
 
 @dataclass
@@ -31,7 +33,10 @@ def _create_provider(config: AgentConfig) -> BaseProvider:
     """에이전트 설정에 맞는 provider 인스턴스를 생성."""
     if config.provider == Provider.CLAUDE_CLI:
         return ClaudeCliProvider()
-    # 향후: Provider.GEMINI, Provider.OPENAI, Provider.LOCAL
+    if config.provider == Provider.GEMINI:
+        return GeminiApiProvider()
+    if config.provider == Provider.GEMINI_CLI:
+        return GeminiCliProvider()
     raise NotImplementedError(f"provider '{config.provider}'는 아직 지원하지 않습니다.")
 
 
@@ -48,11 +53,9 @@ class AgentRunner:
     config: OrchestratorConfig
     project_dir: str | Path = "."
     logger: AgentLogger = field(default_factory=AgentLogger)
-    max_concurrent: int = 2  # Reviewer 병렬 처리 최대 2개 (skeleton 15번 규칙)
-
     def __post_init__(self) -> None:
         self.project_dir = Path(self.project_dir).resolve()
-        self._semaphore = asyncio.Semaphore(self.max_concurrent)
+        self._semaphore = asyncio.Semaphore(self.config.max_concurrent)
         self._providers: dict[str, BaseProvider] = {}
 
     def _get_provider(self, agent: str) -> BaseProvider:
