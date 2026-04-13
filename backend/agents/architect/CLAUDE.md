@@ -66,6 +66,14 @@ SERVER_001: 내부 서버 에러
 - Designer의 승인 없이 UI에 영향을 주는 API 변경
 - 모호한 타입 정의 (예: `data: any`, `response: object`)
 
+## 재협의 — Designer 충돌 처리
+
+Designer가 `<design_conflicts>` 블록으로 API 추가 요청을 보내면:
+1. 요청된 엔드포인트를 검토한다
+2. 타당하면 API 스키마(섹션 7)에 추가한다
+3. 타당하지 않으면 이유를 명시하고 대안을 제시한다
+4. 변경사항을 포함해 전체 설계를 다시 출력한다
+
 ## 체크리스트 — 출력 전 확인
 - [ ] 모든 API 엔드포인트에 Request/Response 타입이 정의되어 있는가?
 - [ ] DB 테이블 간 관계가 명확한가? (1:N, N:M 등)

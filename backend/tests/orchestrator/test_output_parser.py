@@ -3,12 +3,15 @@
 import pytest
 
 from src.orchestrator.output_parser import (
+    DesignNegotiationResult,
+    DesignVerdict,
     PhaseReviewResult,
     PRReviewResult,
     ReviewVerdict,
     SkeletonSection,
     TaskItem,
     extract_filled_sections,
+    parse_design_verdict,
     parse_phase_review,
     parse_phases,
     parse_pr_review,
@@ -395,3 +398,58 @@ class TestParsePhases:
 """
         phases = parse_phases(output)
         assert len(phases) == 1
+
+
+# ---------------------------------------------------------------------------
+# 설계 협의 파싱
+# ---------------------------------------------------------------------------
+
+
+class TestParseDesignVerdict:
+    def test_accept_verdict(self) -> None:
+        output = "UI 설계 내용...\n\n## Design Verdict: ACCEPT\n"
+        result = parse_design_verdict(output)
+        assert result is not None
+        assert result.verdict == DesignVerdict.ACCEPT
+        assert result.api_requests == []
+
+    def test_conflict_verdict_with_requests(self) -> None:
+        output = """\
+UI 설계 내용...
+
+## Design Verdict: CONFLICT
+
+### API 요청사항
+1. POST /api/notifications — 알림 전송 엔드포인트 필요
+2. GET /api/users/{id}/avatar — 프로필 이미지 필요
+"""
+        result = parse_design_verdict(output)
+        assert result is not None
+        assert result.verdict == DesignVerdict.CONFLICT
+        assert len(result.api_requests) == 2
+        assert "notifications" in result.api_requests[0]
+        assert "avatar" in result.api_requests[1]
+
+    def test_conflict_verdict_no_requests(self) -> None:
+        output = "## Design Verdict: CONFLICT\n"
+        result = parse_design_verdict(output)
+        assert result is not None
+        assert result.verdict == DesignVerdict.CONFLICT
+        assert result.api_requests == []
+
+    def test_no_verdict_marker_returns_none(self) -> None:
+        output = "UI 설계 내용만 있고 verdict 마커 없음"
+        result = parse_design_verdict(output)
+        assert result is None
+
+    def test_case_insensitive_verdict(self) -> None:
+        output = "## Design Verdict: accept\n"
+        result = parse_design_verdict(output)
+        assert result is not None
+        assert result.verdict == DesignVerdict.ACCEPT
+
+    def test_raw_preserved(self) -> None:
+        output = "## Design Verdict: ACCEPT\n"
+        result = parse_design_verdict(output)
+        assert result is not None
+        assert result.raw == output

@@ -13,11 +13,13 @@ from src.orchestrator.config import OrchestratorConfig, load_agents_config
 from src.orchestrator.context import extract_section, fill_skeleton_template
 from src.orchestrator.logger import AgentLogger
 from src.orchestrator.output_parser import (
+    DesignVerdict,
     PhaseReviewResult,
     QaResult,
     ReviewVerdict,
     TaskItem,
     extract_filled_sections,
+    parse_design_verdict,
     parse_phase_review,
     parse_phases,
     parse_pr_review,
@@ -90,40 +92,81 @@ class Orchestra:
         """팩토리 메서드 — project_dir로 Orchestra 인스턴스 생성."""
         return cls(project_dir=Path(project_dir))
 
-    async def design(self, requirements: str) -> dict[str, RunResult]:
-        """설계 Phase — Architect → Designer 순서로 실행.
+    async def design(
+        self,
+        requirements: str,
+        max_negotiation_rounds: int = 3,
+    ) -> dict[str, RunResult]:
+        """설계 Phase — Architect ↔ Designer 협의 루프 (최대 max_negotiation_rounds회).
+
+        Designer가 ``## Design Verdict: CONFLICT``를 출력하면 API 요청사항을
+        Architect에 전달해 재설계를 요청한다. ACCEPT 또는 마커 없음이면 합의로 처리.
 
         Args:
             requirements: PM 요구사항 프롬프트
+            max_negotiation_rounds: 최대 협의 라운드 수 (기본 3)
 
         Returns:
-            {"architect": RunResult, "designer": RunResult}
+            {"architect": RunResult, "designer": RunResult} — 마지막 라운드 결과
         """
         self.phase_manager.transition(Phase.DESIGNING)
 
-        architect_result = await self.runner.run("architect", requirements)
-        self._log_result("architect", architect_result)
+        _no_result = RunResult(agent="", output="", success=False, duration_ms=0, attempts=0)
+        architect_result: RunResult = _no_result
+        designer_result: RunResult = _no_result
+        architect_prompt = requirements
 
-        if not architect_result.success or not architect_result.output.strip():
-            logger.error("Architect 실패 또는 빈 출력 — design() 중단")
-            return {
-                "architect": architect_result,
-                "designer": RunResult(
-                    agent="designer", output="", success=False,
-                    duration_ms=0, attempts=0,
-                    error="Architect 실패로 인해 Designer 실행 취소",
-                ),
-            }
+        for round_num in range(1, max_negotiation_rounds + 1):
+            architect_result = await self.runner.run("architect", architect_prompt)
+            self._log_result("architect", architect_result)
 
-        # Architect 출력을 Designer의 컨텍스트로 활용
-        designer_prompt = (
-            f"{requirements}\n\n"
-            f"<architect_output>\n{architect_result.output}\n</architect_output>"
-        )
-        designer_result = await self.runner.run("designer", designer_prompt)
-        self._log_result("designer", designer_result)
+            if not architect_result.success or not architect_result.output.strip():
+                logger.error("Architect 실패 또는 빈 출력 — design() 중단 (라운드 %d)", round_num)
+                return {
+                    "architect": architect_result,
+                    "designer": RunResult(
+                        agent="designer", output="", success=False,
+                        duration_ms=0, attempts=0,
+                        error="Architect 실패로 인해 Designer 실행 취소",
+                    ),
+                }
 
-        results = {"architect": architect_result, "designer": designer_result}
+            designer_prompt = (
+                f"{requirements}\n\n"
+                f"<architect_output>\n{architect_result.output}\n</architect_output>"
+            )
+            designer_result = await self.runner.run("designer", designer_prompt)
+            self._log_result("designer", designer_result)
+
+            verdict = parse_design_verdict(designer_result.output)
+
+            if verdict is None or verdict.verdict == DesignVerdict.ACCEPT:
+                logger.info("설계 합의 완료 (라운드 %d/%d)", round_num, max_negotiation_rounds)
+                break
+
+            if round_num < max_negotiation_rounds:
+                requests_text = "\n".join(f"- {r}" for r in verdict.api_requests) or "(세부 요청 없음)"
+                architect_prompt = (
+                    f"{requirements}\n\n"
+                    f"<design_conflicts>\n"
+                    f"Designer가 다음 API 추가를 요청했습니다 (라운드 {round_num}/{max_negotiation_rounds}):\n"
+                    f"{requests_text}\n"
+                    f"</design_conflicts>"
+                )
+                logger.warning(
+                    "설계 충돌 — 재협의 라운드 %d/%d (API 요청 %d개)",
+                    round_num, max_negotiation_rounds, len(verdict.api_requests),
+                )
+            else:
+                logger.warning(
+                    "설계 충돌 해소 실패 — 최대 라운드 %d 도달. 마지막 결과로 진행.",
+                    max_negotiation_rounds,
+                )
+
+        results: dict[str, RunResult] = {
+            "architect": architect_result,
+            "designer": designer_result,
+        }
         self.state.save_task_result(
             "design",
             {

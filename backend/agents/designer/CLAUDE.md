@@ -48,6 +48,26 @@
 - 허용 라이브러리 화이트리스트에 없는 UI 라이브러리 도입
 - inline style 사용 지시
 
+## 출력 형식 — 설계 협의 결과
+
+출력 마지막에 반드시 다음 형식으로 협의 결과를 명시해라:
+
+**합의한 경우:**
+```
+## Design Verdict: ACCEPT
+```
+
+**Architect API 변경이 필요한 경우:**
+```
+## Design Verdict: CONFLICT
+
+### API 요청사항
+1. POST /api/notifications — 알림 전송 엔드포인트 필요 (알림 센터 화면에서 사용)
+2. GET /api/users/{id}/avatar — 프로필 이미지 엔드포인트 필요
+```
+
+> Architect가 요청을 수용하면 다음 라운드에 `## Design Verdict: ACCEPT`로 응답한다.
+
 ## 체크리스트 — 출력 전 확인
 - [ ] 모든 화면에 경로(route)가 정의되어 있는가?
 - [ ] 사용자 흐름에서 에러 케이스가 포함되어 있는가?

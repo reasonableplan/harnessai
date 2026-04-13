@@ -12,6 +12,20 @@ class ReviewVerdict(StrEnum):
     REJECT = "REJECT"
 
 
+class DesignVerdict(StrEnum):
+    ACCEPT = "ACCEPT"
+    CONFLICT = "CONFLICT"
+
+
+@dataclass
+class DesignNegotiationResult:
+    """Designer의 설계 협의 결과."""
+
+    verdict: DesignVerdict
+    api_requests: list[str] = field(default_factory=list)
+    raw: str = ""
+
+
 @dataclass
 class PRReviewResult:
     """Reviewer의 PR 리뷰 결과."""
@@ -302,6 +316,40 @@ def parse_qa_report(output: str) -> QaResult | None:
         issues=issues,
         raw=output,
     )
+
+
+# ---------------------------------------------------------------------------
+# 설계 협의 파싱
+# ---------------------------------------------------------------------------
+
+_DESIGN_VERDICT_PATTERN = re.compile(
+    r"##\s+Design\s+Verdict\s*:\s*(ACCEPT|CONFLICT)",
+    re.IGNORECASE,
+)
+_DESIGN_API_REQUEST_BLOCK = re.compile(
+    r"###\s+API\s+요청사항.*?\n(.*?)(?=###|\Z)",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def parse_design_verdict(output: str) -> DesignNegotiationResult | None:
+    """Designer 출력에서 설계 협의 결과를 파싱한다.
+
+    Returns:
+        DesignNegotiationResult, 또는 Verdict 마커가 없으면 None (ACCEPT로 처리).
+    """
+    verdict_match = _DESIGN_VERDICT_PATTERN.search(output)
+    if not verdict_match:
+        return None
+
+    verdict = DesignVerdict(verdict_match.group(1).upper())
+
+    api_requests: list[str] = []
+    api_match = _DESIGN_API_REQUEST_BLOCK.search(output)
+    if api_match:
+        api_requests = _NUMBERED_LINE.findall(api_match.group(1))
+
+    return DesignNegotiationResult(verdict=verdict, api_requests=api_requests, raw=output)
 
 
 # ---------------------------------------------------------------------------

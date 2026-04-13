@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.orchestrator.orchestrate import Orchestra
-from src.orchestrator.output_parser import PhaseReviewResult, ReviewVerdict
+from src.orchestrator.output_parser import DesignVerdict, PhaseReviewResult, ReviewVerdict
 from src.orchestrator.phase import InvalidTransitionError, Phase
 from src.orchestrator.pipeline import CheckResult, CheckStatus, ValidationResult
 from src.orchestrator.runner import RunResult
@@ -173,6 +173,129 @@ class TestDesign:
             await orchestra.design("요구사항")
 
         assert any("실행 실패" in r.message for r in caplog.records)
+
+
+# ── design() 협의 루프 ────────────────────────────────────────────────────────
+
+
+class TestDesignNegotiation:
+    """Architect ↔ Designer 협의 루프 테스트."""
+
+    async def test_accept_on_first_round(self, orchestra: Orchestra) -> None:
+        """Designer가 ACCEPT를 반환하면 1라운드로 종료."""
+        call_log: list[str] = []
+
+        async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            call_log.append(agent)
+            if agent == "designer":
+                return _make_run_result(agent, output="UI 설계\n\n## Design Verdict: ACCEPT\n")
+            return _make_run_result(agent, output="아키텍처 설계")
+
+        orchestra.runner.run = mock_run  # type: ignore[method-assign]
+        results = await orchestra.design("요구사항")
+
+        assert call_log == ["architect", "designer"]
+        assert results["architect"].success
+        assert results["designer"].success
+
+    async def test_no_verdict_marker_treated_as_accept(self, orchestra: Orchestra) -> None:
+        """Designer 출력에 Verdict 마커가 없으면 ACCEPT로 처리해 1라운드로 종료."""
+        call_log: list[str] = []
+
+        async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            call_log.append(agent)
+            return _make_run_result(agent, output="출력 (마커 없음)")
+
+        orchestra.runner.run = mock_run  # type: ignore[method-assign]
+        await orchestra.design("요구사항")
+
+        assert call_log == ["architect", "designer"]
+
+    async def test_conflict_triggers_renegotiation(self, orchestra: Orchestra) -> None:
+        """Designer CONFLICT → Architect 재실행 → Designer ACCEPT로 2라운드 종료."""
+        call_log: list[str] = []
+
+        async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            call_log.append(agent)
+            if agent == "designer":
+                if call_log.count("designer") == 1:
+                    return _make_run_result(
+                        agent,
+                        output=(
+                            "## Design Verdict: CONFLICT\n\n"
+                            "### API 요청사항\n"
+                            "1. POST /api/notifications — 알림 필요\n"
+                        ),
+                    )
+                return _make_run_result(agent, output="## Design Verdict: ACCEPT\n")
+            return _make_run_result(agent, output="아키텍처 설계")
+
+        orchestra.runner.run = mock_run  # type: ignore[method-assign]
+        results = await orchestra.design("요구사항", max_negotiation_rounds=3)
+
+        assert call_log == ["architect", "designer", "architect", "designer"]
+        assert results["designer"].success
+
+    async def test_conflict_prompt_includes_api_requests(self, orchestra: Orchestra) -> None:
+        """CONFLICT 시 Architect 재실행 프롬프트에 Designer의 API 요청사항이 포함된다."""
+        captured: dict[str, list[str]] = {"architect": []}
+
+        async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            if agent == "architect":
+                captured["architect"].append(prompt)
+                return _make_run_result(agent, output="아키텍처 설계")
+            if len(captured["architect"]) == 1:
+                return _make_run_result(
+                    agent,
+                    output=(
+                        "## Design Verdict: CONFLICT\n\n"
+                        "### API 요청사항\n"
+                        "1. POST /api/notifications — 알림 필요\n"
+                    ),
+                )
+            return _make_run_result(agent, output="## Design Verdict: ACCEPT\n")
+
+        orchestra.runner.run = mock_run  # type: ignore[method-assign]
+        await orchestra.design("요구사항", max_negotiation_rounds=3)
+
+        assert len(captured["architect"]) == 2
+        assert "design_conflicts" in captured["architect"][1]
+        assert "notifications" in captured["architect"][1]
+
+    async def test_max_rounds_reached_returns_last_result(self, orchestra: Orchestra) -> None:
+        """최대 라운드 도달 시 마지막 결과를 반환한다."""
+        call_log: list[str] = []
+
+        async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            call_log.append(agent)
+            if agent == "designer":
+                return _make_run_result(
+                    agent, output="## Design Verdict: CONFLICT\n"
+                )
+            return _make_run_result(agent, output="아키텍처 설계")
+
+        orchestra.runner.run = mock_run  # type: ignore[method-assign]
+        results = await orchestra.design("요구사항", max_negotiation_rounds=2)
+
+        # 2라운드: architect×2, designer×2
+        assert call_log == ["architect", "designer", "architect", "designer"]
+        assert results["architect"].success
+        assert results["designer"].success
+
+    async def test_architect_failure_stops_loop(self, orchestra: Orchestra) -> None:
+        """Architect 실패 시 즉시 반환하고 Designer를 실행하지 않는다."""
+        call_log: list[str] = []
+
+        async def mock_run(agent: str, prompt: str, **kwargs: object) -> RunResult:
+            call_log.append(agent)
+            return _make_run_result(agent, success=False, error="타임아웃")
+
+        orchestra.runner.run = mock_run  # type: ignore[method-assign]
+        results = await orchestra.design("요구사항")
+
+        assert call_log == ["architect"]
+        assert not results["architect"].success
+        assert not results["designer"].success
 
 
 # ── implement() ─────────────────────────────────────────────────────────────
