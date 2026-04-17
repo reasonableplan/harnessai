@@ -285,3 +285,72 @@ class TestSecurityHooks:
     def test_no_findings_summary(self) -> None:
         result = SecurityHooks().run_all("")
         assert result.summary == "보안 훅 통과"
+
+
+# ── Harness v2: 프로파일 whitelist 주입 ─────────────────────────────────
+
+
+class TestProfileWhitelistInjection:
+    def test_custom_python_whitelist_allows_extra_pkg(self) -> None:
+        """프로파일이 click 을 허용하면 click 임포트가 통과."""
+        hooks = SecurityHooks(python_whitelist={"click", "rich"})
+        code = "import click\nimport rich\n"
+        result = hooks.run_all(code)
+        assert not any("click" in f.message for f in result.findings)
+        assert not any("rich" in f.message for f in result.findings)
+
+    def test_custom_python_whitelist_blocks_default_pkg(self) -> None:
+        """프로파일이 fastapi 를 화이트리스트 X 면 fastapi 임포트가 WARN."""
+        hooks = SecurityHooks(python_whitelist={"click"})  # fastapi 없음
+        code = "import fastapi\n"
+        result = hooks.run_all(code)
+        assert any("fastapi" in f.message for f in result.findings)
+
+    def test_custom_frontend_whitelist(self) -> None:
+        """frontend_whitelist 주입 — 정의된 것만 허용."""
+        hooks = SecurityHooks(
+            frontend_whitelist={"react", "vue"},
+            frontend_prefixes=("@vendor/",),
+        )
+        code = "import vue from 'vue'\nimport x from 'unknown-pkg'\n"
+        result = hooks.run_all(code, is_frontend=True)
+        assert not any("vue" in f.message for f in result.findings)
+        assert any("unknown-pkg" in f.message for f in result.findings)
+
+    def test_from_profile_classmethod(self) -> None:
+        """ProfileLoader.Profile 인스턴스에서 whitelist 추출."""
+        from src.orchestrator.profile_loader import (
+            Profile,
+            SkeletonSections,
+            Toolchain,
+            Whitelist,
+        )
+
+        profile = Profile(
+            id="test", name="test", status="confirmed", version=1,
+            extends=None, paths=(), detect={}, components=(),
+            skeleton_sections=SkeletonSections((), (), ()),
+            toolchain=Toolchain(None, None, None, None, None),
+            whitelist=Whitelist(
+                runtime=("custom_pkg", "another_pkg"),
+                dev=("dev_pkg",),
+                prefix_allowed=("@my-org/",),
+            ),
+            file_structure="x", gstack_mode="manual",
+            gstack_recommended={}, lessons_applied=(), body="",
+        )
+
+        hooks = SecurityHooks.from_profile(profile)
+        assert hooks.python_whitelist == {"custom_pkg", "another_pkg", "dev_pkg"}
+        assert hooks.frontend_prefixes == ("@my-org/",)
+
+        # 실제 검사: custom_pkg 허용
+        result = hooks.run_all("import custom_pkg\n")
+        assert not any("custom_pkg" in f.message for f in result.findings)
+
+    def test_default_behavior_unchanged(self) -> None:
+        """SecurityHooks() 기본 생성자 — 기존 모듈 whitelist 사용."""
+        hooks = SecurityHooks()
+        # fastapi 는 모듈 _PYTHON_WHITELIST 에 있음
+        result = hooks.run_all("import fastapi\n")
+        assert not any("fastapi" in f.message for f in result.findings)

@@ -237,7 +237,23 @@ _PIP_INSTALL = re.compile(r'\bpip\s+install\s+([A-Za-z0-9_\-]+)', re.IGNORECASE)
 _NPM_INSTALL = re.compile(r'\bnpm\s+install\s+([A-Za-z0-9_\-@/]+)', re.IGNORECASE)
 
 
-def check_dependency(text: str, *, is_frontend: bool = False) -> list[Finding]:
+def check_dependency(
+    text: str,
+    *,
+    is_frontend: bool = False,
+    python_whitelist: set[str] | None = None,
+    frontend_whitelist: set[str] | None = None,
+    frontend_prefixes: tuple[str, ...] | None = None,
+) -> list[Finding]:
+    """의존성 화이트리스트 검사.
+
+    Harness v2: python_whitelist / frontend_whitelist / frontend_prefixes 인자로
+    프로파일 기반 동적 whitelist 주입 가능. None 이면 모듈 기본값 사용.
+    """
+    py_wl = python_whitelist if python_whitelist is not None else _PYTHON_WHITELIST
+    fe_wl = frontend_whitelist if frontend_whitelist is not None else _FRONTEND_WHITELIST
+    fe_prefixes = frontend_prefixes if frontend_prefixes is not None else _FRONTEND_WHITELIST_PREFIXES
+
     findings: list[Finding] = []
     lines = text.splitlines()
 
@@ -246,7 +262,7 @@ def check_dependency(text: str, *, is_frontend: bool = False) -> list[Finding]:
             m = _PYTHON_IMPORT.match(line.strip())
             if m:
                 pkg = m.group(1).lower().replace("-", "_")
-                if pkg not in _PYTHON_WHITELIST:
+                if pkg not in py_wl:
                     findings.append(Finding(
                         hook="dependency-check",
                         severity=Severity.WARN,
@@ -258,7 +274,7 @@ def check_dependency(text: str, *, is_frontend: bool = False) -> list[Finding]:
         for i, line in enumerate(lines, start=1):
             for m in _PIP_INSTALL.finditer(line):
                 pkg = m.group(1).lower()
-                if pkg not in _PYTHON_WHITELIST:
+                if pkg not in py_wl:
                     findings.append(Finding(
                         hook="dependency-check",
                         severity=Severity.BLOCK,
@@ -271,8 +287,8 @@ def check_dependency(text: str, *, is_frontend: bool = False) -> list[Finding]:
             for m in _FRONTEND_IMPORT.finditer(line):
                 pkg = m.group(2)
                 allowed = (
-                    pkg in _FRONTEND_WHITELIST
-                    or any(pkg.startswith(p) for p in _FRONTEND_WHITELIST_PREFIXES)
+                    pkg in fe_wl
+                    or any(pkg.startswith(p) for p in fe_prefixes)
                 )
                 if not allowed:
                     findings.append(Finding(
@@ -287,8 +303,8 @@ def check_dependency(text: str, *, is_frontend: bool = False) -> list[Finding]:
             for m in _NPM_INSTALL.finditer(line):
                 pkg = m.group(1)
                 allowed = (
-                    pkg in _FRONTEND_WHITELIST
-                    or any(pkg.startswith(p) for p in _FRONTEND_WHITELIST_PREFIXES)
+                    pkg in fe_wl
+                    or any(pkg.startswith(p) for p in fe_prefixes)
                 )
                 if not allowed:
                     findings.append(Finding(
@@ -420,7 +436,42 @@ def check_contract_validator(
 # ---------------------------------------------------------------------------
 
 class SecurityHooks:
-    """6개 보안 훅을 순서대로 실행한다."""
+    """6개 보안 훅을 순서대로 실행한다.
+
+    Harness v2: 생성 시 프로파일 기반 whitelist 주입 가능.
+    인자 미지정 시 모듈 기본값 사용 (레거시 호환).
+    """
+
+    def __init__(
+        self,
+        *,
+        python_whitelist: set[str] | None = None,
+        frontend_whitelist: set[str] | None = None,
+        frontend_prefixes: tuple[str, ...] | None = None,
+    ) -> None:
+        self.python_whitelist = python_whitelist
+        self.frontend_whitelist = frontend_whitelist
+        self.frontend_prefixes = frontend_prefixes
+
+    @classmethod
+    def from_profile(cls, profile: object) -> SecurityHooks:
+        """profile_loader.Profile 인스턴스에서 whitelist 추출하여 생성.
+
+        Profile 의 whitelist.runtime + whitelist.dev 합집합을 사용.
+        is_frontend 분기는 호출자가 run_all 의 인자로 결정.
+
+        ※ 동일 SecurityHooks 인스턴스를 backend/frontend 양쪽에 사용하지 말 것.
+          프로파일별로 별도 인스턴스 권장.
+        """
+        wl_runtime = getattr(getattr(profile, "whitelist", None), "runtime", ())
+        wl_dev = getattr(getattr(profile, "whitelist", None), "dev", ())
+        wl_prefixes = getattr(getattr(profile, "whitelist", None), "prefix_allowed", ())
+        combined = set(wl_runtime) | set(wl_dev)
+        return cls(
+            python_whitelist=combined,
+            frontend_whitelist=combined,
+            frontend_prefixes=tuple(wl_prefixes),
+        )
 
     def run_all(
         self,
@@ -440,7 +491,13 @@ class SecurityHooks:
         findings.extend(check_secret_filter(text))
         findings.extend(check_command_guard(text))
         findings.extend(check_db_guard(text))
-        findings.extend(check_dependency(text, is_frontend=is_frontend))
+        findings.extend(check_dependency(
+            text,
+            is_frontend=is_frontend,
+            python_whitelist=self.python_whitelist,
+            frontend_whitelist=self.frontend_whitelist,
+            frontend_prefixes=self.frontend_prefixes,
+        ))
         findings.extend(check_code_quality(text))
         findings.extend(check_contract_validator(text, allowed_endpoints))
         return SecurityResult(findings=findings)
