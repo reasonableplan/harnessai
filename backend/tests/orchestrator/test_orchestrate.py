@@ -822,3 +822,130 @@ class TestMaterializeSkeleton:
         skeleton_path = tmp_path / "docs" / "skeleton.md"
         assert skeleton_path.exists()
         assert "| id | UUID |" in skeleton_path.read_text(encoding="utf-8")
+
+
+# ── Phase 2.5: assemble_skeleton_for_profiles (Harness v2) ──────────────
+
+
+def _setup_v2_harness(harness_dir: Path) -> None:
+    """tmp harness 디렉토리에 최소 프로파일 + 조각 세팅."""
+    profiles = harness_dir / "profiles"
+    fragments = harness_dir / "templates" / "skeleton"
+    profiles.mkdir(parents=True)
+    fragments.mkdir(parents=True)
+
+    # 최소 _registry.yaml
+    (profiles / "_registry.yaml").write_text(
+        "version: 1\nrules: []\nfallback:\n  action: prompt_user\n",
+        encoding="utf-8",
+    )
+
+    # 프로파일: minimal — overview + stack + core.logic
+    (profiles / "minimal.md").write_text(
+        """---
+id: minimal
+name: Minimal
+status: confirmed
+version: 1
+paths: ["."]
+detect:
+  files: [pyproject.toml]
+components: []
+skeleton_sections:
+  required: [overview, stack, core.logic]
+  optional: [persistence]
+  order: [overview, stack, core.logic, persistence]
+toolchain: {install: null, test: null, lint: null, type: null, format: null}
+whitelist: {runtime: [], dev: [], prefix_allowed: []}
+file_structure: "x"
+gstack_mode: manual
+---
+""",
+        encoding="utf-8",
+    )
+
+    # 조각 4개
+    for sid, title in [
+        ("overview", "프로젝트 개요"),
+        ("stack", "기술 스택"),
+        ("core.logic", "도메인 로직"),
+        ("persistence", "저장소 / 스키마"),
+    ]:
+        (fragments / f"{sid}.md").write_text(
+            f"""---
+id: {sid}
+name: {title}
+required_when: always
+description: test
+---
+
+## {{{{section_number}}}}. {title}
+
+Body for {sid}.
+""",
+            encoding="utf-8",
+        )
+
+
+class TestAssembleSkeletonForProfiles:
+    def test_assembles_required_sections_in_order(
+        self, orchestra: Orchestra, tmp_path: Path
+    ) -> None:
+        harness = tmp_path / "harness"
+        _setup_v2_harness(harness)
+
+        path = orchestra.assemble_skeleton_for_profiles(
+            ["minimal"], harness_dir=harness
+        )
+
+        assert path == tmp_path / "docs" / "skeleton.md"
+        text = path.read_text(encoding="utf-8")
+        # 3 required sections, persistence(optional)는 미포함
+        assert "## 1. 프로젝트 개요" in text
+        assert "## 2. 기술 스택" in text
+        assert "## 3. 도메인 로직" in text
+        assert "## 4." not in text
+
+    def test_included_overrides_force_specific_sections(
+        self, orchestra: Orchestra, tmp_path: Path
+    ) -> None:
+        harness = tmp_path / "harness"
+        _setup_v2_harness(harness)
+
+        # overrides: optional 'persistence' 도 포함시키기
+        path = orchestra.assemble_skeleton_for_profiles(
+            ["minimal"],
+            harness_dir=harness,
+            included_overrides=["overview", "persistence"],
+        )
+
+        text = path.read_text(encoding="utf-8")
+        assert "## 1. 프로젝트 개요" in text
+        assert "## 2. 저장소 / 스키마" in text  # persistence 포함됨
+        assert "기술 스택" not in text  # override 에 빠진 stack 미포함
+
+    def test_empty_profile_ids_raises(self, orchestra: Orchestra) -> None:
+        with pytest.raises(ValueError, match="profile_ids"):
+            orchestra.assemble_skeleton_for_profiles([])
+
+    def test_missing_profile_raises(
+        self, orchestra: Orchestra, tmp_path: Path
+    ) -> None:
+        harness = tmp_path / "harness"
+        _setup_v2_harness(harness)
+        from src.orchestrator.profile_loader import ProfileNotFoundError
+
+        with pytest.raises(ProfileNotFoundError):
+            orchestra.assemble_skeleton_for_profiles(
+                ["nonexistent"], harness_dir=harness
+            )
+
+    def test_custom_title(self, orchestra: Orchestra, tmp_path: Path) -> None:
+        harness = tmp_path / "harness"
+        _setup_v2_harness(harness)
+
+        path = orchestra.assemble_skeleton_for_profiles(
+            ["minimal"], harness_dir=harness, title="My Project"
+        )
+        text = path.read_text(encoding="utf-8")
+        assert text.startswith("# My Project")

@@ -27,8 +27,10 @@ from src.orchestrator.output_parser import (
 )
 from src.orchestrator.phase import InvalidTransitionError, Phase, PhaseManager
 from src.orchestrator.pipeline import ValidationPipeline, ValidationResult
+from src.orchestrator.profile_loader import ProfileLoader, ProfileNotFoundError
 from src.orchestrator.runner import AgentRunner, RunResult
 from src.orchestrator.security_hooks import SecurityHooks, SecurityResult
+from src.orchestrator.skeleton_assembler import FragmentNotFoundError, SkeletonAssembler
 from src.orchestrator.state import StateManager
 
 logger = logging.getLogger(__name__)
@@ -224,6 +226,91 @@ class Orchestra:
             raise
 
         logger.info("skeleton.md 생성 완료 — %d개 섹션 채움", len(sections))
+        return skeleton_path
+
+    def assemble_skeleton_for_profiles(
+        self,
+        profile_ids: list[str],
+        *,
+        title: str | None = None,
+        harness_dir: Path | None = None,
+        included_overrides: list[str] | None = None,
+    ) -> Path:
+        """프로파일 기반 빈 skeleton 생성 (Harness v2).
+
+        - 각 profile_id 의 skeleton_sections.required 합집합을 included 로 사용
+          (또는 included_overrides 우선)
+        - 첫 프로파일의 skeleton_sections.order 를 따라 정렬
+        - SkeletonAssembler 로 조각 → docs/skeleton.md 작성
+
+        Args:
+            profile_ids: 사용할 프로파일 ID 목록 (모노레포 가능)
+            title: skeleton 최상위 제목. 기본값은 project_dir 이름.
+            harness_dir: 글로벌 harness 디렉토리. 기본 ~/.claude/harness/
+            included_overrides: required 합집합 대신 직접 지정 (ha-init 결과)
+
+        Returns:
+            생성된 skeleton.md 경로
+        """
+        if not profile_ids:
+            raise ValueError("profile_ids 비어 있음")
+
+        loader = ProfileLoader(harness_dir=harness_dir, project_dir=self.project_dir)
+        profiles = []
+        for pid in profile_ids:
+            try:
+                profiles.append(loader.load(pid))
+            except ProfileNotFoundError as exc:
+                logger.error("프로파일 '%s' 로드 실패: %s", pid, exc)
+                raise
+
+        if included_overrides is not None:
+            included = list(included_overrides)
+        else:
+            seen: set[str] = set()
+            included: list[str] = []
+            for p in profiles:
+                for sid in p.skeleton_sections.required:
+                    if sid not in seen:
+                        seen.add(sid)
+                        included.append(sid)
+
+        # 첫 프로파일의 order 우선 — 나머지 ID는 끝에 append
+        primary_order = list(profiles[0].skeleton_sections.order)
+        ordered: list[str] = []
+        seen_o: set[str] = set()
+        for sid in primary_order:
+            if sid in included and sid not in seen_o:
+                ordered.append(sid)
+                seen_o.add(sid)
+        for sid in included:
+            if sid not in seen_o:
+                ordered.append(sid)
+                seen_o.add(sid)
+
+        assembler = SkeletonAssembler(
+            harness_dir=harness_dir, project_dir=self.project_dir
+        )
+        try:
+            content = assembler.assemble(
+                ordered, title=title or f"Project Skeleton — {self.project_dir.name}"
+            )
+        except FragmentNotFoundError as exc:
+            logger.error("skeleton 조각 누락: %s", exc)
+            raise
+
+        skeleton_path = self.project_dir / "docs" / "skeleton.md"
+        skeleton_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            skeleton_path.write_text(content, encoding="utf-8")
+        except OSError as exc:
+            logger.error("skeleton.md 쓰기 실패: %s", exc)
+            raise
+
+        logger.info(
+            "skeleton.md 조립 완료 — 프로파일=%s, 섹션=%d개",
+            profile_ids, len(ordered),
+        )
         return skeleton_path
 
     async def implement(self, task_id: str, agent: str, prompt: str) -> RunResult:
