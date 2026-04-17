@@ -1116,25 +1116,33 @@ CLAUDE.md                                    # v2 아키텍처 반영, /my-* →
 ### 11.5 실행 순서 (단계별 커밋)
 
 ```
-Phase 1 — 기반 작성 (변경 없이 추가)
-  [ ] 1.1 _registry.yaml 확장 (즉석 프로파일 필드 추가)
-  [ ] 1.2 skeleton 조각 20개 작성
-  [ ] 1.3 프로파일 5개 작성
-  [ ] 1.4 harness validate CLI 작성
-  [ ] 1.5 커밋: "feat: HarnessAI v2 프로파일 + 템플릿 기반 작성"
-  [ ] 1.6 테스트: harness validate 로 모든 프로파일 검증
+Phase 1 — 기반 작성 (변경 없이 추가) ✅ 완료 (커밋: 3be75f7, e5c4dbf)
+  [x] 1.1 _registry.yaml 확장
+  [x] 1.2 skeleton 조각 20개 작성
+  [x] 1.3 프로파일 5개 작성
+  [x] 1.4 harness validate CLI 작성
+  [x] 1.5 커밋
+  [x] 1.6 테스트: harness validate 27개 파일 통과
 
-Phase 2 — Orchestra 리팩터 (기존 테스트 계속 통과)
-  [ ] 2.1 profile_loader.py + 단위 테스트
-  [ ] 2.2 skeleton_assembler.py + 단위 테스트
-  [ ] 2.3 plan_manager.py + 단위 테스트
-  [ ] 2.4 context.py 리팩터 + 기존 테스트 수정
-  [ ] 2.5 orchestrate.py 리팩터
-  [ ] 2.6 output_parser.py 리팩터
-  [ ] 2.7 agents/*/CLAUDE.md 섹션 ID 전환
-  [ ] 2.8 skeleton_template.md 삭제
-  [ ] 2.9 전체 테스트 실행 (250+ 통과)
-  [ ] 2.10 커밋: "refactor: Orchestra를 프로파일 기반으로 전환"
+Phase 2 — Orchestra 리팩터 (기존 테스트 계속 통과) ✅ 완료 (커밋 10개)
+  [x] 2.1 profile_loader.py + 단위 14개          (6d1905d)
+  [x] 2.2 skeleton_assembler.py + 단위 10개      (f51b792)
+  [x] 2.3 plan_manager.py + 단위 22개            (45e4b62)
+  [x] 2.4 context.py 리팩터 + 14개               (73cc8b5)
+  [x] 2.5 orchestrate.assemble_skeleton + 5개    (f664f2a)
+  [x] 2.6 output_parser 섹션 ID + 6개            (924446a)
+  [x] 2.7 agents/*/CLAUDE.md 섹션 ID 전환        (6749c9f)
+  [x] 2.8 security_hooks 프로파일 whitelist + 5개(cc954ac)
+  [x] 2.9 skeleton_template.md 삭제              (595ef88)
+  [x] 2.10 전체 테스트 327개 통과 (E2E 3개 포함, 회귀 0건)
+
+Phase 2 후처리 — PoC 리뷰 반영
+  [x] runner.py 의 build_context use_section_ids=True
+  [x] orchestrate._extract_allowed_endpoints 가 ID 우선 + 번호 폴백
+  [x] E2E 통합 테스트 3개 (test_v2_integration.py)
+  [x] backend/docs/skeleton.md untrack + .gitignore
+  [x] 사전 존재 lint 6건 정리 (B904, SIM105, SIM117, F401, F541, I001)
+  [x] 설계 문서 Phase 1~2 체크리스트 갱신
 
 Phase 3 — 스킬 작성
   [ ] 3.1 /ha-init 구현 + 동작 테스트
@@ -1159,6 +1167,35 @@ Phase 5 — 검증
 ```
 
 **예상 기간**: Phase 1 하루 + Phase 2 이틀 + Phase 3 이틀 + Phase 4 반나절 + Phase 5 하루 = **약 6.5일**.
+
+### 11.6 Phase 1~2 회고 (실측)
+
+**커밋 11개** (`3be75f7` ~ Phase 2 후처리 단일 커밋):
+
+| 측면 | 계획 | 실측 |
+|------|------|------|
+| Phase 1 일정 | 1일 | 부분 (PoC 포함 시 + 0.5일) |
+| Phase 2 일정 | 2일 | 1일 (10 커밋 + 후처리 1) |
+| 신규 테스트 | 30~40 | **79** (단위 76 + E2E 3) |
+| 전체 테스트 | 250+ | **327** |
+| 회귀 | 0 | 0 |
+
+**잘된 것**:
+- 커밋 단위 작게 (Phase별 1커밋) → 회귀 즉시 발견 가능
+- Additive refactor (legacy 보존) → 안전. 일부는 Phase 4에서 정리 예정
+- 모든 신규 모듈 hermetic 단위 테스트 (tmp_path)
+- E2E 통합 테스트가 detect → assemble → context 흐름 정합 보장
+
+**Phase 2 PoC 리뷰에서 발견한 추가 이슈** (모두 후처리 커밋에 반영):
+- runner.py 가 ID 기반 매핑 미사용 — agents/CLAUDE.md 와 불일치 가능성
+- E2E 테스트 부재 → test_v2_integration.py 추가
+- 사전 존재 lint 6건 (B904/SIM/F401 등) 누적 → 정리
+- 운영 artifact (skeleton.md) 추적 → .gitignore 추가
+- 설계 문서 진척 미반영
+
+**미완 (의도적 leftover, Phase 4에서 처리)**:
+- `materialize_skeleton`, `fill_skeleton_template`, `extract_section`, `SECTION_MAP` 레거시 잔존
+- Phase 3 (`/ha-init`) 가 신 시스템 첫 호출자가 되면 Phase 4에서 일괄 제거
 
 ---
 

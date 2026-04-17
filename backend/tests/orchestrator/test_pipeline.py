@@ -6,15 +6,12 @@ import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from src.orchestrator.pipeline import (
     CheckResult,
     CheckStatus,
     ValidationPipeline,
     ValidationResult,
 )
-
 
 # ---------------------------------------------------------------------------
 # ValidationResult 단위 테스트

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from src.orchestrator.security_hooks import (
     SecurityHooks,
     Severity,
@@ -14,7 +12,6 @@ from src.orchestrator.security_hooks import (
     check_dependency,
     check_secret_filter,
 )
-
 
 # ---------------------------------------------------------------------------
 # 1. secret-filter
@@ -200,7 +197,7 @@ class TestCodeQuality:
         assert any(f.severity == Severity.WARN for f in findings)
 
     def test_excessive_type_ignore_warned(self) -> None:
-        code = "\n".join([f"x = y  # type: ignore" for _ in range(5)])
+        code = "\n".join(["x = y  # type: ignore" for _ in range(5)])
         findings = check_code_quality(code)
         assert any("type: ignore" in f.message for f in findings)
 

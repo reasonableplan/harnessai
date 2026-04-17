@@ -5,13 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from src.orchestrator.output_parser import parse_phases
 from src.orchestrator.phase import Phase
 from src.orchestrator.pipeline_runner import _ask_approval, run
 from src.orchestrator.runner import RunResult
-
 
 # ---------------------------------------------------------------------------
 # 헬퍼

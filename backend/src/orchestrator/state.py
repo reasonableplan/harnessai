@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -46,10 +47,8 @@ class StateManager:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             os.replace(tmp_path, str(path))
         except BaseException:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
             raise
 
     def load(self) -> dict[str, Any]:

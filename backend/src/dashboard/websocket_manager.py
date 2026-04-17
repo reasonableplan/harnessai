@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hmac
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import WebSocket
@@ -18,10 +19,8 @@ _MAX_WS_CONNECTIONS = 50
 
 async def _safe_close(ws: WebSocket, code: int) -> None:
     """클라이언트가 이미 끊긴 경우 close() 예외를 무시한다."""
-    try:
+    with contextlib.suppress(Exception):
         await ws.close(code=code)
-    except Exception:
-        pass
 
 
 class WebSocketManager:
@@ -50,7 +49,7 @@ class WebSocketManager:
         # 5초 안에 {"type": "auth", "token": "..."} 수신 필요
         try:
             raw = await asyncio.wait_for(ws.receive_text(), timeout=_AUTH_TIMEOUT_S)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             log.warning("WS auth timeout — closing")
             await _safe_close(ws, 4001)
             return False
@@ -91,7 +90,7 @@ class WebSocketManager:
         payload = json.dumps({
             "type": event_type,
             "payload": data,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         })
 
         async def _safe_send(ws: WebSocket) -> WebSocket | None:

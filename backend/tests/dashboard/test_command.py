@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.dashboard.routes.command import router, _PHASE_AGENT_MAP
+from src.dashboard.routes.command import _PHASE_AGENT_MAP, router
 from src.orchestrator.phase import Phase
 from src.orchestrator.runner import RunResult
 
@@ -66,11 +66,12 @@ class TestSendCommandImplementing:
         """IMPLEMENTING 외 phase는 runner.run()을 직접 호출한다."""
         orchestra = _make_orchestra(Phase.DESIGNING)
 
-        with patch("src.dashboard.routes.deps.get_orchestra", return_value=orchestra):
-            with patch("src.dashboard.routes.deps.get_runner",
-                       return_value=orchestra.runner):
-                client = TestClient(app)
-                client.post("/api/command", json={"content": "설계 시작"})
+        with (
+            patch("src.dashboard.routes.deps.get_orchestra", return_value=orchestra),
+            patch("src.dashboard.routes.deps.get_runner", return_value=orchestra.runner),
+        ):
+            client = TestClient(app)
+            client.post("/api/command", json={"content": "설계 시작"})
 
         orchestra.runner.run.assert_called_once()
         orchestra.implement_with_retry.assert_not_called()

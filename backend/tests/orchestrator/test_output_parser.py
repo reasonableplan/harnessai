@@ -1,15 +1,9 @@
 """output_parser 테스트."""
 
-import pytest
 
 from src.orchestrator.output_parser import (
-    DesignNegotiationResult,
     DesignVerdict,
-    PhaseReviewResult,
-    PRReviewResult,
     ReviewVerdict,
-    SkeletonSection,
-    TaskItem,
     extract_filled_sections,
     parse_design_verdict,
     parse_phase_review,
@@ -17,7 +11,6 @@ from src.orchestrator.output_parser import (
     parse_pr_review,
     parse_task_list,
 )
-
 
 # ---------------------------------------------------------------------------
 # PR 리뷰 파싱

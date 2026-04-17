@@ -2,8 +2,6 @@
 
 from pathlib import Path
 
-import pytest
-
 from src.orchestrator.phase import Phase
 from src.orchestrator.state import StateManager
 

@@ -64,7 +64,7 @@ async def get_agent(
     try:
         agent_cfg = config.get_agent(agent_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent not found") from None
     return {
         "id": agent_id,
         "provider": str(agent_cfg.provider),

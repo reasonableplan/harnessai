@@ -3,7 +3,6 @@
 import pytest
 
 from src.orchestrator.phase import (
-    VALID_TRANSITIONS,
     InvalidTransitionError,
     Phase,
     PhaseManager,

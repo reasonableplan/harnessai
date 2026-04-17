@@ -4,9 +4,7 @@ import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
-from src.orchestrator.config import AgentConfig, OnTimeout, OrchestratorConfig
+from src.orchestrator.config import AgentConfig, OrchestratorConfig
 from src.orchestrator.logger import AgentLogger
 from src.orchestrator.runner import AgentRunner, RunResult
 

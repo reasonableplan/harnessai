@@ -10,7 +10,11 @@ from pathlib import Path
 from typing import Any
 
 from src.orchestrator.config import OrchestratorConfig, load_agents_config
-from src.orchestrator.context import extract_section, fill_skeleton_template
+from src.orchestrator.context import (
+    extract_section,
+    extract_section_by_id,
+    fill_skeleton_template,
+)
 from src.orchestrator.logger import AgentLogger
 from src.orchestrator.output_parser import (
     DesignVerdict,
@@ -591,8 +595,8 @@ class Orchestra:
             f"<skeleton>\n{skeleton_text}\n</skeleton>\n\n"
             f"<phase_tasks>\n" +
             "\n\n".join(task_summaries) +
-            f"\n</phase_tasks>\n\n"
-            f"QA Report 형식으로 결과를 출력하세요."
+            "\n</phase_tasks>\n\n"
+            "QA Report 형식으로 결과를 출력하세요."
         )
 
         qa_result = await self.runner.run("qa", qa_prompt)
@@ -853,7 +857,7 @@ class Orchestra:
             "escalated": result.escalated,
         }
 
-    # skeleton 섹션 7 마크다운 테이블에서 엔드포인트 행 추출
+    # interface.http 섹션 마크다운 테이블에서 엔드포인트 행 추출
     # | GET | /api/projects | ... |  → "GET /api/projects"
     _ENDPOINT_ROW = re.compile(
         r"^\|\s*(GET|POST|PUT|PATCH|DELETE)\s*\|\s*(/[^|\s]+)",
@@ -861,22 +865,28 @@ class Orchestra:
     )
 
     def _extract_allowed_endpoints(self) -> list[str]:
-        """skeleton.md 섹션 7(API 스키마)에서 허용된 엔드포인트 목록을 추출한다.
+        """skeleton.md `interface.http` 섹션에서 허용된 엔드포인트 목록을 추출한다.
+
+        v2: extract_section_by_id 우선, 실패 시 레거시 섹션 번호 7로 폴백.
 
         Returns:
             ["GET /api/projects", "POST /api/issues", ...] 형태 리스트.
-            skeleton.md 없으면 빈 리스트 (contract validator 비활성화됨).
+            skeleton.md 없거나 섹션 비면 빈 리스트 (contract validator 비활성화됨).
         """
         skeleton_path = self.project_dir / "docs" / "skeleton.md"
         if not skeleton_path.exists():
             return []
 
         skeleton_text = skeleton_path.read_text(encoding="utf-8")
-        section7 = extract_section(skeleton_text, 7)
-        if not section7:
+        # ID 기반 우선 — 새 skeleton (Harness v2)
+        section_text = extract_section_by_id(skeleton_text, "interface.http")
+        # 폴백 — 구 skeleton_template 형식 (섹션 번호 7)
+        if not section_text:
+            section_text = extract_section(skeleton_text, 7)
+        if not section_text:
             return []
 
         return [
             f"{m.group(1).upper()} {m.group(2).rstrip()}"
-            for m in self._ENDPOINT_ROW.finditer(section7)
+            for m in self._ENDPOINT_ROW.finditer(section_text)
         ]

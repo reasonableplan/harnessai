@@ -41,10 +41,12 @@ class ClaudeCliProvider(BaseProvider):
                 proc.communicate(input=prompt.encode("utf-8")),
                 timeout=config.timeout_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             await self._kill_process_tree(proc)
             await proc.wait()
-            raise TimeoutError(f"{agent_name} 타임아웃: {config.timeout_seconds}초 초과")
+            raise TimeoutError(
+                f"{agent_name} 타임아웃: {config.timeout_seconds}초 초과"
+            ) from None
 
         if proc.returncode != 0:
             error_msg = stderr.decode("utf-8", errors="replace").strip()

@@ -114,7 +114,7 @@ class ValidationPipeline:
                 output=output,
                 error=error_output or None,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return CheckResult(
                 name=name,
                 status=CheckStatus.FAILED,

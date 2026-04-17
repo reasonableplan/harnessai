@@ -21,3 +21,8 @@ backend/.venv/
 *.png
 *.pdf
 .gstack/
+
+# HarnessAI 런타임 artifact (프로젝트별 생성물)
+backend/docs/skeleton.md
+backend/docs/tasks.md
+backend/docs/harness-plan.md

@@ -129,11 +129,13 @@ class AgentRunner:
 
         system_prompt: str | None = None
         if prompt_path.exists() or skeleton_path.exists():
+            # Harness v2: 섹션 ID 기반 매핑 사용 (agents/*/CLAUDE.md 와 정합)
             system_prompt = build_context(
                 agent=agent,
                 skeleton_path=skeleton_path,
                 docs_dir=docs_dir,
                 prompt_path=prompt_path if prompt_path.exists() else None,
+                use_section_ids=True,
             ) or None
 
         max_attempts = 1 + (

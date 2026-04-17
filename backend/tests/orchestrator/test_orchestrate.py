@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from src.orchestrator.orchestrate import Orchestra
-from src.orchestrator.output_parser import DesignVerdict, PhaseReviewResult, ReviewVerdict
-from src.orchestrator.phase import InvalidTransitionError, Phase
+from src.orchestrator.output_parser import ReviewVerdict
+from src.orchestrator.phase import Phase
 from src.orchestrator.pipeline import CheckResult, CheckStatus, ValidationResult
 from src.orchestrator.runner import RunResult
 

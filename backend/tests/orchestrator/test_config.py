@@ -1,7 +1,6 @@
 """agents.yaml 로더 테스트."""
 
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 
 import pytest
 import yaml
