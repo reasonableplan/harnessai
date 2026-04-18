@@ -21,16 +21,28 @@ try:
 except (AttributeError, OSError):
     pass
 
-# v2 모듈 import — HARNESS_AI_HOME 환경변수
-_DEFAULT_HOME = Path("C:/Users/juwon/OneDrive/Desktop/agent")
-HARNESS_HOME = Path(os.environ.get("HARNESS_AI_HOME", str(_DEFAULT_HOME)))
-_BACKEND = HARNESS_HOME / "backend"
-if not _BACKEND.exists():
+# v2 모듈 import — HARNESS_AI_HOME 환경변수 (필수).
+#
+# dev 모드 (repo 내 직접 실행) 시에는 이 파일 경로로부터 자동 탐지:
+#   <repo>/skills/_ha_shared/utils.py → parents[2] = <repo>
+# 설치된 상태 (~/.claude/skills/...) 에서는 env 가 반드시 설정돼야 함.
+_ENV_HOME = os.environ.get("HARNESS_AI_HOME")
+if _ENV_HOME:
+    HARNESS_HOME = Path(_ENV_HOME)
+else:
+    _repo_candidate = Path(__file__).resolve().parents[2]
+    HARNESS_HOME = _repo_candidate if (_repo_candidate / "backend").is_dir() else None  # type: ignore[assignment]
+
+if HARNESS_HOME is None or not (HARNESS_HOME / "backend").is_dir():
     print(
-        f"[FAIL] HARNESS_AI_HOME 의 backend/ 가 없음: {_BACKEND}",
+        "[FAIL] HARNESS_AI_HOME 환경변수 필요 — HarnessAI 레포 절대 경로를 가리켜야 함.\n"
+        "  예: export HARNESS_AI_HOME=/path/to/harnessai  (bash/zsh)\n"
+        "      $env:HARNESS_AI_HOME = 'C:\\path\\to\\harnessai'  (PowerShell)\n"
+        "  설치 후 자동 설정은 install.sh/ps1 README 참조.",
         file=sys.stderr,
     )
     sys.exit(3)
+_BACKEND = HARNESS_HOME / "backend"
 if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 

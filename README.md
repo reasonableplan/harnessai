@@ -608,7 +608,7 @@ LESSON 패턴 자동 탐지: LESSON-001~007
 - **패키지 매니저**: uv
 - **에이전트 실행**: Claude CLI subprocess / Gemini API / 로컬 모델 (OpenAI 호환)
 - **상태 저장**: JSON 파일 (`.orchestra/`) + `harness-plan.md` (v2) — DB 없음
-- **테스트**: pytest (**327개**, 회귀 0건)
+- **테스트**: pytest (**356개** backend + **12개** install 스냅샷, 회귀 0건)
 - **v2 인프라**: `profile_loader.py`, `skeleton_assembler.py`, `plan_manager.py` + `harness` 검증 CLI
 
 ---

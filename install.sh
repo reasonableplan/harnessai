@@ -54,7 +54,7 @@ add_plan() {
     while IFS= read -r -d '' f; do
         local rel="${f#"$src_dir"/}"
         PLAN+=("$f:$target_prefix/$rel")
-    done < <(find "$src_dir" -type f -print0)
+    done < <(find "$src_dir" -type f -not -path '*/__pycache__/*' -not -name '*.pyc' -print0)
 }
 
 add_plan "$REPO_ROOT/harness" "harness"
@@ -169,5 +169,8 @@ mv "$NEW_MANIFEST" "$MANIFEST_PATH"
 echo "[OK] 설치 완료"
 echo "  installed: $count files"
 echo "  manifest:  $MANIFEST_PATH"
+echo ""
+echo "환경 변수 설정 (셸 프로파일에 추가 권장):"
+echo "  export HARNESS_AI_HOME=\"$REPO_ROOT\""
 echo ""
 echo "다음: 새 Claude Code 세션에서 '/ha-init' 사용 가능"

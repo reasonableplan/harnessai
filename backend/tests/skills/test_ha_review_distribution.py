@@ -80,7 +80,7 @@ def test_distribution_blocks_when_src_exists_but_no_tests(
     )
     assert len(findings) == 1
     assert findings[0]["severity"] == "BLOCK"
-    assert "test-distribution" == findings[0]["hook"]
+    assert findings[0]["hook"] == "test-distribution"
 
 
 def test_distribution_warns_on_large_skew(ha_review_module, tmp_path: Path) -> None:

@@ -37,7 +37,10 @@ $Plan = New-Object System.Collections.Generic.List[object]
 function Add-Plan {
     param([string]$SrcDir, [string]$TargetPrefix)
     if (-not (Test-Path $SrcDir)) { return }
-    Get-ChildItem -LiteralPath $SrcDir -Recurse -File | ForEach-Object {
+    Get-ChildItem -LiteralPath $SrcDir -Recurse -File | Where-Object {
+        # __pycache__ 디렉토리 + .pyc 파일 제외 (파이썬 런타임 캐시)
+        $_.FullName -notmatch '\\__pycache__\\' -and $_.Extension -ne '.pyc'
+    } | ForEach-Object {
         $rel = $_.FullName.Substring($SrcDir.Length).TrimStart('\', '/')
         # target 경로는 항상 forward slash (manifest 호환성)
         $target = ($TargetPrefix + '/' + $rel) -replace '\\', '/'
@@ -111,6 +114,11 @@ if ($Modified.Count -gt 0 -and -not $Force -and -not $DryRun) {
         foreach ($f in $Removed) { Write-Host "  D $f" }
         Write-Host ""
     }
+    # non-interactive (CI, stdin redirect) 에서는 Read-Host 가 hang 함 → abort.
+    if (-not [Environment]::UserInteractive -or [Console]::IsInputRedirected) {
+        Write-Host "non-interactive 환경 감지 — 확인 불가. 변경 사항 있으면 -Force 로 재실행." -ForegroundColor Yellow
+        exit 1
+    }
     $reply = Read-Host "계속하시겠습니까? [y/N]"
     if ($reply -notmatch '^[yY]') {
         Write-Host "중단."
@@ -150,5 +158,8 @@ $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $ManifestPath -En
 Write-Host "[OK] 설치 완료"
 Write-Host "  installed: $($Plan.Count) files"
 Write-Host "  manifest:  $ManifestPath"
+Write-Host ""
+Write-Host "환경 변수 설정 (PowerShell 프로파일에 추가 권장):"
+Write-Host "  `$env:HARNESS_AI_HOME = '$RepoRoot'"
 Write-Host ""
 Write-Host "다음: 새 Claude Code 세션에서 '/ha-init' 사용 가능"
