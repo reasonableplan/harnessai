@@ -479,6 +479,28 @@ _PLACEHOLDER_RE = re.compile(r"<[a-z_][a-z0-9_]*>")
 
 _FILESYSTEM_BLOCK_RE = re.compile(r"^```filesystem\s*\n(.*?)\n```", re.MULTILINE | re.DOTALL)
 
+# 표준 HTML/SVG 태그 — 플레이스홀더 오탐 방지.
+_HTML_TAGS = frozenset({
+    "a", "abbr", "address", "area", "article", "aside", "audio",
+    "b", "base", "bdi", "bdo", "blockquote", "body", "br", "button",
+    "canvas", "caption", "cite", "code", "col", "colgroup",
+    "data", "datalist", "dd", "del", "details", "dfn", "dialog", "div", "dl", "dt",
+    "em", "embed", "fieldset", "figcaption", "figure", "footer", "form",
+    "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hgroup", "hr", "html",
+    "i", "iframe", "img", "input", "ins",
+    "kbd", "label", "legend", "li", "link",
+    "main", "map", "mark", "meta", "meter",
+    "nav", "noscript", "object", "ol", "optgroup", "option", "output",
+    "p", "param", "picture", "pre", "progress",
+    "q", "rp", "rt", "ruby", "s", "samp", "script", "section", "select",
+    "slot", "small", "source", "span", "strong", "style", "sub", "summary", "sup",
+    "table", "tbody", "td", "template", "textarea", "tfoot", "th", "thead",
+    "time", "title", "tr", "track", "u", "ul", "var", "video", "wbr",
+    "svg", "path", "rect", "circle", "line", "polyline", "polygon", "g",
+    "ellipse", "defs", "use", "symbol", "mask", "pattern", "clippath",
+    "lineargradient", "radialgradient", "stop", "text", "tspan",
+})
+
 
 def _parse_filesystem_tree(block: str) -> list[str]:
     """들여쓰기 트리를 상대 경로 리스트로 평면화.
@@ -537,8 +559,14 @@ def _check_placeholders(skeleton_path: Path, text: str, report: Report) -> None:
     )
     found: dict[str, int] = {}
     for lineno, line in enumerate(sanitized.splitlines(), 1):
-        for m in _PLACEHOLDER_RE.finditer(line):
-            found.setdefault(m.group(0), lineno)
+        # 인라인 백틱 코드 (`<pkg>` 같은 템플릿 예시) 제거 — 형식 표시용
+        stripped = re.sub(r"`[^`\n]*`", "", line)
+        for m in _PLACEHOLDER_RE.finditer(stripped):
+            literal = m.group(0)
+            tag_name = literal[1:-1]
+            if tag_name in _HTML_TAGS:
+                continue  # HTML/SVG 태그는 플레이스홀더 아님
+            found.setdefault(literal, lineno)
     for placeholder, first_line in sorted(found.items()):
         report.error(
             skeleton_path.name,

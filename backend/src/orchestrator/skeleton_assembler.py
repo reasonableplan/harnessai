@@ -21,6 +21,28 @@ _PLACEHOLDER_NUMBER = "{{section_number}}"
 _ANGLE_PLACEHOLDER_RE = re.compile(r"<[a-z_][a-z0-9_]*>")
 # non-filesystem 코드 블록 (예: ```python, ```ts) — 예제용 placeholder 허용.
 _NON_FS_CODE_BLOCK_RE = re.compile(r"```(?!filesystem)\w*\n.*?\n```", re.DOTALL)
+# 표준 HTML/MDX 태그 — 플레이스홀더 오탐 방지.
+_HTML_TAGS = frozenset({
+    "a", "abbr", "address", "area", "article", "aside", "audio",
+    "b", "base", "bdi", "bdo", "blockquote", "body", "br", "button",
+    "canvas", "caption", "cite", "code", "col", "colgroup",
+    "data", "datalist", "dd", "del", "details", "dfn", "dialog", "div", "dl", "dt",
+    "em", "embed", "fieldset", "figcaption", "figure", "footer", "form",
+    "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hgroup", "hr", "html",
+    "i", "iframe", "img", "input", "ins",
+    "kbd", "label", "legend", "li", "link",
+    "main", "map", "mark", "meta", "meter",
+    "nav", "noscript", "object", "ol", "optgroup", "option", "output",
+    "p", "param", "picture", "pre", "progress",
+    "q", "rp", "rt", "ruby", "s", "samp", "script", "section", "select",
+    "slot", "small", "source", "span", "strong", "style", "sub", "summary", "sup",
+    "table", "tbody", "td", "template", "textarea", "tfoot", "th", "thead",
+    "time", "title", "tr", "track", "u", "ul", "var", "video", "wbr",
+    # SVG
+    "svg", "path", "rect", "circle", "line", "polyline", "polygon", "g",
+    "ellipse", "defs", "use", "symbol", "mask", "pattern", "clippath",
+    "lineargradient", "radialgradient", "stop", "text", "tspan",
+})
 
 
 class FragmentNotFoundError(LookupError):
@@ -32,6 +54,7 @@ def find_placeholders(text: str) -> dict[str, list[int]]:
 
     - 코드 블록 (```python, ```ts 등) 내 예제 placeholder 는 제외.
     - ```filesystem 블록은 포함 (실제 경로여야 함 — LESSON-018 관련 정합성 게이트).
+    - HTML/SVG 표준 태그 (`<div>`, `<pre>`, `<svg>` 등) 는 제외 — false positive 방지.
     - 라인 번호는 원본 기준 (sanitize 시 개행 유지).
 
     Returns:
@@ -44,8 +67,15 @@ def find_placeholders(text: str) -> dict[str, list[int]]:
     sanitized = _NON_FS_CODE_BLOCK_RE.sub(_strip_block, text)
     found: dict[str, list[int]] = {}
     for lineno, line in enumerate(sanitized.splitlines(), 1):
-        for match in _ANGLE_PLACEHOLDER_RE.finditer(line):
-            found.setdefault(match.group(0), []).append(lineno)
+        # 인라인 백틱 코드 (`<pkg>` 같은 템플릿 예시) 제거 — 치환 안 해도 되는 형식 표시
+        stripped = re.sub(r"`[^`\n]*`", "", line)
+        for match in _ANGLE_PLACEHOLDER_RE.finditer(stripped):
+            literal = match.group(0)
+            # HTML/SVG 태그 제외
+            tag_name = literal[1:-1]
+            if tag_name in _HTML_TAGS:
+                continue
+            found.setdefault(literal, []).append(lineno)
     return found
 
 

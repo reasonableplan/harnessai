@@ -250,3 +250,46 @@ def test_find_placeholders_multiple_occurrences_same_placeholder() -> None:
     text = "<pkg>\n<pkg>\n<pkg>"
     result = find_placeholders(text)
     assert result == {"<pkg>": [1, 2, 3]}
+
+
+def test_find_placeholders_excludes_html_tags() -> None:
+    """ui-assistant 2차 E2E 에서 발견: <div>, <pre> 등 HTML 태그 false positive 방지."""
+    text = dedent("""
+        # React 컴포넌트 예시
+
+        `<div>` 안에 렌더, `<pre>` 로 코드 표시. `<svg><path>` 아이콘.
+
+        실제 placeholder: <pkg>
+    """).strip()
+    result = find_placeholders(text)
+    assert result == {"<pkg>": [5]}
+    assert "<div>" not in result
+    assert "<pre>" not in result
+    assert "<svg>" not in result
+    assert "<path>" not in result
+
+
+def test_find_placeholders_keeps_snake_case_placeholders() -> None:
+    """HTML 이 아닌 snake_case 는 placeholder 로 유지 (<name>, <type>, <value> 등)."""
+    text = "<name> and <type> and <value> are placeholders"
+    result = find_placeholders(text)
+    assert "<name>" in result
+    assert "<type>" in result
+    assert "<value>" in result
+
+
+def test_find_placeholders_excludes_inline_backtick_examples() -> None:
+    """ui-assistant 2차 E2E 에서 발견: 마크다운 인라인 코드 안의 <pkg> 는
+    '템플릿 형식 표시' 이지 실제 치환 대상 아님."""
+    text = dedent("""
+        ## 의존성 변경 포맷
+
+        | 날짜 | 패키지 |
+        | `<YYYY-MM-DD>` | `<pkg>` |
+
+        실제 누락 placeholder: <missing>
+    """).strip()
+    result = find_placeholders(text)
+    assert "<pkg>" not in result           # 백틱 안 → 템플릿 예시
+    assert "<YYYY-MM-DD>" not in result    # 동일
+    assert "<missing>" in result           # 백틱 밖 → 실제 누락
