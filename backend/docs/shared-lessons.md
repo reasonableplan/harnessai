@@ -238,3 +238,88 @@ confirmedBy: confidence >= Math.round(AUTO_CONFIRM_THRESHOLD * 100) ? 'auto' : n
 - `shadcn/ui 기본 테마 사용` (권장 — 접근성 검증됨)
 - 커스텀 시: Mobbin/Dribbble 레퍼런스 URL 첨부 필수
 - Designer가 색상을 직접 정의하는 경우 Reviewer가 레퍼런스 없으면 reject
+
+---
+
+## LESSON-018: 상수 정의 범위 vs 실제 사용 범위 불일치 (dead 상수)
+
+**문제**: 상수 컬렉션(tuple/list/dict)을 정의했으나 소비 루프/조건의 범위와 불일치해
+일부 요소가 **절대 실행되지 않음**. code-hijack 1차 E2E 에서 발견:
+`_BACKOFF_SECONDS = (1.0, 2.0, 4.0)` 정의했으나 `max_retries = 2` 로 3번째 값 dead.
+
+**규칙**:
+- 상수 정의 길이 ≤ 실제 소비 범위
+- 정의가 더 클 경우 **명시적 주석** (`# 확장 예정: rate-limit 전용 시 사용`) 필수
+- 또는 소비 루프를 `for delay in _BACKOFF_SECONDS:` 처럼 컬렉션 전체를 돌도록 작성
+
+```python
+# ❌ dead: 3번째 값 절대 사용 안 됨
+_BACKOFF_SECONDS = (1.0, 2.0, 4.0)
+for i in range(2):  # max_retries = 2
+    time.sleep(_BACKOFF_SECONDS[i])
+
+# ✅ 일치
+_BACKOFF_SECONDS = (1.0, 2.0)
+for delay in _BACKOFF_SECONDS:
+    time.sleep(delay)
+```
+
+**자동 검출**: `/ha-review` 의 ai-slop 훅에 정규식 패턴 포함. 튜플/리스트 정의 +
+근접 `max_(retries|attempts)=N` 대비 길이 불일치 감지 (fragile — AST 분석 대체는 후속).
+
+---
+
+## LESSON-019: 외부 명령 stderr → 사용자 친화 메시지 번역
+
+**문제**: 외부 명령어 (git, docker, kubectl, uv, pip, npm 등) 의 stderr 을
+그대로 사용자에게 노출. `fatal: could not read Username for 'https://github.com'`
+같은 jargon 이 CLI 출력에 섞여 사용자 혼란 유발.
+
+**규칙**: subprocess 의 stderr 을 **카테고리별 안내 메시지로 번역**.
+- 네트워크/권한/리소스/입력 오류 등 분류
+- 원본 stderr 은 `--verbose` 플래그 또는 로그 파일 로만 노출
+- `click.ClickException` 계층에 맞춰 exit code 설정
+
+```python
+# ❌ jargon 그대로 노출
+if result.returncode != 0:
+    raise FetchError(f"git clone 실패: {result.stderr}")
+
+# ✅ 번역 + 원본은 로그로만
+if result.returncode != 0:
+    hint = _categorize_git_error(result.stderr)
+    # hint 예: "네트워크 문제 — 인터넷 연결 확인" / "권한 문제 — 자격 증명 확인"
+    logger.debug("git stderr: %s", result.stderr)  # --verbose 시 출력
+    raise FetchError(f"git clone 실패: {hint}")
+```
+
+**적용 대상**: 모든 외부 subprocess (git / docker / kubectl / uv / pip / npm / pnpm / cargo 등).
+
+---
+
+## LESSON-020: 진행 표시 [N/M] 은 실제로 작동해야 — 껍데기 금지
+
+**문제**: `[3/4] LLM 분석 중...` 을 출력하고 그 안에서 90% 시간을 보내면
+사용자는 멈춘 줄 착각. 상위 단계만 찍고 **오래 걸리는 내부 작업은 진행도 없음**
+= "껍데기 진행 표시". code-hijack 1차 E2E 에서 실제 발생.
+
+**규칙**:
+- **2초 이상 걸리는 단계는 내부에도 진행 표시 필수**
+- 중첩 진행 (예: `[3/4] LLM 분석 (architecture 1/3)`) 또는 `tqdm` / `rich` 활용
+- `[N/M]` 을 쓰면 **실제 N 번 갱신** — 찍고 바로 끝나는 단계는 `[N/M]` 쓰지 말 것
+- 일관성 규칙: 시리즈면 전부 표시 또는 전부 생략
+
+```python
+# ❌ 껍데기 — 사용자는 10분간 아무 피드백 없음
+click.echo("[3/4] LLM 분석 중...")
+for cat in categories:
+    await analyze(cat)  # 각각 30초
+
+# ✅ 내부 진행도
+click.echo(f"[3/4] LLM 분석 ({len(categories)} 카테고리)")
+for i, cat in enumerate(categories, 1):
+    click.echo(f"    ({i}/{len(categories)}) {cat}...", err=True)
+    await analyze(cat)
+```
+
+**검출**: 주로 리뷰어 판단 (문맥 필요). 정규식으로는 `[N/M]` 사용 여부만 확인 가능.

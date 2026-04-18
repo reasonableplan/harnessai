@@ -96,3 +96,10 @@
 
 - [ ] **Live LESSONS 자동 학습**
   - `/ha-review` 가 N회 발견한 패턴 → shared-lessons.md 자동 LESSON 후보 등록
+
+- [ ] **LESSON 번호 자동 할당 도구** (harness validate 확장)
+  - 배경: 2026-04-17 포트폴리오 업그레이드 plan-eng-review 중 LESSON-015/016/017 번호 충돌 발견 (React Native 프로젝트에서 이미 사용)
+  - 기능: `harness validate` 가 shared-lessons.md 의 LESSON 번호 중복 감지 + "다음 사용 가능한 번호 = LESSON-021" 제안
+  - 현재 상태: 수동으로 grep 해야 함. 향후 LESSON 추가 시 같은 문제 반복 가능
+  - 시작점: `~/.claude/harness/bin/harness` 의 validate 로직에 LESSON 번호 스캔 추가
+  - 의존성: 없음 (단독 작업 가능, ~30분)
