@@ -943,3 +943,155 @@ class TestAssembleSkeletonForProfiles:
         )
         text = path.read_text(encoding="utf-8")
         assert text.startswith("# My Project")
+
+
+# ── Phase 4b 후속: materialize_skeleton_v2 (프로파일 기반 merge) ──────────────
+
+
+class TestMaterializeSkeletonV2:
+    """v2 — assemble_skeleton_for_profiles + agent 출력 section_id 기반 merge."""
+
+    def test_merges_architect_and_designer_sections(
+        self, orchestra: Orchestra, tmp_path: Path
+    ) -> None:
+        harness = tmp_path / "harness"
+        _setup_v2_harness(harness)
+
+        architect_out = "## 1. 프로젝트 개요\n- 프로젝트명: Demo App\n- 한 줄 설명: 테스트용\n"
+        designer_out = "## 2. 기술 스택\n- Python 3.12\n- FastAPI\n"
+
+        path = orchestra.materialize_skeleton_v2(
+            architect_out, designer_out,
+            profile_ids=["minimal"], harness_dir=harness,
+        )
+        content = path.read_text(encoding="utf-8")
+
+        # skeleton 의 헤딩 번호는 프로파일이 결정 (assemble 결과) — 1,2,3 순서
+        assert "## 1. 프로젝트 개요" in content
+        assert "## 2. 기술 스택" in content
+        assert "## 3. 도메인 로직" in content
+        # agent 가 채운 body 가 들어감
+        assert "Demo App" in content
+        assert "FastAPI" in content
+
+    def test_designer_overwrites_architect_for_same_section_id(
+        self, orchestra: Orchestra, tmp_path: Path
+    ) -> None:
+        """같은 section_id 면 Designer(뒤) 가 Architect(앞) 을 덮어쓴다."""
+        harness = tmp_path / "harness"
+        _setup_v2_harness(harness)
+
+        architect_out = "## 1. 프로젝트 개요\n- 초안: old\n"
+        designer_out = "## 1. 프로젝트 개요\n- 확정: new\n"
+
+        path = orchestra.materialize_skeleton_v2(
+            architect_out, designer_out,
+            profile_ids=["minimal"], harness_dir=harness,
+        )
+        content = path.read_text(encoding="utf-8")
+
+        assert "new" in content
+        assert "old" not in content
+
+    def test_heading_numbers_preserved_from_skeleton(
+        self, orchestra: Orchestra, tmp_path: Path
+    ) -> None:
+        """agent 가 엉뚱한 번호로 헤딩을 찍어도 skeleton 의 번호가 유지된다."""
+        harness = tmp_path / "harness"
+        _setup_v2_harness(harness)
+
+        # agent 가 `## 99. 기술 스택` 처럼 엉뚱한 번호를 넣어도 제목이 맞으면 body 만 merge
+        architect_out = "## 99. 기술 스택\n- Rust\n"
+
+        path = orchestra.materialize_skeleton_v2(
+            architect_out, "",
+            profile_ids=["minimal"], harness_dir=harness,
+        )
+        content = path.read_text(encoding="utf-8")
+
+        # 원래 skeleton 의 번호 (2) 가 유지됨, body 는 교체됨
+        assert "## 2. 기술 스택" in content
+        assert "## 99." not in content
+        assert "Rust" in content
+
+    def test_no_matching_sections_raises(
+        self, orchestra: Orchestra, tmp_path: Path
+    ) -> None:
+        """SECTION_TITLES 매칭 헤딩이 없는 출력 → ValueError."""
+        harness = tmp_path / "harness"
+        _setup_v2_harness(harness)
+
+        with pytest.raises(ValueError, match="SECTION_TITLES"):
+            orchestra.materialize_skeleton_v2(
+                "그냥 텍스트", "다른 텍스트",
+                profile_ids=["minimal"], harness_dir=harness,
+            )
+
+    def test_sections_outside_profile_still_merge_if_assembled(
+        self, orchestra: Orchestra, tmp_path: Path
+    ) -> None:
+        """included_overrides 로 optional 섹션까지 포함한 skeleton 에 merge."""
+        harness = tmp_path / "harness"
+        _setup_v2_harness(harness)
+
+        architect_out = "## 4. 저장소 / 스키마\n- SQLite\n"
+
+        path = orchestra.materialize_skeleton_v2(
+            architect_out, "",
+            profile_ids=["minimal"], harness_dir=harness,
+            included_overrides=["overview", "stack", "core.logic", "persistence"],
+        )
+        content = path.read_text(encoding="utf-8")
+
+        assert "## 4. 저장소 / 스키마" in content
+        assert "SQLite" in content
+
+
+class TestReplaceSectionBodyHelpers:
+    """_extract_section_body / _replace_section_body_in_skeleton 유틸."""
+
+    def test_extract_section_body_returns_body_only(self) -> None:
+        from src.orchestrator.orchestrate import _extract_section_body
+
+        section = "## 1. 프로젝트 개요\n- 이름: X\n- 설명: Y\n"
+        body = _extract_section_body(section)
+
+        assert body.startswith("- 이름")
+        assert "## 1." not in body
+
+    def test_extract_section_body_empty_when_heading_only(self) -> None:
+        from src.orchestrator.orchestrate import _extract_section_body
+
+        assert _extract_section_body("## 1. 제목") == ""
+
+    def test_replace_preserves_heading_line(self) -> None:
+        from src.orchestrator.orchestrate import _replace_section_body_in_skeleton
+
+        skeleton = (
+            "# Title\n\n## 1. 프로젝트 개요\n- old body\n\n## 2. 기술 스택\n- stack\n"
+        )
+        result = _replace_section_body_in_skeleton(skeleton, "overview", "- new body")
+
+        assert "## 1. 프로젝트 개요" in result
+        assert "- new body" in result
+        assert "- old body" not in result
+        # 다음 섹션 건드리지 않음
+        assert "## 2. 기술 스택" in result
+        assert "- stack" in result
+
+    def test_replace_unknown_section_id_returns_original(self) -> None:
+        from src.orchestrator.orchestrate import _replace_section_body_in_skeleton
+
+        skeleton = "## 1. 프로젝트 개요\n- body\n"
+        result = _replace_section_body_in_skeleton(skeleton, "bogus-id", "new")
+
+        assert result == skeleton
+
+    def test_replace_section_not_in_skeleton_returns_original(self) -> None:
+        """ID 는 표준이지만 skeleton 에 해당 헤딩 없음 → 원본 그대로."""
+        from src.orchestrator.orchestrate import _replace_section_body_in_skeleton
+
+        skeleton = "## 1. 프로젝트 개요\n- body\n"
+        result = _replace_section_body_in_skeleton(skeleton, "auth", "new body")
+
+        assert result == skeleton

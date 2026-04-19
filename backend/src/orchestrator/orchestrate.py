@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from src.orchestrator.config import OrchestratorConfig, load_agents_config
-from src.orchestrator.context import extract_section_by_id
+from src.orchestrator.context import SECTION_TITLES, extract_section_by_id
 from src.orchestrator.logger import AgentLogger
 from src.orchestrator.output_parser import (
     DesignVerdict,
@@ -53,6 +53,64 @@ PHASE_AGENT_MAP: dict[str, str | None] = {
     "deploying": None,
     "done": None,
 }
+
+
+def _extract_section_body(section_text: str) -> str:
+    """섹션 전체 텍스트에서 헤딩 라인을 제외한 body 만 반환."""
+    parts = section_text.split("\n", 1)
+    if len(parts) < 2:
+        return ""
+    return parts[1].strip()
+
+
+def _replace_section_body_in_skeleton(
+    skeleton_text: str, section_id: str, new_body: str
+) -> str:
+    """skeleton 에서 section_id 에 해당하는 섹션의 body 만 교체.
+
+    헤딩 라인 (`## N. <title>`) 은 유지 — skeleton 의 번호 체계 보존.
+    body 는 `_extract_section_body` 로 잘라낸 agent 출력으로 교체.
+    같은 레벨의 다음 헤딩 직전까지가 body 범위.
+
+    Args:
+        skeleton_text: 대상 skeleton 전체
+        section_id: 섹션 ID (SECTION_TITLES 의 key)
+        new_body: 새 body (헤딩 제외)
+
+    Returns:
+        body 가 교체된 skeleton. section_id 를 찾지 못하면 원본 그대로.
+    """
+    title = SECTION_TITLES.get(section_id)
+    if not title:
+        return skeleton_text
+
+    title_pattern = re.escape(title)
+    pattern = rf"^(#{{2,4}})\s+\d+(?:-\d+)?\.\s+{title_pattern}\s*$"
+    lines = skeleton_text.split("\n")
+
+    start_idx: int | None = None
+    start_level: int | None = None
+    for i, line in enumerate(lines):
+        m = re.match(pattern, line.rstrip())
+        if m:
+            start_idx = i
+            start_level = len(m.group(1))
+            break
+
+    if start_idx is None or start_level is None:
+        return skeleton_text
+
+    end_idx = len(lines)
+    for i in range(start_idx + 1, len(lines)):
+        nxt = re.match(r"^(#{2,4})\s+\d", lines[i])
+        if nxt and len(nxt.group(1)) <= start_level:
+            end_idx = i
+            break
+
+    heading = lines[start_idx]
+    new_section = [heading, "", new_body.rstrip(), ""] if new_body.strip() else [heading, ""]
+    result = lines[:start_idx] + new_section + lines[end_idx:]
+    return "\n".join(result)
 
 
 @dataclass
@@ -222,6 +280,76 @@ class Orchestra:
             raise
 
         logger.info("skeleton.md 생성 완료 — %d개 섹션 채움", len(deduped))
+        return skeleton_path
+
+    def materialize_skeleton_v2(
+        self,
+        architect_output: str,
+        designer_output: str,
+        profile_ids: list[str],
+        *,
+        harness_dir: Path | None = None,
+        included_overrides: list[str] | None = None,
+    ) -> Path:
+        """v2 — 프로파일 기반 empty skeleton 생성 후 section_id 로 agent 출력 merge.
+
+        v1 (`materialize_skeleton`) 은 에이전트 출력을 그대로 concat — skeleton 구조가
+        에이전트 출력에 종속. v2 는 프로파일 템플릿이 구조를 먼저 정의하고, 에이전트는
+        SECTION_TITLES 매칭 헤딩으로 섹션 body 만 채운다 (/ha-* 스킬 경로와 동일 계약).
+
+        절차:
+        1. `assemble_skeleton_for_profiles(profile_ids)` 로 빈 skeleton 생성
+        2. Architect/Designer 출력에서 `section_id` 추출 (Designer 가 Architect 덮어씀)
+        3. 각 섹션의 body 만 skeleton 에 merge (헤딩 라인 보존)
+
+        Args:
+            architect_output: Architect 에이전트 출력 텍스트
+            designer_output: Designer 에이전트 출력 텍스트
+            profile_ids: 사용할 프로파일 ID 목록 (모노레포 가능)
+            included_overrides: required 합집합 대신 섹션 목록 직접 지정
+
+        Returns:
+            생성된 skeleton.md 경로.
+
+        Raises:
+            ValueError: 두 에이전트 출력 모두 section_id 매칭 섹션이 0개일 때.
+        """
+        skeleton_path = self.assemble_skeleton_for_profiles(
+            profile_ids,
+            harness_dir=harness_dir,
+            included_overrides=included_overrides,
+        )
+        skeleton_text = skeleton_path.read_text(encoding="utf-8")
+
+        # Architect 먼저, Designer 뒤 — 같은 section_id 면 Designer 가 덮어씀.
+        raw = extract_filled_sections(architect_output) + extract_filled_sections(
+            designer_output
+        )
+        merged_by_id: dict[str, str] = {
+            s.section_id: _extract_section_body(s.content)
+            for s in raw
+            if s.section_id is not None
+        }
+        if not merged_by_id:
+            raise ValueError(
+                "skeleton 섹션 추출 실패 — 에이전트 출력에서 SECTION_TITLES 매칭되는 "
+                "헤딩을 찾지 못함. 에이전트가 표준 섹션 제목을 쓰는지 확인."
+            )
+
+        for sid, body in merged_by_id.items():
+            skeleton_text = _replace_section_body_in_skeleton(skeleton_text, sid, body)
+
+        try:
+            skeleton_path.write_text(skeleton_text, encoding="utf-8")
+        except OSError as exc:
+            logger.error("skeleton.md v2 쓰기 실패: %s", exc)
+            raise
+
+        logger.info(
+            "skeleton.md v2 생성 완료 — 프로파일 %s, %d 섹션 merge",
+            profile_ids,
+            len(merged_by_id),
+        )
         return skeleton_path
 
     def assemble_skeleton_for_profiles(
@@ -757,6 +885,8 @@ class Orchestra:
         requirements: str,
         max_task_retries: int = 3,
         max_phase_retries: int = 2,
+        *,
+        profile_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         """Phase 분리 전체 파이프라인 (단일 호출 버전).
 
@@ -766,6 +896,9 @@ class Orchestra:
             requirements: PM 요구사항
             max_task_retries: 태스크당 최대 재시도 횟수
             max_phase_retries: Phase 리뷰 reject 시 최대 재시도 횟수
+            profile_ids: 지정 시 v2 경로 (`materialize_skeleton_v2`) 사용 — 프로파일
+                         템플릿으로 빈 skeleton 조립 후 에이전트 출력을 section_id 로
+                         merge. 미지정이면 legacy `materialize_skeleton` 사용.
 
         Returns:
             {"design", "breakdown", "phases", "success"}
@@ -776,10 +909,17 @@ class Orchestra:
             logger.error("Architect 실패 — run_pipeline_with_phases() 중단")
             return {"design": design_results, "breakdown": {}, "phases": [], "success": False}
         try:
-            self.materialize_skeleton(
-                architect_output=design_results["architect"].output,
-                designer_output=design_results["designer"].output,
-            )
+            if profile_ids:
+                self.materialize_skeleton_v2(
+                    architect_output=design_results["architect"].output,
+                    designer_output=design_results["designer"].output,
+                    profile_ids=profile_ids,
+                )
+            else:
+                self.materialize_skeleton(
+                    architect_output=design_results["architect"].output,
+                    designer_output=design_results["designer"].output,
+                )
         except ValueError as exc:
             logger.error("skeleton 생성 실패 — run_pipeline_with_phases() 중단: %s", exc)
             return {"design": design_results, "breakdown": {}, "phases": [], "success": False}

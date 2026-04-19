@@ -65,12 +65,11 @@
 
 ## v2 후속 (Phase 4+)
 
-- [ ] **Orchestra production 흐름의 v2 wiring** (Phase 4 후속)
-  - 현재: `run_pipeline_with_phases()` 의 `materialize_skeleton` 은
-    `extract_filled_sections` 으로 에이전트 출력에서 섹션 추출 후 concat (v2 스킬 경로
-    `/ha-*` 는 이 함수를 거치지 않고 `SkeletonAssembler` 직접 사용).
-  - 개선 (미결): Orchestra 자체도 profile 기반 assemble → 에이전트가 섹션 ID 로 채움으로
-    일원화. 파일: `backend/src/orchestrator/orchestrate.py` 의 `materialize_skeleton`.
+- [x] **Orchestra production 흐름의 v2 wiring** (Phase 4 후속, 2026-04-19 완료)
+  - `Orchestra.materialize_skeleton_v2` 신규 — profile 기반 empty skeleton 조립 후
+    에이전트 출력을 `section_id` 로 merge (헤딩 보존). `/ha-*` 스킬 경로와 동일 계약.
+  - `run_pipeline_with_phases(profile_ids=...)` kwarg — 전달 시 v2 경로 자동 사용.
+  - legacy `materialize_skeleton` 은 back-compat 로 유지 (profile_ids 미지정 시).
 
 - [x] **/my-* 스킬 삭제 (Phase 4a, 2026-04-19 commit f2fae69)**
   - 12개 스킬 삭제 완료, backup: `~/.claude/.my-skills-backup-20260419-062118/`

@@ -93,9 +93,13 @@ v1 의 `/my-*` 스킬 12종 과 v2 의 `/ha-*` 스킬 7종 이 **현재 병행**
 - [x] `backend/src/orchestrator/orchestrate.py::_extract_allowed_endpoints` 레거시 섹션 7 폴백 제거
 - [x] `backend/tests/orchestrator/test_context.py` v1 테스트 삭제 (테스트 수 365 → 347)
 
-**Phase 4b 후속** (별도 플랜):
+**Phase 4b 후속** (2026-04-19 완료):
 
-- [ ] `Orchestra.run_pipeline_with_phases` 자체를 `assemble_skeleton_for_profiles` 기반으로 재작성 (v2 스킬 경로와 일원화)
+- [x] `Orchestra.materialize_skeleton_v2` + `run_pipeline_with_phases(profile_ids=...)` —
+  v2 스킬 경로 (`/ha-*`) 와 동일한 profile → empty skeleton → section_id merge 계약을
+  Orchestra backend 에도 적용. legacy `materialize_skeleton` 은 back-compat 용으로만 유지.
+- [x] `pyright` dev 의존성 추가 + `src/` 타입 에러 14건 정리. CLAUDE.md 자가검증
+  체크리스트에 `uv run pyright src/` 추가.
 
 **참고**:
 - `docs/` 디렉토리 전체가 `.gitignore` 대상이므로 `workflow-unified.md` 등 로컬 v1 문서는 공개 포트폴리오에 포함되지 않음 (아카이브 불필요).

@@ -34,6 +34,14 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
   내비게이션 추가. 다른 문서 (README/ARCHITECTURE/ADR/E2E reports/benchmarks/lessons) 우선
   권장. D1-D6 결정 테이블을 ADR cross-reference 로 교체.
 
+### Added — Phase 4b 후속
+- **`Orchestra.materialize_skeleton_v2` + `run_pipeline_with_phases(profile_ids=...)`** —
+  Orchestra backend 가 `/ha-*` 스킬 경로와 동일한 "profile → empty skeleton → section_id
+  merge" 계약을 공유. legacy `materialize_skeleton` (raw concat) 은 `profile_ids`
+  미지정 시 back-compat 경로로 유지.
+- **`pyright` dev 의존성 + 자가검증 필수 항목**. `src/` 14개 pre-existing 타입 에러
+  전부 정리 (0 errors 달성). `CLAUDE.md` 에 `uv run pyright src/` 추가.
+
 ### Changed
 - (항목 추가되는대로)
 
