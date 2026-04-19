@@ -575,12 +575,13 @@ def _check_placeholders(skeleton_path: Path, text: str, report: Report) -> None:
 
 
 def _check_filesystem(skeleton_path: Path, text: str, project: Path, report: Report) -> None:
-    """```filesystem 블록에 선언된 경로가 실재하는지 검사."""
+    """```filesystem 블록에 선언된 경로가 실재하는지 검사 (opt-in).
+
+    블록이 없으면 silent pass — 사용자가 선언한 경우에만 검증.
+    """
     m = _FILESYSTEM_BLOCK_RE.search(text)
     if not m:
-        # filesystem 블록은 선택 사항 (프로파일이 선언 요구 시 별도 체크)
-        report.warn(skeleton_path.name, "```filesystem 블록 없음 — 파일 구조 명세 권장")
-        return
+        return  # opt-in: 블록 없으면 검사 안 함
     declared = _parse_filesystem_tree(m.group(1))
     if not declared:
         report.warn(skeleton_path.name, "```filesystem 블록이 비어있음")

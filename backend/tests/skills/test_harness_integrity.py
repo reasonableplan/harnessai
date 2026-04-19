@@ -142,16 +142,20 @@ def test_integrity_ignores_placeholders_in_python_code_blocks(
     assert not any("<func>" in m or "<value>" in m for m in errs)
 
 
-def test_integrity_warns_when_filesystem_block_absent(
+def test_integrity_silent_when_filesystem_block_absent(
     harness_module, tmp_path: Path
 ) -> None:
-    """```filesystem 블록 없으면 WARN (error 아님) — 선택 섹션."""
+    """```filesystem 블록 없으면 silent pass (opt-in feature)."""
     skeleton = "# Test\n\nNo filesystem section.\n"
     project = _make_project(tmp_path, skeleton=skeleton)
     report = harness_module.Report()
     harness_module.check_integrity(project, None, report)
     assert report.error_count == 0
-    assert report.warn_count >= 1
+    # filesystem 블록이 없으면 WARN/ERROR 둘 다 없어야 함 (완전 silent)
+    fs_related = [
+        i for i in report.issues if "filesystem" in i.message.lower()
+    ]
+    assert fs_related == []
 
 
 def test_integrity_placeholder_line_number_accurate_after_code_block(
