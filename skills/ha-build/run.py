@@ -5,11 +5,12 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "_ha_shared"))
-from utils import (  # noqa: E402
+from utils import (  # noqa: E402, I001
     HARNESS_HOME,
     assert_state,
     get_active_profiles,
@@ -117,6 +118,41 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_toolchain_gate(project: Path, plan) -> list[str]:
+    """LESSON-021: done 마킹 전 프로파일의 toolchain.test + .lint + .type 전부 실행.
+
+    반환: 실패한 체크 설명 리스트. 비어있으면 통과.
+    """
+    failures: list[str] = []
+    profiles = get_active_profiles(plan, project)
+    for i, p in enumerate(profiles):
+        path = str(plan.profiles[i].path) if i < len(plan.profiles) else "."
+        cwd = str((project / path).resolve()) if path != "." else str(project)
+        checks = [
+            ("test", p.toolchain.test),
+            ("lint", p.toolchain.lint),
+            ("type", p.toolchain.type),
+        ]
+        for name, cmd in checks:
+            if not cmd:
+                continue
+            try:
+                r = subprocess.run(
+                    cmd, shell=True, cwd=cwd,
+                    capture_output=True, timeout=300,
+                )
+                if r.returncode != 0:
+                    failures.append(
+                        f"[{p.id} @ {path}] {name} 실패 (rc={r.returncode}): {cmd}"
+                    )
+            except subprocess.TimeoutExpired:
+                failures.append(f"[{p.id} @ {path}] {name} 타임아웃 (>5분): {cmd}")
+            except FileNotFoundError:
+                # shell not found 등 극단 케이스
+                failures.append(f"[{p.id} @ {path}] {name} 실행 불가: {cmd}")
+    return failures
+
+
 def cmd_complete(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
     assert_state(plan, ["planned", "building"], "/ha-build")
@@ -124,6 +160,19 @@ def cmd_complete(args: argparse.Namespace) -> int:
     if args.status not in ("done", "blocked", "in-progress"):
         info(f"[FAIL] --status: done|blocked|in-progress, 현재 '{args.status}'")
         return 2
+
+    # LESSON-021: done 마킹 전 toolchain 전체 강제 (test + lint + type)
+    # --skip-toolchain 로 opt-out (문서/설계 태스크 등).
+    if args.status == "done" and not args.skip_toolchain:
+        info("[gate] LESSON-021: toolchain (test/lint/type) 검증 중 …")
+        failures = _run_toolchain_gate(project, plan)
+        if failures:
+            info(f"[BLOCK] toolchain 실패 {len(failures)}건 — done 마킹 거부:")
+            for f in failures:
+                info(f"  · {f}")
+            info("수정 후 재시도하거나, 의도적 skip 이면 --skip-toolchain 명시.")
+            return 1
+        info("[gate] toolchain 전부 통과 — done 마킹 진행")
 
     tasks_path = plan_path.parent / "tasks.md"
     text = tasks_path.read_text(encoding="utf-8")
@@ -190,6 +239,11 @@ def main() -> int:
     c.add_argument("--task", required=True)
     c.add_argument("--status", required=True, choices=["done", "blocked", "in-progress"])
     c.add_argument("--reason", default="")
+    c.add_argument(
+        "--skip-toolchain",
+        action="store_true",
+        help="LESSON-021 toolchain 게이트 스킵 (문서/설계 태스크 등 의도적일 때만)",
+    )
 
     args = parser.parse_args()
     if args.cmd == "prepare":

@@ -65,8 +65,14 @@ python ~/.claude/skills/ha-build/run.py complete --task T-001 --status done
 ```
 또는 `--status blocked --reason "<이유>"`.
 
+**LESSON-021 게이트 (done 전용)**:
+- `--status done` 시 프로파일의 **`toolchain.test + toolchain.lint + toolchain.type`
+  전부** 강제 실행. 하나라도 실패하면 done 거부 (태스크는 마킹 안 됨).
+- 문서/설계처럼 toolchain 무관한 태스크엔 `--skip-toolchain` 명시.
+- 배경: ui-assistant 2차 E2E 에서 단위 테스트만 통과 → done 흐름으로 pyright 15 errors 누적 발견.
+
 run.py 가:
-- tasks.md 의 해당 행 상태 컬럼 업데이트
+- `--status done` → LESSON-021 게이트 통과 → tasks.md 해당 행 상태 업데이트
 - 모든 태스크 done 이면 "building" → "built" 자동 전이
 - 일부만 done 이면 "planned" → "building" (첫 done 시)
 
