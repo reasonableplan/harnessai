@@ -46,24 +46,32 @@ from src.orchestrator.security_hooks import (  # noqa: E402
 )
 
 
-def _load_ai_slop_patterns() -> list[tuple[re.Pattern[str], str, str]]:
-    """skills/ha-review/run.py 의 _AI_SLOP_PATTERNS 를 동적 import."""
+def _load_ai_slop_module():
+    """skills/ha-review/run.py 의 _AI_SLOP_PATTERNS + _strip_non_code_from_diff 를 동적 import."""
     spec = importlib.util.spec_from_file_location("_ha_review", HA_REVIEW_RUN_PY)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"ha-review run.py spec load 실패: {HA_REVIEW_RUN_PY}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return list(module._AI_SLOP_PATTERNS)
+    return module
 
 
-_AI_SLOP_PATTERNS = _load_ai_slop_patterns()
+_HA_REVIEW = _load_ai_slop_module()
+_AI_SLOP_PATTERNS = list(_HA_REVIEW._AI_SLOP_PATTERNS)
+_STRIP_NON_CODE = _HA_REVIEW._strip_non_code_from_diff
 
 
 def ai_slop_hits(text: str) -> int:
-    """ai-slop 패턴 중 몇 개가 매칭됐는지 (findinding count 가 아닌 unique pattern count)."""
+    """ai-slop 패턴 중 몇 개가 매칭됐는지 (finding count 가 아닌 unique pattern count).
+
+    프로덕션 `ha-review` 와 동일하게 `_strip_non_code_from_diff` 전처리를 통과시킴 —
+    fixture 가 diff 가 아닌 raw text 이므로 변경 없이 지나가지만, 프로덕션 경로와 동일한
+    파이프라인을 사용해 차이를 없앰.
+    """
+    code_only = _STRIP_NON_CODE(text)
     count = 0
     for pat, _msg, _sev in _AI_SLOP_PATTERNS:
-        if pat.search(text):
+        if pat.search(code_only):
             count += 1
     return count
 
@@ -108,6 +116,10 @@ class GateResult:
 
 
 # ── fixture 정의 ────────────────────────────────────────────────────────────
+
+# contract-validator 는 "skeleton 이 선언한 엔드포인트" 목록과 대조. 이 벤치마크에서는
+# fixture 가 사용하는 엔드포인트만 포함하면 됨. fixture 변경 시 이 목록도 동기화.
+_CONTRACT_ALLOWED_ENDPOINTS: list[str] = ["GET /projects", "POST /issues"]
 
 FIXTURES: dict[str, list[Fixture]] = {
     "secret-filter": [
@@ -212,8 +224,9 @@ def _gate_triggered(gate: str, snippet: str) -> bool:
     if gate == "code-quality":
         return bool(check_code_quality(snippet))
     if gate == "contract-validator":
-        # 허용 목록: 사전 정의. off-contract fixture 는 /admin/wipe 이므로 미포함.
-        return bool(check_contract_validator(snippet, allowed_endpoints=["GET /projects", "POST /issues"]))
+        return bool(
+            check_contract_validator(snippet, allowed_endpoints=_CONTRACT_ALLOWED_ENDPOINTS)
+        )
     if gate == "ai-slop":
         return ai_slop_hits(snippet) > 0
     raise ValueError(f"Unknown gate: {gate}")

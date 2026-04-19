@@ -7,7 +7,7 @@
 | 문서 | 무엇 | 왜 |
 |---|---|---|
 | **이 문서** | 핵심 연산 latency (profile 감지 / skeleton 조립 / harness CLI) | `/ha-*` UX 예측 |
-| [gate-coverage.md](gate-coverage.md) | 7개 품질 게이트 커버리지 (35 fixtures, **100%** precision/recall/accuracy) | 게이트가 선언대로 지키는지 자기 검증 |
+| [gate-coverage.md](gate-coverage.md) | 9개 게이트 중 정규식/AST 기반 **7개** 커버리지 (35 fixtures, **100%** precision/recall/accuracy) | 게이트가 선언대로 지키는지 자기 검증 |
 | [dogfooding-catches.md](dogfooding-catches.md) | LESSON 21개 ↔ 원천 프로젝트 ↔ 현재 게이트 매핑 (정성적) | LESSON 이 단순 기록에서 **게이트 강제** 로 올라가는 흐름 |
 
 ---

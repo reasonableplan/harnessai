@@ -1,8 +1,10 @@
 # Gate Coverage Benchmark
 
-**Purpose**: HarnessAI 의 7개 품질 게이트가 "잡아야 할 패턴" 을 실제로 잡는지, "깨끗한 코드" 를 잘못 잡지 않는지를 정량 측정.
+**Purpose**: HarnessAI 총 9개 품질 게이트 중 정규식/AST 기반 **7개** 가 "잡아야 할 패턴" 을 실제로 잡는지, "깨끗한 코드" 를 잘못 잡지 않는지를 정량 측정.
 
-**측정 대상**:
+**스코프**: 9개 게이트 중 이 벤치마크가 다루는 7개 = **SecurityHooks 6개 + ai-slop 1개**. 나머지 2개 (`test-distribution`, `skeleton-integrity`) 는 filesystem fixture 가 필요한 구조라 `backend/tests/skills/` 의 pytest 회귀 테스트 + `harness integrity` CLI 로 별도 검증.
+
+**측정 대상** (이 벤치마크):
 - `secret-filter` — 하드코딩 시크릿, API 키, DB 연결 문자열
 - `command-guard` — `rm -rf`, `curl | bash`, `eval`, `DROP TABLE` 등
 - `db-guard` — raw SQL, f-string SQL, WHERE-less DELETE/UPDATE

@@ -8,7 +8,7 @@ HarnessAI 는 그 문제를 닫힌 루프로 푼다:
 
 1. **계약서** (`skeleton.md` — 20개 표준 섹션) 에 무엇을 만들지 먼저 선언
 2. **7개 에이전트** (Architect · Designer · Orchestrator · Backend/Frontend Coder · Reviewer · QA) 가 선언대로 구현
-3. **8개 품질 게이트** 가 계약 위반을 자동 차단 — 보안 훅 6 + ai-slop + 테스트 분포 + skeleton 정합성
+3. **9개 품질 게이트** 가 계약 위반을 자동 차단 — 보안 훅 6 + ai-slop + 테스트 분포 + skeleton 정합성
 
 AI 를 대체하는 게 아니라 **통제하는** 도구다.
 
@@ -110,7 +110,7 @@ observability · deployment · tasks · notes
 | | HarnessAI | Cursor / Copilot | Claude Code (plain) | aider |
 |---|---|---|---|---|
 | 범위 | 프로젝트 전체 | 파일/함수 단위 | 대화 기반 | diff 기반 |
-| 규칙 강제 | **프로파일 + 게이트 8개** | .cursorrules (선언만) | CLAUDE.md (선언만) | 커밋 스타일만 |
+| 규칙 강제 | **프로파일 + 게이트 9개** | .cursorrules (선언만) | CLAUDE.md (선언만) | 커밋 스타일만 |
 | 실수 축적 | **LESSON 21** (자동 감지 + 리뷰어 참조) | ❌ | ❌ | ❌ |
 | 스택 자동감지 | **5개 기본 + 확장 가능** | ❌ | ❌ | ❌ |
 | 병렬 구현 | **/ha-build --parallel** | ❌ | ❌ | ❌ |
@@ -142,7 +142,7 @@ observability · deployment · tasks · notes
 
 ---
 
-## 🧪 품질 게이트 (8개)
+## 🧪 품질 게이트 (9개)
 
 | 게이트 | 위치 | 역할 |
 |---|---|---|
@@ -185,7 +185,7 @@ observability · deployment · tasks · notes
 
 ## 🗺 Roadmap
 
-**Phase 1-4 (완료)**: 프로파일 시스템 · 7개 /ha-스킬 · 21 LESSONs · 8개 품질 게이트 · 단일 명령 설치 · /my-\* 스킬 12종 삭제 · v1 레거시 코드 (SECTION_MAP/extract_section/fill_skeleton_template) 제거 · Orchestra v2 wiring
+**Phase 1-4 (완료)**: 프로파일 시스템 · 7개 /ha-스킬 · 21 LESSONs · 9개 품질 게이트 · 단일 명령 설치 · /my-\* 스킬 12종 삭제 · v1 레거시 코드 (SECTION_MAP/extract_section/fill_skeleton_template) 제거 · Orchestra v2 wiring
 
 **Phase 5 (계획)**:
 - Live LESSONS 자동 학습 (ha-review 반복 패턴 → 후보 등록)
@@ -205,7 +205,7 @@ observability · deployment · tasks · notes
 - **상태**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (DB 없음)
 - **테스트**: pytest **357개** backend + **12개** install 스냅샷 (회귀 0건)
 - **타입 체크**: pyright **0 errors** (`src/` 전수)
-- **게이트 커버리지**: 7개 품질 게이트 × 35 fixtures → **precision 100% / recall 100% / accuracy 100%** ([gate-coverage.md](docs/benchmarks/gate-coverage.md))
+- **게이트 커버리지 (자기 검증)**: 9개 게이트 중 정규식/AST 기반 7개를 35 fixtures (positive/negative) 로 측정 → **precision 100% / recall 100% / accuracy 100%**. 나머지 2개 (test-distribution, skeleton-integrity) 는 filesystem fixture 로 별도 회귀 테스트. 상세 한계/방법: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **성능** (30 iter, LLM 제외): profile 감지 **~5 ms**, skeleton 조립 **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. [docs/benchmarks/](docs/benchmarks/)
 - **v2 인프라**: `profile_loader`, `skeleton_assembler`, `plan_manager`, `harness` 검증 CLI
 

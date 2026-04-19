@@ -156,7 +156,9 @@ class Orchestra:
         try:
             loader = ProfileLoader(project_dir=self.project_dir)
             matches = loader.detect()
-        except Exception as exc:  # 감지 실패는 치명적이지 않음 — fallback
+        except (FileNotFoundError, ProfileNotFoundError, OSError) as exc:
+            # 프로파일 파일/디렉토리 부재, registry 로드 실패 — fallback 하되 로그 남김.
+            # 프로그래밍 에러 (TypeError/AttributeError) 는 catch 안 하고 상위로 전파.
             logger.info("프로파일 감지 실패 — 기본 SecurityHooks 사용: %s", exc)
             self._security_hooks = SecurityHooks()
             return self._security_hooks
@@ -874,9 +876,13 @@ class Orchestra:
                         return_exceptions=True,
                     )
                     for item in batch:
-                        if isinstance(item, BaseException):
+                        # Exception 만 삼키고 BaseException (CancelledError 등) 은 재발생 —
+                        # runner.py::run_many 와 동일한 전파 보존 패턴.
+                        if isinstance(item, Exception):
                             logger.error("병렬 태스크 예외 (gather): %s", item)
                             continue
+                        if isinstance(item, BaseException):
+                            raise item
                         tid, task_result = item
                         phase_result["tasks"][tid] = task_result
                         if task_result.get("passed", False):

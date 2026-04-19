@@ -43,8 +43,9 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
   전부 정리 (0 errors 달성). `CLAUDE.md` 에 `uv run pyright src/` 추가.
 
 ### Added — 비교 실험
-- **`scripts/gate_benchmark.py` + `docs/benchmarks/gate-coverage.md`** — 7개 품질
-  게이트 × 35 fixtures 커버리지 벤치마크. positive/negative fixture 기반 TP/TN/FP/FN
+- **`scripts/gate_benchmark.py` + `docs/benchmarks/gate-coverage.md`** — 9개 품질
+  게이트 중 정규식/AST 기반 **7개** × 35 fixtures 커버리지 벤치마크. positive/negative
+  fixture 기반 TP/TN/FP/FN
   → **precision 100% / recall 100% / accuracy 100%**. 초기 2 fixture 실패가 게이트 정책
   경계 재확인 + LESSON-018 dead 상수 정규식이 walrus operator 미커버 발견 (미래 개선
   후보). CI 통합 가능 (`exit 1` on miss/false-alarm).

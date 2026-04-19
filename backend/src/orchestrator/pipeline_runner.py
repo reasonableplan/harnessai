@@ -353,9 +353,12 @@ def main() -> None:
         print("요구사항이 비어 있습니다.")
         sys.exit(1)
 
+    env_project_dir = os.environ.get("PROJECT_DIR")
+    # Path("") == Path(".") 라서 falsy 가 아님 — 환경변수 부재 시 `or` 체인 건너뛰기 위해
+    # 명시적으로 값이 있을 때만 Path 생성.
     project_dir: Path = (
         args.project_dir
-        or Path(os.environ.get("PROJECT_DIR", ""))
+        or (Path(env_project_dir) if env_project_dir else None)
         or Path(__file__).parents[2]
     )
     success = asyncio.run(
