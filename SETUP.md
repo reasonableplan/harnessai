@@ -12,14 +12,28 @@ v2 흐름이 **권장 경로**. v1 (`/my-*`) 은 레거시.
 
 ```bash
 git clone https://github.com/reasonableplan/harnessai.git
-cd harnessai/backend && uv sync
+cd harnessai
 
-# 환경변수 (선택 — 기본값 있음)
-export HARNESS_AI_HOME=/path/to/harnessai   # /ha-* 스킬이 v2 모듈 import 시 사용
+# 1) 스킬 + 프로파일을 ~/.claude/ 로 설치 (SHA256 manifest 기반, 재실행 시 diff 감지)
+./install.sh              # Unix / WSL / macOS / Git Bash
+# .\install.ps1           # Windows PowerShell (UTF-8 BOM 으로 한글 깨짐 방지)
 
-# v2 스키마 무결성 확인
-python ~/.claude/harness/bin/harness validate
+# 2) 환경변수 (install 스크립트가 끝에 안내)
+export HARNESS_AI_HOME="$(pwd)"
+
+# 3) backend 의존성 (서버/테스트용)
+cd backend && uv sync
+
+# 4) v2 스키마 무결성 확인
+python ../harness/bin/harness validate
 ```
+
+**install 스크립트 옵션**:
+- `--force` — 기존 설치 확인 생략
+- `--dry-run` — 실제 복사 없이 diff 만 출력
+- `CLAUDE_HOME=/custom/.claude ./install.sh` — 타겟 디렉토리 override
+
+상세: [install.sh](install.sh) · [install.ps1](install.ps1) · 회귀 테스트 [tests/install/](tests/install/)
 
 ### 프로젝트 시작 (어떤 프로젝트든)
 

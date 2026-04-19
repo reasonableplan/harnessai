@@ -137,6 +137,10 @@ def _run_toolchain_gate(project: Path, plan) -> list[str]:
             if not cmd:
                 continue
             try:
+                # shell=True 근거: 프로파일 toolchain 은 `uv run pytest tests/` 식
+                # 여러 토큰 + 옵션 조합이라 shell 해석 필요.
+                # 신뢰 소스: `harness/profiles/*.md` frontmatter (레포 내 관리).
+                # 사용자 입력이 아니므로 command injection 위험 없음.
                 r = subprocess.run(
                     cmd, shell=True, cwd=cwd,
                     capture_output=True, timeout=300,

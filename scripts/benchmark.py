@@ -24,12 +24,21 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-# 레포 루트 자동 감지
+# 레포 루트 자동 감지 — 이 스크립트는 HarnessAI 레포 내에서만 동작.
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_SRC = REPO_ROOT / "backend"
+HARNESS_BIN = REPO_ROOT / "harness" / "bin" / "harness"
+if not BACKEND_SRC.exists() or not HARNESS_BIN.exists():
+    sys.stderr.write(
+        f"[FAIL] 레포 루트 구조 확인 필요 — 기대:\n"
+        f"  {BACKEND_SRC}\n  {HARNESS_BIN}\n"
+        "레포 루트에서 `uv run python scripts/benchmark.py` 로 실행하세요.\n"
+    )
+    sys.exit(3)
 sys.path.insert(0, str(BACKEND_SRC))
 
 from src.orchestrator.profile_loader import ProfileLoader  # noqa: E402
@@ -37,8 +46,6 @@ from src.orchestrator.skeleton_assembler import (  # noqa: E402
     SkeletonAssembler,
     find_placeholders,
 )
-
-HARNESS_BIN = REPO_ROOT / "harness" / "bin" / "harness"
 
 
 def time_it(fn: Callable[[], Any], iterations: int) -> dict[str, float]:
@@ -184,20 +191,20 @@ def run_all(iterations: int) -> dict[str, Any]:
         "iterations": iterations,
         "benchmarks": {},
     }
-    print(f"[1/6] profile detect …", flush=True)
+    print("[1/6] profile detect …", file=sys.stderr, flush=True)
     results["benchmarks"]["profile_detect"] = bench_profile_detect(iterations)
-    print(f"[2/6] skeleton assemble …", flush=True)
+    print("[2/6] skeleton assemble …", file=sys.stderr, flush=True)
     results["benchmarks"]["skeleton_assemble"] = bench_skeleton_assemble(iterations)
-    print(f"[3/6] harness validate …", flush=True)
+    print("[3/6] harness validate …", file=sys.stderr, flush=True)
     results["benchmarks"]["harness_validate"] = bench_harness_validate(iterations)
-    print(f"[4/6] harness integrity …", flush=True)
+    print("[4/6] harness integrity …", file=sys.stderr, flush=True)
     results["benchmarks"]["harness_integrity"] = bench_harness_integrity(iterations)
-    print(f"[5/6] find_placeholders scaling …", flush=True)
+    print("[5/6] find_placeholders scaling …", file=sys.stderr, flush=True)
     results["benchmarks"]["find_placeholders"] = bench_find_placeholders_scaling(iterations)
     # install.sh 측정은 shell environment 차이로 플랫폼별 불안정.
     # --with-install 플래그 있을 때만 실행.
     if os.environ.get("HARNESS_BENCH_INSTALL") == "1":
-        print(f"[6/6] install.sh fresh (최대 5회) …", flush=True)
+        print("[6/6] install.sh fresh (최대 5회) …", file=sys.stderr, flush=True)
         try:
             install_result = bench_install_script(iterations)
             if install_result:
@@ -214,7 +221,7 @@ def render_markdown(results: dict[str, Any]) -> str:
     lines.append("")
     lines.append(f"- Python: {results['python']}")
     lines.append(f"- Iterations: {results['iterations']}")
-    lines.append(f"- 측정 항목: LLM 호출 없이 측정 가능한 부분만")
+    lines.append("- 측정 항목: LLM 호출 없이 측정 가능한 부분만")
     lines.append("")
     lines.append("## 요약")
     lines.append("")

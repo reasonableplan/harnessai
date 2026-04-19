@@ -13,7 +13,8 @@
 #   3. $CLAUDE_HOME/harness/.install-manifest.json 에 파일 목록 + SHA256 기록
 #   4. 재실행 시 manifest diff 로 변경 감지
 
-set -eo pipefail  # nounset 제외 — 빈 배열 체크가 bash 3.2/msys 에서 trip 함
+set -euo pipefail
+# nounset (set -u) 활성. 빈 배열 참조는 ${arr[@]+"${arr[@]}"} 패턴으로 방어.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
@@ -47,7 +48,7 @@ else
 fi
 
 # 복사 계획 구성 — (source_abs, target_rel) 쌍
-declare -a PLAN
+PLAN=()
 add_plan() {
     local src_dir="$1"
     local target_prefix="$2"
@@ -72,7 +73,7 @@ echo ""
 # 기존 manifest 읽어 diff 계산
 # manifest 파일 형식은 한 줄에 target + sha256 가 함께 있는 JSON 엔트리:
 #   { "target": "harness/foo.md", "sha256": "abc123..." },
-declare -A OLD_HASHES
+declare -A OLD_HASHES=()
 if [ -f "$MANIFEST_PATH" ]; then
     while IFS=$'\t' read -r tgt hash; do
         [ -n "$tgt" ] && [ -n "$hash" ] && OLD_HASHES["$tgt"]="$hash"
@@ -80,8 +81,10 @@ if [ -f "$MANIFEST_PATH" ]; then
 fi
 
 # 변경 분류
-declare -a ADDED MODIFIED UNCHANGED
-for entry in "${PLAN[@]}"; do
+ADDED=()
+MODIFIED=()
+UNCHANGED=()
+for entry in ${PLAN[@]+"${PLAN[@]}"}; do
     src="${entry%%:*}"
     tgt_rel="${entry#*:}"
     new_hash=$(sha256_cmd "$src")
@@ -96,9 +99,9 @@ for entry in "${PLAN[@]}"; do
 done
 
 # manifest 에는 있지만 이번 복사 대상엔 없는 파일 (= 이전 설치 후 repo 에서 제거된 파일)
-declare -a REMOVED
-declare -A NEW_TARGETS
-for entry in "${PLAN[@]}"; do
+REMOVED=()
+declare -A NEW_TARGETS=()
+for entry in ${PLAN[@]+"${PLAN[@]}"}; do
     NEW_TARGETS["${entry#*:}"]=1
 done
 for t in "${!OLD_HASHES[@]}"; do
@@ -114,11 +117,11 @@ echo ""
 
 if [ "${#MODIFIED[@]}" -gt 0 ] && [ "$FORCE" -eq 0 ] && [ "$DRY_RUN" -eq 0 ]; then
     echo "수정될 파일:"
-    for f in "${MODIFIED[@]}"; do echo "  M $f"; done
+    for f in ${MODIFIED[@]+"${MODIFIED[@]}"}; do echo "  M $f"; done
     echo ""
     if [ "${#REMOVED[@]}" -gt 0 ]; then
         echo "삭제될 파일 (repo 에서 제거됨 — manifest 는 보존):"
-        for f in "${REMOVED[@]}"; do echo "  D $f"; done
+        for f in ${REMOVED[@]+"${REMOVED[@]}"}; do echo "  D $f"; done
         echo ""
     fi
     read -r -p "계속하시겠습니까? [y/N] " reply
@@ -146,7 +149,7 @@ NEW_MANIFEST=$(mktemp)
 
 count=0
 total=${#PLAN[@]}
-for entry in "${PLAN[@]}"; do
+for entry in ${PLAN[@]+"${PLAN[@]}"}; do
     src="${entry%%:*}"
     tgt_rel="${entry#*:}"
     tgt_abs="$CLAUDE_HOME/$tgt_rel"
