@@ -85,6 +85,43 @@ frontend/ integrity: 0 errors, 0 warnings
 | 1. HTML 태그 false positive | `_HTML_TAGS` blacklist + 회귀 테스트 | `273fdb5` |
 | 2. 백틱 인라인 false positive | 스캔 전 백틱 제거 + 회귀 테스트 | `273fdb5` |
 | 3. `\`\`\`filesystem` 블록 없을 때 WARN noise | opt-in 전환 (블록 없으면 silent) | `e9ab925` |
+| 4. **`done` 상태 drift — 단위 테스트만 통과 → type/lint 스킵** | **LESSON-021 신규** + `ha-build/run.py::cmd_complete` 게이트 강화 제안 | (진행) |
+
+## 🚨 가장 큰 발견 (LESSON-021)
+
+**현상**: backend 13 + frontend 13 태스크가 모두 `done` 상태. verify_history 는 비어있음.
+
+실제 toolchain 돌린 결과:
+
+| 프로파일 | test | lint | type |
+|---|---|---|---|
+| backend (fastapi) | pytest 53 ✅ | ruff clean ✅ | **pyright 15 errors** ❌ |
+| frontend (react-vite) | vitest 60 ✅ | **eslint config 없음** ❌ | tsc clean ✅ |
+
+**분석**: 각 `/ha-build` 실행 시 pytest 만 돌려서 "done" 으로 mark 됨. `toolchain.type`
+(pyright) 과 `toolchain.lint` (eslint) 는 **한 번도 실행 안 됐음**. 15 pyright errors 가
+몇 주에 걸쳐 누적된 채 숨어 있음.
+
+### 15 pyright errors 분류
+
+- **SQLModel + pydantic 혼용 (11건)**: `model_config = ConfigDict(...)` 을 SQLModel 클래스에
+  쓰면 타입 체크 실패. `SQLModelConfig` 필요. 또는 스키마 클래스를 `BaseModel` 로 전환 (이번 수정).
+- **SQLAlchemy `.desc()` 추론 실패 (4건)**: `Project.updated_at.desc()` — pyright 가
+  `datetime` annotation 으로 추론 → `.desc()` 못 찾음. `from sqlalchemy import desc; desc(col)`
+  로 전환 + 남는 `datetime | None` 타입은 `# type: ignore[arg-type]`.
+
+### 수정 후
+
+- backend: pytest 53 / ruff clean / pyright **0 errors** (15 → 0)
+- frontend: vitest 60 / tsc clean / eslint **0 errors, 3 warnings** (unused import — 후속 cleanup)
+- **verify_history 갱신** — 첫 `/ha-verify` 통과 공식 기록
+
+### HarnessAI 에 미치는 영향
+
+1. **[LESSON-021](../../backend/docs/shared-lessons.md#lesson-021)** 신규 추가:
+   "태스크 `done` = toolchain 전체 통과"
+2. `ha-build/run.py::cmd_complete` 강화 제안 — 현재 pytest 만 → 전체 toolchain 강제
+3. **모든 프로파일에 `toolchain.type` 필드 있는지 확인** — 현재 python-cli / fastapi / react-vite 모두 있음 ✅
 
 ## 중간 지표
 

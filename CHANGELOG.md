@@ -23,6 +23,10 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
   - `code-hijack.md`: 1차 E2E Phase 1+2 완주 기록 (pytest 127 → 169, 4 갭 발견 → v2 반영)
   - `ui-assistant-initial.md`: 2차 E2E 진행 중 + 2 false positive 발견/수정 기록
   - `README.md`: 인덱스 + 형식 가이드 + 다음 계획
+- **LESSON-021 신규** — ui-assistant 2차 E2E 중 발견. "태스크 `done` = toolchain 전체 통과
+  (test + lint + **type**)". 단위 테스트만 통과시키면 `done` 으로 mark 되는 흐름 때문에
+  pyright 15 errors + eslint config 누락이 Phase 1 끝까지 숨어 있었음. 실제 `/ha-verify`
+  돌려서 발견 → 수정 → 최초 verify_history 갱신.
 
 ### Changed
 - (항목 추가되는대로)

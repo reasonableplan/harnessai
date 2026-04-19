@@ -323,3 +323,30 @@ for i, cat in enumerate(categories, 1):
 ```
 
 **검출**: 주로 리뷰어 판단 (문맥 필요). 정규식으로는 `[N/M]` 사용 여부만 확인 가능.
+
+---
+
+## LESSON-021: 태스크 `done` = toolchain 전체 통과 (test + lint + **type**)
+
+**문제**: ui-assistant 2차 E2E 중간 발견. backend 13개 + frontend 13개 태스크가 `done`
+상태였으나 `/ha-verify` 를 한 번도 안 돌렸음. 실제로 돌려보니 **pyright 15 errors**
+(SQLModel + ConfigDict 혼용, `.desc()` 타입 추론, `__tablename__` declared_attr)
++ **eslint 설정 누락** (v9 migration 안 됨) 발견.
+
+단위 테스트 (pytest, vitest) 만 통과시키면 `done` 으로 mark 되는 흐름 때문.
+타입 체크와 린트는 스킵됨 → 누적된 15개 타입 에러가 E2E 까지 숨어있음.
+
+**규칙**:
+- 태스크를 `done` 마킹 전에 프로파일의 **`toolchain.test + toolchain.lint + toolchain.type`
+  전부** 강제 실행
+- 실패 시 태스크는 `in_progress` 또는 `blocked` 유지
+- 단위 테스트만 통과한 상태를 `done` 으로 부르지 말 것
+
+**구현 위치**:
+- `~/.claude/skills/ha-build/run.py::cmd_complete` 에서 mark-done 전 toolchain
+  검증 추가 (현재는 pytest 만)
+- 또는 `/ha-build` 스킬 본문에서 "완료 체크리스트" 로 명시
+
+**연결**:
+- 같은 정신: LESSON-018 (dead 상수) — 선언만 되고 실행 안 되는 것 금지
+- 반대 패턴 주의: 타입 체크를 "nice to have" 로 분류하면 결국 프로젝트 끝에서 누적 폭발
