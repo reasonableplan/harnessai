@@ -37,9 +37,21 @@ except ImportError:
     sys.exit(3)
 
 
+import os
+
 # ── 상수 ───────────────────────────────────────────────────────────────
 
-HARNESS_ROOT = Path.home() / ".claude" / "harness"
+# Resolve harness root with this priority:
+#   1. HARNESS_ROOT env var (explicit override)
+#   2. Script location: harness/bin/harness → parents[1] == harness/ root
+#      — matches both repo layout (<repo>/harness/) and install target
+#      (~/.claude/harness/) without depending on $HOME.
+#   3. Fallback: ~/.claude/harness (legacy default)
+_SCRIPT_ROOT = Path(__file__).resolve().parents[1]
+HARNESS_ROOT = Path(
+    os.environ.get("HARNESS_ROOT")
+    or (_SCRIPT_ROOT if (_SCRIPT_ROOT / "profiles" / "_registry.yaml").exists() else Path.home() / ".claude" / "harness")
+)
 
 STANDARD_SECTION_IDS = {
     "overview", "requirements", "stack", "configuration", "errors",
