@@ -38,15 +38,26 @@ class GeminiCliProvider(BaseProvider):
         if "GEMINI_API_KEY" not in env:
             raise RuntimeError("GEMINI_API_KEY 환경변수가 설정되어 있지 않습니다.")
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(working_dir) if working_dir else None,
-            env=env,
-            **({"start_new_session": True} if sys.platform != "win32" else {}),
-        )
+        cwd_str = str(working_dir) if working_dir else None
+        if sys.platform != "win32":
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd_str,
+                env=env,
+                start_new_session=True,
+            )
+        else:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd_str,
+                env=env,
+            )
 
         try:
             stdout, stderr = await asyncio.wait_for(

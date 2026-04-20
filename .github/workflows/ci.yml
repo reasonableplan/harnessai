@@ -60,5 +60,13 @@ jobs:
       - name: Install harness CLI runtime dep (PyYAML)
         run: pip install pyyaml
 
+      - name: Diagnostic — run installed harness validate with full output
+        run: |
+          TMP=$(mktemp -d)
+          CLAUDE_HOME="$TMP/.claude" bash install.sh --force
+          echo "---"
+          python3 "$TMP/.claude/harness/bin/harness" validate
+          rm -rf "$TMP"
+
       - name: Run install snapshot test
         run: bash tests/install/test_install_snapshot.sh
