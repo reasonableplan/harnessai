@@ -38,11 +38,14 @@ class ClaudeCliProvider(BaseProvider):
         }
         if sys.platform != "win32":
             proc = await asyncio.create_subprocess_exec(
-                *cmd, **common_kwargs, start_new_session=True  # type: ignore[arg-type]
+                *cmd,
+                **common_kwargs,
+                start_new_session=True,  # type: ignore[arg-type]
             )
         else:
             proc = await asyncio.create_subprocess_exec(
-                *cmd, **common_kwargs  # type: ignore[arg-type]
+                *cmd,
+                **common_kwargs,  # type: ignore[arg-type]
             )
 
         try:

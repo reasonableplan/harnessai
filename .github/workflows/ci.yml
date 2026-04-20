@@ -52,5 +52,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Diagnostic — python3 + harness validate
+        run: |
+          python3 --version
+          python3 harness/bin/harness validate
+
       - name: Run install snapshot test
         run: bash tests/install/test_install_snapshot.sh
