@@ -23,7 +23,8 @@ cd harnessai
 # 1) 스킬 + 프로파일을 ~/.claude/ 로 설치
 ./install.sh                       # Windows: .\install.ps1
 
-# 2) env 설정 (스크립트가 안내)
+# 2) env 설정 (스크립트가 안내) — /ha-* 스킬이 v2 모듈을 import 할 때 참조.
+#    미설정 시 스킬 실행만 실패 (backend tests/ruff/pyright 는 영향 없음).
 export HARNESS_AI_HOME="$(pwd)"
 
 # 3) backend 의존성

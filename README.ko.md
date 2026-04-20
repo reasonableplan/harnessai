@@ -36,7 +36,7 @@ export HARNESS_AI_HOME="$(pwd)"       # (설치 스크립트가 안내)
 /ha-review   # 보안훅 + LESSON + ai-slop + 테스트 분포 종합 리뷰
 ```
 
-> 세부: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · [SETUP.md](SETUP.md)
+> 세부: [ARCHITECTURE.ko.md](docs/ARCHITECTURE.ko.md) · [SETUP.md](SETUP.md)
 
 ---
 
@@ -263,7 +263,7 @@ python harness/bin/harness integrity --project .   # skeleton ↔ FS 정합성
 
 | 문서 | 내용 |
 |---|---|
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 시스템 구조 · 프로파일 · skeleton · 게이트 (**먼저 읽으세요**) |
+| [ARCHITECTURE.ko.md](docs/ARCHITECTURE.ko.md) | 시스템 구조 · 프로파일 · skeleton · 게이트 (**먼저 읽으세요**) |
 | [docs/decisions/](docs/decisions/) | Architecture Decision Records (ADR 5개) |
 | [docs/e2e-reports/](docs/e2e-reports/) | E2E 리포트 — dogfooding 증거 (code-hijack 완주, ui-assistant 진행 중) |
 | [docs/benchmarks/](docs/benchmarks/) | 성능 측정 + **게이트 커버리지** (35 fixtures, 100%) + LESSON↔게이트 dogfooding 트레이싱 |

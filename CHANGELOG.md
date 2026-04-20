@@ -7,10 +7,19 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 ## [Unreleased]
 
 ### Added
-- (항목 추가되는대로)
+- **`docs/ARCHITECTURE.md` 영어 버전 신규** — 현재 한국어는 `ARCHITECTURE.ko.md`
+  로 이전, 양쪽 상단에 언어 토글 배너. 영어 버전은 섹션 11로 나누어 condensed
+  ~200 라인 (한국어 원본은 worklog-style 상세).
+- **`backend/.env.example` 전면 재작성** — stale 엔트리 (DATABASE_URL /
+  GITHUB_* / ANTHROPIC_API_KEY — 미사용) 제거, 실제 읽히는 env 변수만 남김
+  (HARNESS_AI_HOME / GEMINI_API_KEY / DASHBOARD_* / PROJECT_DIR).
+- **CONTRIBUTING.md** `HARNESS_AI_HOME` 설명 보강 — /ha-* 스킬 v2 모듈
+  import 용. 미설정 시 스킬만 실패 (backend tests 는 영향 없음) 명시.
 
 ### Changed
-- (항목 추가되는대로)
+- **`install.sh` + `install.ps1` 메시지 전면 영어화** — 국제 사용자 대상.
+  도움말 · progress · 변경 요약 · y/N 프롬프트 · 완료 안내 전부 영어.
+  한국어는 README.ko.md 에서 제공.
 
 ### Fixed
 - (항목 추가되는대로)
