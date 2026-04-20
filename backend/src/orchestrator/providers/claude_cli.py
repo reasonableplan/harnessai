@@ -26,15 +26,24 @@ class ClaudeCliProvider(BaseProvider):
     ) -> str:
         cmd = self._build_command(config, system_prompt)
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.PIPE,  # 프롬프트를 stdin으로 전달 — Windows cmd.exe 8191자 제한 우회
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(working_dir) if working_dir else None,
-            # Unix에서 새 프로세스 그룹 생성 — SIGTERM을 트리 전체에 전달하기 위해
-            **({"start_new_session": True} if sys.platform != "win32" else {}),
-        )
+        # Pass the prompt via stdin to sidestep the Windows cmd.exe 8191-char limit.
+        # On Unix, start a new session so SIGTERM reaches the whole process tree.
+        # Branch the call explicitly — unpacking a conditional kwargs dict confuses
+        # pyright (typed params expect specific literal types, not `bool`).
+        common_kwargs: dict[str, object] = {
+            "stdin": asyncio.subprocess.PIPE,
+            "stdout": asyncio.subprocess.PIPE,
+            "stderr": asyncio.subprocess.PIPE,
+            "cwd": str(working_dir) if working_dir else None,
+        }
+        if sys.platform != "win32":
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, **common_kwargs, start_new_session=True  # type: ignore[arg-type]
+            )
+        else:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, **common_kwargs  # type: ignore[arg-type]
+            )
 
         try:
             stdout, stderr = await asyncio.wait_for(

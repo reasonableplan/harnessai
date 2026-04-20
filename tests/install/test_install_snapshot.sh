@@ -44,11 +44,11 @@ echo "[Case 1] Fresh install"
 OUTPUT=$(CLAUDE_HOME="$TARGET" ./install.sh --force)
 TOTAL_FILES=$(count_field "files" "$OUTPUT")
 assert "manifest exists" "[ -f '$MANIFEST' ]"
-assert "manifest is valid JSON" "python -m json.tool '$MANIFEST' >/dev/null 2>&1"
+assert "manifest is valid JSON" "python3 -m json.tool '$MANIFEST' >/dev/null 2>&1"
 assert "harness/bin/harness copied" "[ -f '$TARGET/harness/bin/harness' ]"
 assert "all 7 ha-* skills copied" "[ \$(ls -d '$TARGET'/skills/ha-* | wc -l) -eq 7 ]"
 assert "_ha_shared copied" "[ -f '$TARGET/skills/_ha_shared/utils.py' ]"
-assert "installed harness validate passes" "python '$TARGET/harness/bin/harness' validate >/dev/null 2>&1"
+assert "installed harness validate passes" "python3 '$TARGET/harness/bin/harness' validate >/dev/null 2>&1"
 assert "file count ≥ 40 (sanity)" "[ '$TOTAL_FILES' -ge 40 ]"
 
 # ── Case 2: Re-run with no source changes ─────────────────────────
