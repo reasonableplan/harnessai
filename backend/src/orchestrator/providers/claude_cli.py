@@ -28,24 +28,25 @@ class ClaudeCliProvider(BaseProvider):
 
         # Pass the prompt via stdin to sidestep the Windows cmd.exe 8191-char limit.
         # On Unix, start a new session so SIGTERM reaches the whole process tree.
-        # Branch the call explicitly — unpacking a conditional kwargs dict confuses
-        # pyright (typed params expect specific literal types, not `bool`).
-        common_kwargs: dict[str, object] = {
-            "stdin": asyncio.subprocess.PIPE,
-            "stdout": asyncio.subprocess.PIPE,
-            "stderr": asyncio.subprocess.PIPE,
-            "cwd": str(working_dir) if working_dir else None,
-        }
+        # Branch the call explicitly — kwargs unpacking from a typed dict trips pyright
+        # because each parameter expects a specific literal type.
+        cwd_str = str(working_dir) if working_dir else None
         if sys.platform != "win32":
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
-                **common_kwargs,
-                start_new_session=True,  # type: ignore[arg-type]
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd_str,
+                start_new_session=True,
             )
         else:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
-                **common_kwargs,  # type: ignore[arg-type]
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd_str,
             )
 
         try:
