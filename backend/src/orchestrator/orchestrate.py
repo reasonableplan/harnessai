@@ -723,8 +723,8 @@ class Orchestra:
         self.phase_manager.transition(Phase.TASK_BREAKDOWN)
         breakdown_prompt = (
             f"{requirements}\n\n"
-            f"<architect_output>\n{design_results['architect'].output}\n</architect_output>\n\n"
-            f"<designer_output>\n{design_results['designer'].output}\n</designer_output>"
+            f"skeleton.md 에 Architect + Designer 합의 결과가 모두 병합되어 있다. "
+            f"해당 문서의 섹션들을 참조해 태스크 분해하라."
         )
         breakdown_result = await self.runner.run("orchestrator", breakdown_prompt)
         self._log_result("orchestrator", breakdown_result)
