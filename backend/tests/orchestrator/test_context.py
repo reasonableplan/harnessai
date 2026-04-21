@@ -215,3 +215,73 @@ class TestBuildContext:
         )
 
         assert "JWT 선택 사유" in result
+
+    def test_project_root_claude_md_injected_before_extra_docs(self, tmp_path: Path) -> None:
+        """프로젝트 루트 CLAUDE.md 가 있으면 모든 에이전트 컨텍스트에 포함된다."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "skeleton.md").write_text(SAMPLE_SKELETON, encoding="utf-8")
+        (tmp_path / "CLAUDE.md").write_text(
+            "# Root CLAUDE.md\n- snake_case 필수\n- 테스트 먼저",
+            encoding="utf-8",
+        )
+
+        for agent in ("architect", "backend_coder", "frontend_coder", "qa"):
+            result = build_context(
+                agent=agent,
+                skeleton_path=docs_dir / "skeleton.md",
+                docs_dir=docs_dir,
+                project_root=tmp_path,
+            )
+            assert "Root CLAUDE.md" in result, f"{agent}: root CLAUDE.md 누락"
+            assert "snake_case 필수" in result, f"{agent}: root CLAUDE.md 내용 누락"
+
+    def test_project_root_claude_md_absent_does_not_error(self, tmp_path: Path) -> None:
+        """프로젝트 루트에 CLAUDE.md 가 없으면 조용히 건너뛴다."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "skeleton.md").write_text(SAMPLE_SKELETON, encoding="utf-8")
+
+        result = build_context(
+            agent="architect",
+            skeleton_path=docs_dir / "skeleton.md",
+            docs_dir=docs_dir,
+            project_root=tmp_path,  # CLAUDE.md 없는 루트
+        )
+
+        assert "Root CLAUDE.md" not in result
+        # skeleton 은 여전히 포함
+        assert "Sample App" in result
+
+    def test_project_root_none_behaves_as_before(self, tmp_path: Path) -> None:
+        """project_root=None (기본값) 이면 기존 동작과 동일."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "skeleton.md").write_text(SAMPLE_SKELETON, encoding="utf-8")
+
+        result = build_context(
+            agent="architect",
+            skeleton_path=docs_dir / "skeleton.md",
+            docs_dir=docs_dir,
+            # project_root 생략
+        )
+
+        assert "Sample App" in result
+
+    def test_project_root_claude_md_precedes_extra_docs(self, tmp_path: Path) -> None:
+        """루트 CLAUDE.md 가 EXTRA_DOCS conventions.md 보다 앞에 위치한다."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "conventions.md").write_text("# Conventions\n- tabsize 4", encoding="utf-8")
+        (tmp_path / "CLAUDE.md").write_text("# Root Rules\n- 최우선 규칙", encoding="utf-8")
+
+        result = build_context(
+            agent="architect",
+            skeleton_path=docs_dir / "skeleton.md",
+            docs_dir=docs_dir,
+            project_root=tmp_path,
+        )
+
+        root_pos = result.index("Root Rules")
+        conv_pos = result.index("Conventions")
+        assert root_pos < conv_pos, "루트 CLAUDE.md 가 conventions.md 보다 먼저 나와야 함"

@@ -159,6 +159,7 @@ def build_context(
     skeleton_path: Path,
     docs_dir: Path,
     prompt_path: Path | None = None,
+    project_root: Path | None = None,
 ) -> str:
     """Assemble the full context to inject into an agent (section-ID based)."""
     parts: list[str] = []
@@ -167,7 +168,15 @@ def build_context(
     if prompt_path and prompt_path.exists():
         parts.append(prompt_path.read_text(encoding="utf-8").strip())
 
-    # 2. Extract skeleton sections (ID-based)
+    # 2. Project root CLAUDE.md — present in all agents, higher authority than agent prompt
+    if project_root is not None:
+        root_claude = project_root / "CLAUDE.md"
+        if root_claude.exists():
+            content = root_claude.read_text(encoding="utf-8").strip()
+            if content:
+                parts.append(f"# Project CLAUDE.md\n{content}")
+
+    # 4. Extract skeleton sections (ID-based)
     if skeleton_path.exists():
         skeleton_text = skeleton_path.read_text(encoding="utf-8")
         sections = AGENT_SECTIONS_BY_ID.get(agent, [])
@@ -182,7 +191,7 @@ def build_context(
             if extracted:
                 parts.append("# Skeleton (relevant sections)\n\n" + "\n\n".join(extracted))
 
-    # 3. Extra docs
+    # 5. Extra docs
     extra = EXTRA_DOCS.get(agent, [])
     for doc_name in extra:
         if doc_name.endswith("/"):

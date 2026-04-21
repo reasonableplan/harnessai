@@ -142,6 +142,7 @@ class AgentRunner:
                     skeleton_path=skeleton_path,
                     docs_dir=docs_dir,
                     prompt_path=prompt_path if prompt_path.exists() else None,
+                    project_root=self.project_dir,
                 )
                 or None
             )
