@@ -283,7 +283,7 @@ class TestContextInjection:
         assert call_kwargs.kwargs["system_prompt"] is None
 
 
-# ── M0-D6: HARNESS_AI_HOME fallback for prompt_path ─────────────────────
+# ── HARNESS_AI_HOME fallback for prompt_path ─────────────────────────────
 
 
 class TestResolvePromptPath:

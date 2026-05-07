@@ -60,10 +60,10 @@ STANDARD_SECTION_IDS = {
     "interface.http", "interface.cli", "interface.ipc", "interface.sdk",
     "view.screens", "view.components", "state.flow", "core.logic",
     "observability", "deployment", "tasks", "notes",
-    # v0.5.0 신규 (10) — auto-fit skeleton (required_when 6축)
+    # required_when 6축 표현식으로 자동 활성 (10)
     "data_model", "threat_model", "audit_log", "slo", "runbook",
     "test_strategy", "user_journey", "authorization_matrix", "ci_cd", "external_deps",
-    # 모바일 (3) — M0-A
+    # 모바일 (3)
     "mobile.navigation", "mobile.build_config", "mobile.lifecycle",
 }
 
@@ -76,7 +76,7 @@ REQUIRED_WHEN_ATOMS = {
     "has.users", "has.storage", "has.env_config", "has.external_deps",
     "has.http_server", "has.cli_entrypoint", "has.ipc", "has.ui",
     "has.complex_state", "has.sdk_surface", "has.production_concerns",
-    # Mobile (M0-A) — mobile.* 섹션 선언 시 활성. _SECTION_TO_HAS_KEY 와 동기.
+    # Mobile — mobile.* 섹션 선언 시 활성. _SECTION_TO_HAS_KEY 와 동기.
     "has.navigation", "has.build_config", "has.lifecycle",
     "scale.small_or_larger", "scale.medium_or_larger", "scale.large",
 }

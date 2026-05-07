@@ -56,9 +56,9 @@ _SECTION_TO_HAS_KEY: dict[str, str] = {
     "deployment": "production_concerns",
     "ci_cd": "production_concerns",
     "runbook": "production_concerns",
-    # Mobile (M0-A) — profile 이 mobile.* 를 declared sections 에 포함하면
-    # has.navigation / has.build_config / has.lifecycle atom 활성. Web/CLI/Lib
-    # 프로파일은 이 섹션을 선언 안 하므로 자동 비활성 (호환성 유지).
+    # Mobile — profile 이 mobile.* 를 declared sections 에 포함하면
+    # has.navigation / has.build_config / has.lifecycle atom 활성.
+    # Web/CLI/Lib 프로파일은 이 섹션을 선언 안 하므로 자동 비활성 (호환성 유지).
     "mobile.navigation": "navigation",
     "mobile.build_config": "build_config",
     "mobile.lifecycle": "lifecycle",

@@ -120,7 +120,7 @@ class TestOrchestratorConfig:
         ["mobile_coder_rn", "mobile_coder_flutter", "mobile_coder_android", "mobile_coder_ios"],
     )
     def test_mobile_coder_loadable(self, agent_name: str) -> None:
-        """M0-B — 4개 mobile_coder 모두 OrchestratorConfig 정식 필드.
+        """4개 mobile_coder 모두 OrchestratorConfig 정식 필드.
 
         get_agent(name) 가 ValueError 없이 AgentConfig 반환해야 Orchestrator
         가 task.agent=<mobile_coder_*> 로 dispatch 가능.

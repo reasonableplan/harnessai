@@ -50,7 +50,7 @@ SAMPLE_SKELETON = """\
 
 class TestSectionTitlesMap:
     def test_all_33_standard_sections_present(self) -> None:
-        """M0-D: SECTION_TITLES 20→33 정합 (v0.5.0 fragments 10 + 모바일 3)."""
+        """SECTION_TITLES 33개 전부 존재 (기본 20 + auto-fit 10 + 모바일 3)."""
         expected_ids = {
             # 기본 20
             "overview",
@@ -73,7 +73,7 @@ class TestSectionTitlesMap:
             "deployment",
             "tasks",
             "notes",
-            # v0.5.0 신규 (10) — auto-fit skeleton
+            # auto-fit skeleton (10)
             "data_model",
             "threat_model",
             "audit_log",
@@ -84,7 +84,7 @@ class TestSectionTitlesMap:
             "authorization_matrix",
             "ci_cd",
             "external_deps",
-            # 모바일 (3) — M0-A
+            # 모바일 (3)
             "mobile.navigation",
             "mobile.build_config",
             "mobile.lifecycle",
@@ -94,7 +94,7 @@ class TestSectionTitlesMap:
 
 class TestAgentSectionsById:
     def test_all_agents_have_id_mapping(self) -> None:
-        """M0-D2/D5: 11 agents (7 기본 + 4 mobile_coder_*)."""
+        """11 agents (7 기본 + 4 mobile_coder_*) 전부 AGENT_SECTIONS_BY_ID 에 존재."""
         expected = {
             "architect",
             "designer",
@@ -309,7 +309,7 @@ class TestBuildContext:
         assert root_pos < conv_pos, "루트 CLAUDE.md 가 conventions.md 보다 먼저 나와야 함"
 
 
-# ── M0-D2/D3: harness-global guidelines 직접 로드 ─────────────────────────
+# ── harness-global guidelines 직접 로드 ───────────────────────────────────
 
 
 class TestHarnessGlobalDocs:
@@ -319,7 +319,7 @@ class TestHarnessGlobalDocs:
     """
 
     def test_mobile_coder_rn_loads_harness_guidelines(self, tmp_path: Path) -> None:
-        """mobile_coder_rn 이 templates/guidelines/react-native-expo/*.md 4개를 받음."""
+        """mobile_coder_rn 이 templates/guidelines/react-native-expo/*.md 4개를 context 에 포함."""
         # Harness dir mock — templates/guidelines/react-native-expo/ 4 파일 작성
         harness = tmp_path / "harness"
         rn_guidelines = harness / "templates" / "guidelines" / "react-native-expo"

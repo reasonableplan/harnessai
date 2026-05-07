@@ -38,8 +38,7 @@ logger = logging.getLogger(__name__)
 # Batch-mode directive prepended to architect/designer prompts in non-interactive runs.
 # Prevents agents from entering interview/question mode and ensures skeleton sections
 # are filled immediately using the exact SECTION_TITLES headings.
-# M0-D: 17 → 33 정합 (v0.5.0 fragments 10 + 모바일 3 추가). 프로젝트에 따라 일부만
-# 활성 — skeleton.md 에 존재하는 섹션만 채워야 함 (전부 채울 필요 없음).
+# 프로젝트에 따라 일부만 활성 — skeleton.md 에 존재하는 섹션만 채워야 함.
 _BATCH_MODE_DIRECTIVE = """\
 [BATCH MODE — NO QUESTIONS, NO INTERVIEW]
 비대화형 실행 모드입니다. 사용자는 답변할 수 없습니다.
@@ -849,8 +848,7 @@ class Orchestra:
                     async def _run_task(task: TaskItem) -> tuple[str, dict[str, Any]]:
                         tid = task.id
                         is_frontend: bool = task.agent == "frontend_coder"
-                        # M0-C: mobile_coder_* (rn/flutter/android/ios) 도 별도 분기.
-                        # is_frontend 와 상호 배타적 — security_hooks 가 둘 다 True 시 ValueError.
+                        # mobile_coder_* 는 is_frontend 와 상호 배타 — security_hooks 가 둘 다 True 시 ValueError.
                         is_mobile: bool = task.agent.startswith("mobile_coder_")
                         try:
                             result = await self.implement_with_retry(

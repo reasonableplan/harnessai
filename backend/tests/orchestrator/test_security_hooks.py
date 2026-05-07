@@ -366,12 +366,12 @@ class TestProfileWhitelistInjection:
 
 
 # ---------------------------------------------------------------------------
-# is_mobile flag (M0-C)
+# is_mobile flag
 # ---------------------------------------------------------------------------
 
 
 class TestIsMobileFlag:
-    """M0-C: is_mobile 플러밍. 현재는 frontend 와 동일한 dep 룰 (RN TS imports)."""
+    """is_mobile 플래그. 현재는 frontend 와 동일한 dep 룰 (RN TS imports)."""
 
     def test_is_mobile_alone_uses_frontend_dep_rules(self) -> None:
         """is_mobile=True 단독 → check_dependency 가 frontend 모드 (Python imports 무시)."""

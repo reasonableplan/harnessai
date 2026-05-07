@@ -30,7 +30,7 @@ _AGENT_TO_PROFILE: dict[str, str] = {
 }
 
 _BACKEND_PROFILES = ("fastapi", "python-cli", "python-lib")
-_FRONTEND_PROFILES = ("react-vite",)   # R1: nextjs 룰 _registry.yaml 에서 제거됨
+_FRONTEND_PROFILES = ("react-vite",)
 
 
 def _agent_to_guideline_paths(agent: str, plan) -> list[str]:

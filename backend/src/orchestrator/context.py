@@ -13,7 +13,6 @@ from pathlib import Path
 
 # Standard 33 section IDs → heading titles matching fragment frontmatter `name`.
 # Must stay in sync with ~/.claude/harness/templates/skeleton/<id>.md name fields.
-# M0-D: v0.5.0 fragments 10 + 모바일 fragments 3 정합 (20→33).
 SECTION_TITLES: dict[str, str] = {
     "overview": "프로젝트 개요",
     "requirements": "기능 요구사항",
@@ -35,7 +34,7 @@ SECTION_TITLES: dict[str, str] = {
     "deployment": "배포 설정",
     "tasks": "태스크 분해",
     "notes": "구현 노트",
-    # v0.5.0 신규 fragments (10) — required_when 으로 6축 답변 따라 자동 활성
+    # required_when 표현식으로 6축 답변에 따라 자동 활성
     "data_model": "데이터 모델",
     "threat_model": "위협 모델 (Threat Model)",
     "audit_log": "감사 로그 (Audit Log)",
@@ -46,17 +45,15 @@ SECTION_TITLES: dict[str, str] = {
     "authorization_matrix": "권한 행렬 (Authorization Matrix)",
     "ci_cd": "CI/CD 파이프라인",
     "external_deps": "외부 의존 (External Dependencies)",
-    # 모바일 fragments (3) — has.navigation/build_config/lifecycle 으로 mobile 활성
+    # 모바일 fragments (3) — has.navigation / build_config / lifecycle atom 으로 활성
     "mobile.navigation": "네비게이션",
     "mobile.build_config": "빌드 설정",
     "mobile.lifecycle": "라이프사이클 / 권한",
 }
 
 # Per-agent section ID mapping. "*" means all sections.
-# M0-D2: mobile_coder_* 4개 추가. mobile.* 섹션 + view/state + interface.http (paired) +
-# persistence (local-only) 받음.
-# M0-D5: Designer 의 sections 에 mobile.navigation/mobile.lifecycle 추가
-# (모바일 화면/UX/네비게이션은 Designer 영역).
+# mobile_coder_* 는 mobile.* 섹션 + view/state + interface.http + persistence 를 받음.
+# Designer 는 mobile.navigation / mobile.lifecycle 포함 (모바일 화면/UX/네비게이션 담당).
 _MOBILE_CODER_SECTIONS: list[str] = [
     "overview",
     "requirements",
@@ -157,10 +154,10 @@ EXTRA_DOCS: dict[str, list[str]] = {
     "qa": ["conventions.md", "shared-lessons.md"],
 }
 
-# M0-D2/D3: harness-global docs per agent — paths are relative to harness_dir
-# (~/.claude/harness/). 사용자 프로젝트의 <project>/docs/guidelines/ 가 비어 있어도
-# 글로벌 SoT 에서 직접 로드하므로 외부 사용자도 즉시 production-grade 컨벤션을 받음.
-# 이전 EXTRA_DOCS 의 guidelines/<role>/ 경로는 프로젝트가 직접 관리하는 옵션 유지
+# Harness-global docs per agent — paths are relative to harness_dir (~/.claude/harness/).
+# 사용자 프로젝트의 <project>/docs/guidelines/ 가 비어 있어도 글로벌 SoT 에서 직접 로드
+# 하므로 외부 사용자도 즉시 production-grade 컨벤션을 받음.
+# EXTRA_DOCS 의 guidelines/<role>/ 경로는 프로젝트가 직접 관리하는 옵션 유지
 # (override 패턴 — 프로젝트 docs/guidelines/ 가 있으면 그쪽도 함께 로드).
 EXTRA_HARNESS_DOCS: dict[str, list[str]] = {
     "mobile_coder_rn": [
@@ -249,7 +246,7 @@ def build_context(
         docs_dir: <project>/docs/ — EXTRA_DOCS 의 project-local 경로 base.
         prompt_path: agent 시스템 프롬프트 (CLAUDE.md).
         project_root: <project>/ — root CLAUDE.md 로딩 base.
-        harness_dir: ~/.claude/harness/ (M0-D2 추가) — EXTRA_HARNESS_DOCS 의
+        harness_dir: ~/.claude/harness/ — EXTRA_HARNESS_DOCS 의
             harness-global 경로 base. None 이면 harness-relative docs 로딩 skip
             (legacy 호환).
     """
@@ -300,7 +297,7 @@ def build_context(
                 if content:
                     parts.append(f"# {doc_name}\n{content}")
 
-    # 6. Harness-global docs (M0-D2/D3) — templates/guidelines/, lessons/ 등 SoT 에서 직접 로드.
+    # 6. Harness-global docs — templates/guidelines/ 등 SoT 에서 직접 로드.
     # 프로젝트 docs/guidelines/ 가 비어 있어도 외부 사용자가 즉시 컨벤션을 받음.
     if harness_dir is not None:
         harness_extra = EXTRA_HARNESS_DOCS.get(agent, [])

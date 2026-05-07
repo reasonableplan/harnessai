@@ -26,7 +26,7 @@
                  └──────────────────┼──────────────────┘
                                     ▼
                 ┌──────────────────────────────────────┐
-                │   7 agents (Claude CLI subprocess)   │
+                │  11 agents (Claude CLI subprocess)   │
                 │   Architect / Designer / Orchestrator│
                 │   Backend Coder / Frontend Coder /   │
                 │   Reviewer / QA                      │
@@ -69,7 +69,7 @@ v2 abstracts them into **profiles** — one file per stack holding every rule.
 Each profile frontmatter declares:
 - `paths` + `detect` — which directories / files trigger this profile
 - `components` — required / optional component types
-- `skeleton_sections` — which of the 20 section IDs apply
+- `skeleton_sections` — which of the 33 section IDs apply
 - `toolchain` — test / lint / type / format commands
 - `whitelist` — allowed runtime and dev dependencies
 - `lessons_applied` — LESSON IDs the Reviewer must enforce
@@ -85,7 +85,7 @@ One file under `harness/profiles/<stack>.md` + one entry in `_registry.yaml`. Op
 
 ## 3. Skeleton — the contract
 
-`skeleton.md` is the **single source of truth** declaring what the project is. Twenty standard section IDs; each profile picks a subset.
+`skeleton.md` is the **single source of truth** declaring what the project is. Thirty-three standard section IDs; each profile picks a subset.
 
 ```
 overview · requirements · stack · configuration · errors · auth ·
@@ -226,7 +226,7 @@ LESSONs are added manually by editing `shared-lessons.md` + each profile's `less
         runner.py               AgentRunner (timeout / retry)
         security_hooks.py       6 hooks + from_profile
         providers/              Claude CLI / Gemini / local
-    tests/                357 pytest tests
+    tests/                496 pytest tests
       orchestrator/
       dashboard/
       skills/              Regression guards for harness integrity + test distribution

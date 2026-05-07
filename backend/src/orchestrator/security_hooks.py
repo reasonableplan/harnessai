@@ -547,9 +547,9 @@ class SecurityHooks:
         Args:
             text: agent output text (code included).
             is_frontend: if True, use frontend dependency rules (web React/TS).
-            is_mobile: if True, mobile context (RN/Flutter/native). M0-C 플러밍 —
-                현재는 frontend 와 동일 처리 (RN 의 TS imports 케이스). M1+ 에서
-                framework별 dep 룰 분기 (Flutter Dart, Kotlin, Swift). is_frontend
+            is_mobile: if True, mobile context (RN/Flutter/native). 현재는 frontend
+                와 동일 처리 (RN 의 TS imports 케이스). framework별 dep 룰 분기
+                (Flutter Dart, Kotlin, Swift) 는 별도 확장 시 추가. is_frontend
                 과 상호 배타 — 둘 중 하나만 True.
             allowed_endpoints: endpoints declared in the skeleton.
         """
@@ -562,8 +562,8 @@ class SecurityHooks:
         findings.extend(
             check_dependency(
                 text,
-                # M0-C: mobile 도 frontend dep 룰 (TS/JS imports — RN 우선).
-                # M1+ 에서 Flutter Dart / Kotlin / Swift 분기 추가.
+                # mobile 은 frontend dep 룰 사용 (TS/JS imports — RN 기준).
+                # Flutter Dart / Kotlin / Swift 분기는 별도 확장 시 추가.
                 is_frontend=is_frontend or is_mobile,
                 python_whitelist=self.python_whitelist,
                 frontend_whitelist=self.frontend_whitelist,

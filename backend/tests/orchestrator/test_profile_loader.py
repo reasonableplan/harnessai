@@ -628,14 +628,14 @@ def test_compute_active_sections_invalid_expression_conservative_activate(
     assert "broken" in active
 
 
-# ── files_any 매처 (모바일 확장 M-spike 1) ───────────────────────────────
+# ── files_any 매처 ───────────────────────────────────────────────────────
 
 
 def test_detect_files_any_matches_when_one_exists(tmp_path: Path) -> None:
     """files_any: [a, b, c] — 하나라도 존재하면 매칭 (Android Gradle 케이스).
 
     Android Studio 프로젝트는 build.gradle.kts (Kotlin DSL) 또는 build.gradle
-    (Groovy DSL) 둘 중 하나만 존재. 기존 files (AND) 매처로는 표현 불가능.
+    (Groovy DSL) 둘 중 하나만 존재. 기존 files (AND 전용) 매처로는 표현 불가능.
     """
     harness = tmp_path / "harness"
     project = tmp_path / "project"
@@ -689,13 +689,13 @@ def test_detect_files_any_excludes_when_none_exist(tmp_path: Path) -> None:
     assert loader.detect() == []
 
 
-# ── 모바일 has 키 매핑 (M0-A — atom 인프라) ─────────────────────────────
+# ── 모바일 has 키 매핑 ───────────────────────────────────────────────────
 
 
 def test_compute_has_keys_includes_mobile_navigation(tmp_path: Path) -> None:
     """프로파일이 mobile.navigation 을 declared sections 에 포함 → has.navigation 활성.
 
-    M0-A: `_SECTION_TO_HAS_KEY` 에 mobile.navigation→navigation 매핑 추가 시
+    `_SECTION_TO_HAS_KEY` 에 mobile.navigation→navigation 매핑이 있으므로
     compute_has_keys 가 'navigation' 을 반환해야 함. fragment 의 `required_when:
     has.navigation` 이 정상 평가되는 전제.
     """
@@ -751,7 +751,7 @@ def test_compute_active_sections_mobile_navigation_excluded_for_web(
     assert "mobile.navigation" not in active
 
 
-# ── _registry.yaml 모바일 4 룰 (M0-C) ──────────────────────────────────
+# ── _registry.yaml 모바일 4 룰 ──────────────────────────────────────────
 
 
 def test_detect_react_native_expo_matches_with_expo_dependency(tmp_path: Path) -> None:
@@ -867,11 +867,11 @@ def test_detect_ios_swift_matches_with_package_swift(tmp_path: Path) -> None:
     assert matches[0].profile.id == "ios-swift"
 
 
-# ── M1: 실제 react-native-expo 프로파일 통합 ─────────────────────────────
+# ── 실제 react-native-expo 프로파일 통합 ────────────────────────────────
 
 
 def test_real_react_native_expo_profile_loads_with_full_schema() -> None:
-    """M1: 실제 harness/profiles/react-native-expo.md 가 ProfileLoader 로 정상 로드.
+    """실제 harness/profiles/react-native-expo.md 가 ProfileLoader 로 정상 로드.
 
     profile 파일의 frontmatter 가 schema 를 통과하고, _base 상속이 작동하며,
     whitelist / skeleton_sections / toolchain 모두 채워져 있어야 함.
@@ -880,7 +880,7 @@ def test_real_react_native_expo_profile_loads_with_full_schema() -> None:
     if not (repo_harness / "profiles" / "react-native-expo.md").exists():
         import pytest
 
-        pytest.skip("react-native-expo profile not yet installed (M1 작업 중)")
+        pytest.skip("react-native-expo profile not yet installed")
     loader = ProfileLoader(harness_dir=repo_harness)
     profile = loader.load("react-native-expo")
     assert profile.id == "react-native-expo"
@@ -900,12 +900,12 @@ def test_real_react_native_expo_profile_loads_with_full_schema() -> None:
 
 
 def test_real_react_native_expo_detect_matches_expo_project(tmp_path: Path) -> None:
-    """M1: 실제 _registry.yaml 의 react-native-expo 룰이 Expo 프로젝트와 매칭."""
+    """실제 _registry.yaml 의 react-native-expo 룰이 Expo 프로젝트와 매칭."""
     repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
     if not (repo_harness / "profiles" / "react-native-expo.md").exists():
         import pytest
 
-        pytest.skip("react-native-expo profile not yet installed (M1 작업 중)")
+        pytest.skip("react-native-expo profile not yet installed")
 
     project = tmp_path / "expo-project"
     project.mkdir()
@@ -920,16 +920,16 @@ def test_real_react_native_expo_detect_matches_expo_project(tmp_path: Path) -> N
     assert "react-native-expo" in profile_ids
 
 
-# ── M2: 실제 flutter 프로파일 통합 ──────────────────────────────────────
+# ── 실제 flutter 프로파일 통합 ──────────────────────────────────────────
 
 
 def test_real_flutter_profile_loads_with_full_schema() -> None:
-    """M2: 실제 harness/profiles/flutter.md 가 ProfileLoader 로 정상 로드."""
+    """실제 harness/profiles/flutter.md 가 ProfileLoader 로 정상 로드."""
     repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
     if not (repo_harness / "profiles" / "flutter.md").exists():
         import pytest
 
-        pytest.skip("flutter profile not yet installed (M2 작업 중)")
+        pytest.skip("flutter profile not yet installed")
     loader = ProfileLoader(harness_dir=repo_harness)
     profile = loader.load("flutter")
     assert profile.id == "flutter"
@@ -952,12 +952,12 @@ def test_real_flutter_profile_loads_with_full_schema() -> None:
 
 
 def test_real_flutter_detect_matches_pubspec_yaml(tmp_path: Path) -> None:
-    """M2: pubspec.yaml 에 flutter: 섹션 있으면 flutter 프로파일 매칭."""
+    """pubspec.yaml 에 flutter: 섹션 있으면 flutter 프로파일 매칭."""
     repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
     if not (repo_harness / "profiles" / "flutter.md").exists():
         import pytest
 
-        pytest.skip("flutter profile not yet installed (M2 작업 중)")
+        pytest.skip("flutter profile not yet installed")
 
     project = tmp_path / "flutter-project"
     project.mkdir()
@@ -978,7 +978,7 @@ def test_real_flutter_does_not_match_dart_only_project(tmp_path: Path) -> None:
     if not (repo_harness / "profiles" / "flutter.md").exists():
         import pytest
 
-        pytest.skip("flutter profile not yet installed (M2 작업 중)")
+        pytest.skip("flutter profile not yet installed")
 
     project = tmp_path / "dart-only"
     project.mkdir()
@@ -993,16 +993,16 @@ def test_real_flutter_does_not_match_dart_only_project(tmp_path: Path) -> None:
     assert "flutter" not in profile_ids
 
 
-# ── M3: 실제 android-kotlin + ios-swift 프로파일 통합 ───────────────────
+# ── 실제 android-kotlin + ios-swift 프로파일 통합 ───────────────────────
 
 
 def test_real_android_kotlin_profile_loads_with_full_schema() -> None:
-    """M3: 실제 harness/profiles/android-kotlin.md 가 ProfileLoader 로 정상 로드."""
+    """실제 harness/profiles/android-kotlin.md 가 ProfileLoader 로 정상 로드."""
     repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
     if not (repo_harness / "profiles" / "android-kotlin.md").exists():
         import pytest
 
-        pytest.skip("android-kotlin profile not yet installed (M3 작업 중)")
+        pytest.skip("android-kotlin profile not yet installed")
     loader = ProfileLoader(harness_dir=repo_harness)
     profile = loader.load("android-kotlin")
     assert profile.id == "android-kotlin"
@@ -1023,12 +1023,12 @@ def test_real_android_kotlin_profile_loads_with_full_schema() -> None:
 
 
 def test_real_android_detect_matches_gradle_kts(tmp_path: Path) -> None:
-    """M3: build.gradle.kts 만 있어도 android-kotlin 매칭 (files_any OR)."""
+    """build.gradle.kts 만 있어도 android-kotlin 매칭 (files_any OR)."""
     repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
     if not (repo_harness / "profiles" / "android-kotlin.md").exists():
         import pytest
 
-        pytest.skip("android-kotlin profile not yet installed (M3 작업 중)")
+        pytest.skip("android-kotlin profile not yet installed")
 
     project = tmp_path / "android-app"
     project.mkdir()
@@ -1041,7 +1041,7 @@ def test_real_android_detect_matches_gradle_kts(tmp_path: Path) -> None:
 
 
 def test_real_ios_swift_profile_loads_with_full_schema() -> None:
-    """M3: 실제 harness/profiles/ios-swift.md 가 ProfileLoader 로 정상 로드.
+    """실제 harness/profiles/ios-swift.md 가 ProfileLoader 로 정상 로드.
 
     Windows 호스트 제약 — toolchain.test = null (macOS 에서만 xcodebuild test).
     """
@@ -1049,7 +1049,7 @@ def test_real_ios_swift_profile_loads_with_full_schema() -> None:
     if not (repo_harness / "profiles" / "ios-swift.md").exists():
         import pytest
 
-        pytest.skip("ios-swift profile not yet installed (M3 작업 중)")
+        pytest.skip("ios-swift profile not yet installed")
     loader = ProfileLoader(harness_dir=repo_harness)
     profile = loader.load("ios-swift")
     assert profile.id == "ios-swift"
@@ -1070,12 +1070,12 @@ def test_real_ios_swift_profile_loads_with_full_schema() -> None:
 
 
 def test_real_ios_swift_detect_matches_package_swift(tmp_path: Path) -> None:
-    """M3: Package.swift 만 있어도 ios-swift 매칭 (files_any OR)."""
+    """Package.swift 만 있어도 ios-swift 매칭 (files_any OR)."""
     repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
     if not (repo_harness / "profiles" / "ios-swift.md").exists():
         import pytest
 
-        pytest.skip("ios-swift profile not yet installed (M3 작업 중)")
+        pytest.skip("ios-swift profile not yet installed")
 
     project = tmp_path / "ios-app"
     project.mkdir()
@@ -1093,7 +1093,7 @@ def test_real_ios_swift_detect_matches_podfile(tmp_path: Path) -> None:
     if not (repo_harness / "profiles" / "ios-swift.md").exists():
         import pytest
 
-        pytest.skip("ios-swift profile not yet installed (M3 작업 중)")
+        pytest.skip("ios-swift profile not yet installed")
 
     project = tmp_path / "ios-app-pods"
     project.mkdir()

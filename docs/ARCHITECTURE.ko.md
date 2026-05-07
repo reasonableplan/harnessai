@@ -26,10 +26,11 @@
                  └──────────────────┼──────────────────┘
                                     ▼
                 ┌──────────────────────────────────────┐
-                │  7개 에이전트 (Claude CLI subprocess) │
+                │  11개 에이전트 (Claude CLI subprocess)│
                 │  Architect/Designer/Orchestrator/    │
                 │  Backend Coder/Frontend Coder/       │
-                │  Reviewer/QA                         │
+                │  mobile_coder × 4 (RN/Flutter/        │
+                │  Android/iOS) /Reviewer/QA           │
                 └──────────────────────────────────────┘
                                     │
                                     ▼
@@ -90,7 +91,7 @@ components:                # 이 프로파일이 갖춰야 할 컴포넌트
 skeleton_sections:         # skeleton.md 에 어느 섹션 포함 필수/선택
   required: [overview, stack, errors, interface.http, core.logic, tasks, notes]
   optional: [requirements, configuration, auth, persistence, ...]
-  order:    [...20개 ID 순서...]
+  order:    [...33개 ID 순서...]
 
 toolchain:                 # /ha-verify 가 실행할 명령
   test: "uv run pytest tests/"
@@ -238,7 +239,7 @@ plan 파일은 `plan_manager.py::PlanManager` 가 로드/저장/전이. 스키�
 /ha-build       → Backend Coder / Frontend Coder (태스크 agent 필드로 결정)
 /ha-verify      → (에이전트 X) toolchain + harness integrity 실행
 /ha-review      → Reviewer (보안 훅 + LESSON + ai-slop + 테스트 분포)
-/ha-deepinit    → (기존 코드베이스용) 전 7개 에이전트 분석
+/ha-deepinit    → (기존 코드베이스용) 전 11개 에이전트 분석
 ```
 
 에이전트 정의는 `backend/agents/<agent>/CLAUDE.md` 에 시스템 프롬프트로 저장. 실행은 `runner.py::AgentRunner` 가 Claude CLI subprocess 로.
@@ -343,7 +344,7 @@ LESSON 추가는 수동 (`backend/docs/shared-lessons.md` 직접 편집 + 해당
         runner.py               AgentRunner (타임아웃/재시도)
         security_hooks.py       보안 훅 6개 + from_profile
         providers/              Claude CLI / 향후 Gemini/local
-    tests/                357 pytest
+    tests/                496 pytest
       orchestrator/
       dashboard/
       skills/              신규 — harness integrity + 테스트 분포 회귀 방지

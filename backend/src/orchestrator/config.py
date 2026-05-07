@@ -58,10 +58,10 @@ class OrchestratorConfig(BaseModel):
     orchestrator: AgentConfig
     backend_coder: AgentConfig
     frontend_coder: AgentConfig
-    mobile_coder_rn: AgentConfig  # M0 first gate — dispatch infrastructure
-    mobile_coder_flutter: AgentConfig  # M0-B
-    mobile_coder_android: AgentConfig  # M0-B
-    mobile_coder_ios: AgentConfig  # M0-B
+    mobile_coder_rn: AgentConfig
+    mobile_coder_flutter: AgentConfig
+    mobile_coder_android: AgentConfig
+    mobile_coder_ios: AgentConfig
     reviewer: AgentConfig
     qa: AgentConfig
     max_concurrent: int = 2  # max parallel agent executions

@@ -43,13 +43,13 @@ def _create_provider(config: AgentConfig) -> BaseProvider:
 
 
 def _resolve_prompt_path(project_dir: Path, agent_prompt_path: str) -> Path | None:
-    """Resolve agent prompt path with HARNESS_AI_HOME fallback (M0-D6).
+    """Resolve agent prompt path with HARNESS_AI_HOME fallback.
 
     1. ``<project_dir>/<agent_prompt_path>`` — project-local override (사용자가
        자기 프로젝트에 직접 둔 prompt 가 우선).
     2. ``$HARNESS_AI_HOME/backend/<agent_prompt_path>`` — global fallback. 외부
-       사용자가 자기 모바일 프로젝트에서 ``/ha-build`` 실행 시 backend/agents/ 가
-       없어도 글로벌 HarnessAI repo 의 시스템 프롬프트를 사용.
+       사용자 프로젝트에 backend/agents/ 가 없어도 글로벌 HarnessAI repo 의 시스템
+       프롬프트를 사용.
 
     Returns:
         Resolved Path or None if neither exists. None 인 경우 호출자는 시스템
@@ -156,7 +156,7 @@ class AgentRunner:
         work_dir = Path(working_dir) if working_dir else self.project_dir
 
         # Assemble the system prompt context.
-        # M0-D6: prompt_path 는 project-local 우선, 없으면 HARNESS_AI_HOME/backend/ fallback.
+        # prompt_path 는 project-local 우선, 없으면 HARNESS_AI_HOME/backend/ fallback.
         prompt_path = _resolve_prompt_path(self.project_dir, agent_config.prompt_path)
         skeleton_path = self.project_dir / "docs" / "skeleton.md"
         docs_dir = self.project_dir / "docs"
@@ -170,7 +170,7 @@ class AgentRunner:
                     docs_dir=docs_dir,
                     prompt_path=prompt_path,
                     project_root=self.project_dir,
-                    # M0-D2/D3: harness-global guidelines (templates/guidelines/<framework>/)
+                    # harness-global guidelines (templates/guidelines/<framework>/)
                     # 직접 로드 — 사용자 프로젝트 docs/guidelines/ 가 비어 있어도 OK.
                     harness_dir=DEFAULT_HARNESS_DIR,
                 )
