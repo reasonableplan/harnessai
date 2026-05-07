@@ -125,6 +125,38 @@ Coder 에게 "알아서 잘" 은 금지. 모호하면 Coder 가 자율 결정하
   - 예: `frontend/src/shared/api/issue.api.ts`
 - **Frontend Coder 가 레이아웃/파일명을 자율 결정하지 않도록** 이 수준까지 명시 필수
 
+## 모바일 프로파일 — 추가 책임 (mobile.* 섹션)
+
+skeleton 에 `mobile.navigation` / `mobile.lifecycle` 섹션이 활성화되어 있으면 (= 프로젝트가 react-native-expo / flutter / android-kotlin / ios-swift 프로파일):
+
+### `mobile.navigation` (Designer 책임)
+- **네비게이션 그래프** — 최상위 네비게이터 종류 (Stack / Tab / Drawer / Modal) + 중첩 관계
+- **라우트 표** — Route 이름 / Path / 파라미터 / Guard / 진입 트리거 (버튼 / 딥링크 / 푸시) — 모든 화면 deep linkable 인지 검토
+- **Route guards** — auth / role / onboarding 우선순위 (auth > role > onboarding)
+- **Deep linking** — URL Scheme + Universal Links + cold start 시 인증 검사 우선순위
+- **백 버튼 / 제스처** — 모달 / dirty form / 루트 탭 / iOS swipe-back 비활성화 화면 명시
+- **전이 애니메이션 / 모달 정책** — slide / fade / sheet / popup 어떤 케이스에서 어떤 모달
+- **state 보존** — 화면 background 진입 시 form / scroll / 검색어 보존 정책
+
+### `mobile.lifecycle` 의 UX 부분 (Designer 책임)
+- **권한 요청 UX** — 권한 요청 모달 디자인, 거부 시 안내, 시스템 설정 deeplink 버튼
+- **앱 상태 전환 시 UI** — foreground 진입 시 stale 데이터 표시 + 새로고침 indicator, terminated 후 cold start 시 splash → 초기 라우트
+- **푸시 알림 UX** — foreground 시 인앱 토스트 vs OS 알림, 탭 시 deep link 동작
+
+### `view.screens` 가 mobile 일 때
+- **Mobile 화면 단위 = Screen** (Web 의 Page / Container 와 동일 개념, 라이브러리 차이만)
+  - RN+Expo: `app/<route>.tsx` (Expo Router file-based)
+  - Flutter: `lib/screens/<domain>/<domain>_screen.dart`
+  - Android: `app/src/main/.../<feature>Screen.kt` (Compose)
+  - iOS: `Sources/<App>/Views/<Feature>View.swift` (SwiftUI)
+- **SafeArea 처리** — 모든 화면 root 가 SafeArea (또는 useSafeAreaInsets / SafeAreaView / WindowInsets)
+- **다크 모드** — Theme/Color scheme 토큰 강제, 화면별 분기 X
+
+### `view.components` 가 mobile 일 때
+- **공용 컴포넌트** 위치: RN `src/shared/components/` / Flutter `lib/widgets/` / Android `ui/components/` / iOS `Sources/Components/`
+- **인라인 스타일 2개 이상 금지** (LESSON-STYLE-001) — NativeWind className / StyleSheet / ThemeData / SwiftUI ViewModifier 추출
+- **a11y label 필수** — 모든 인터랙티브 요소에 accessibilityLabel / Semantics / contentDescription / accessibilityLabel
+
 ## 가드레일 — 절대 하지 마라
 - Architect 승인 없이 API/DB 스키마 변경 요구
 - 코드 직접 구현

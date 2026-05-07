@@ -105,6 +105,19 @@ run.py 가:
   (선택) /plan-eng-review — 설계 검토 (gstack)
 ```
 
+### 출력의 guideline_paths 도 읽으세요
+
+`prepare` 출력 JSON 의 `profiles[].guideline_paths` 에
+프로파일별 컨벤션 문서 경로가 포함됩니다. **반드시 작업 시작 전 모두 읽으세요**:
+
+- `react-native-expo`: navigation/state/storage/style 4 파일 — Expo Router + Zustand + SecureStore 컨벤션
+- `flutter`: navigation/state/storage/style 4 파일 — go_router + Riverpod + drift + ThemeData
+- `android-kotlin`: architecture/compose/network/storage 4 파일 — MVVM + Compose + Retrofit + Room
+- `ios-swift`: architecture/swiftui/network/storage 4 파일 — MV pattern + SwiftUI + URLSession + Keychain
+- `fastapi`: api/services/structure 3 파일 — Clean Arch + DI + 패키지 구조
+
+**모바일 사용자**: 위 가이드라인을 안 읽으면 LESSON-STYLE-001 / 보안 위반 / 컨벤션 drift 가능성. 시스템 프롬프트만으로는 부족합니다.
+
 ## 가드레일
 
 - 사용자 설명에 없는 기능을 **추가하지 말 것** (over-engineering 방지)
@@ -118,3 +131,26 @@ run.py 가:
 **"current_step != init"**: `/ha-init` 부터 다시. 또는 이미 designed 라면 `--reset` (run.py 미지원 시 수동 backup 후 init 으로 되돌리기).
 
 **미해결 placeholder 가 많음**: 사용자 설명이 부족했을 가능성. `/ha-init` 로 돌아가서 더 구체적으로 작성.
+
+## 모바일 프로젝트 사용 예시 (Flutter)
+
+**2단계 — `/ha-design` 에서 skeleton 채우기**:
+
+- `/ha-init` 완료 후 `docs/skeleton.md` (빈 템플릿) 확인
+- `guideline_paths` 의 flutter/navigation.md, state.md, storage.md, style.md 모두 읽기
+- skeleton 의 `mobile.navigation` 섹션: go_router 기반 라우팅 구조 채움
+- skeleton 의 `state.flow` 섹션: Riverpod Provider 계층 + 상태 흐름 채움
+- skeleton 의 `persistence` 섹션 (data_sensitivity=pii 시 자동 포함): drift DB 스키마 + flutter_secure_storage 토큰 저장 방법 채움
+
+**react-native-expo 의 경우**:
+- `mobile.navigation`: Expo Router (파일 기반 라우팅) 구조
+- `state.flow`: Zustand store 설계
+- `persistence`: SecureStore (토큰) + AsyncStorage (비민감 캐시) 분리
+
+**android-kotlin 의 경우**:
+- `mobile.navigation`: Navigation Compose + NavGraph
+- `state.flow`: ViewModel + StateFlow (MVVM)
+
+**ios-swift 의 경우**:
+- `mobile.navigation`: NavigationStack (SwiftUI)
+- `state.flow`: @StateObject / @ObservableObject 패턴

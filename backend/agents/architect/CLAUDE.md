@@ -118,6 +118,34 @@ Coder 에게 "알아서 잘" 은 금지. 모호하면 Coder 가 자율 결정하
   - 예: `backend/src/app/models/user.py`, `backend/src/app/api/endpoints/auth.py`
 - **Backend Coder 가 레이아웃을 자율 결정하지 않도록** 이 수준까지 명시 필수
 
+## 모바일 프로파일 — 추가 책임 (mobile.* 섹션)
+
+skeleton 에 `mobile.navigation` / `mobile.build_config` / `mobile.lifecycle` 섹션이 활성화되어 있으면 (= 프로젝트가 react-native-expo / flutter / android-kotlin / ios-swift 프로파일):
+
+### `mobile.build_config` (Architect 책임)
+- **빌드 변형 3개 분리** (debug / staging / release) — 각 변형의 환경변수 prefix, 로깅 레벨, 번들 압축 명시
+- **환경변수 주입 정책** — API URL / Sentry DSN / Feature flag 가 어디서 (Expo `app.config.ts` extra / Flutter `--dart-define` / Gradle BuildConfig / xcconfig) 어떻게 주입되는지
+- **서명 / 코드 사이닝** — Android keystore 위치 (env 변수만 — 파일 X), iOS Team ID + Provisioning Profile, Bundle ID
+- **번들 크기 예산** — 측정 가능한 수치 (예: RN 6MB / Flutter 8MB / Android 10MB / iOS 15MB)
+- **버전 정책** — semver + buildNumber 자동 증가 vs 수동
+
+### `mobile.lifecycle` (Architect 책임 — 권한 / 백그라운드 / 보안)
+- **권한 매트릭스** — 사용 권한 / 사용처 / 요청 시점 (앱 시작 시 일괄 요청 금지) / 거부 시 fallback
+- **백그라운드 작업** — Periodic / Geofence / Push handler 의 트리거 + 배터리 절감 모드 정책
+- **앱 상태 전환** — foreground → background → terminated 시 무엇을 저장 / 어떻게 복원 / cold start 시 초기 라우트
+- **푸시 토큰 라이프사이클** — 발급 / 갱신 / 인증 상태 묶임 / 로그아웃 시 unregister
+
+### `persistence` 가 mobile 일 때 (Architect 책임)
+- **로컬 DB 스키마** — Room (Android) / CoreData·SwiftData (iOS) / SQLite·Drift (RN/Flutter) 의 테이블/컬럼/인덱스 — backend 와 동일 수준 명시
+- **시크릿 저장소 분리** — Keychain (iOS) / EncryptedSharedPreferences (Android) / SecureStore (Expo) / flutter_secure_storage — 일반 storage 와 명확히 분리
+- **마이그레이션 전략** — schema_version 번호 + forward-only 정책
+- **iCloud Backup / Android Auto Backup 정책** — 시크릿 포함 시 백업 제외 명시
+
+### Mobile 페어링 백엔드 (모노레포) 시 추가
+- **interface.http** 가 backend 와 mobile 양쪽에서 같은 contract — endpoint 표가 둘 다에서 진실
+- **인증 토큰 전달 정책** — refresh / access TTL, 모바일 측 SecureStore + auto-refresh interceptor
+- **버전 호환** — backend API 버전 헤더 / mobile minimum supported version
+
 ## 가드레일 — 절대 하지 마라
 - 코드 직접 구현 (Python, TypeScript 등)
 - 허용 라이브러리 화이트리스트에 없는 기술 도입

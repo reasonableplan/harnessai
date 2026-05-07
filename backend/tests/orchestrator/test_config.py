@@ -31,6 +31,10 @@ def _make_valid_yaml() -> dict:
         "orchestrator": agent,
         "backend_coder": agent,
         "frontend_coder": agent,
+        "mobile_coder_rn": agent,
+        "mobile_coder_flutter": agent,
+        "mobile_coder_android": agent,
+        "mobile_coder_ios": agent,
         "reviewer": agent,
         "qa": agent,
     }
@@ -103,9 +107,29 @@ class TestOrchestratorConfig:
         data = _make_valid_yaml()
         cfg = OrchestratorConfig(**data)
         agents = cfg.all_agents()
-        assert len(agents) == 7
+        assert len(agents) == 11
         assert "architect" in agents
+        assert "mobile_coder_rn" in agents
+        assert "mobile_coder_flutter" in agents
+        assert "mobile_coder_android" in agents
+        assert "mobile_coder_ios" in agents
         assert "qa" in agents
+
+    @pytest.mark.parametrize(
+        "agent_name",
+        ["mobile_coder_rn", "mobile_coder_flutter", "mobile_coder_android", "mobile_coder_ios"],
+    )
+    def test_mobile_coder_loadable(self, agent_name: str) -> None:
+        """M0-B — 4개 mobile_coder 모두 OrchestratorConfig 정식 필드.
+
+        get_agent(name) 가 ValueError 없이 AgentConfig 반환해야 Orchestrator
+        가 task.agent=<mobile_coder_*> 로 dispatch 가능.
+        """
+        data = _make_valid_yaml()
+        cfg = OrchestratorConfig(**data)
+        agent_cfg = cfg.get_agent(agent_name)
+        assert isinstance(agent_cfg, AgentConfig)
+        assert agent_cfg.provider == Provider.CLAUDE_CLI
 
 
 class TestLoadAgentsConfig:

@@ -16,9 +16,61 @@ from utils import (  # noqa: E402, I001
     get_active_profiles,
     info,
     load_plan,
+    resolve_guideline_paths,
     save_plan,
     transition,
 )
+
+
+_AGENT_TO_PROFILE: dict[str, str] = {
+    "mobile_coder_rn": "react-native-expo",
+    "mobile_coder_flutter": "flutter",
+    "mobile_coder_android": "android-kotlin",
+    "mobile_coder_ios": "ios-swift",
+}
+
+_BACKEND_PROFILES = ("fastapi", "python-cli", "python-lib")
+_FRONTEND_PROFILES = ("react-vite",)   # R1: nextjs 룰 _registry.yaml 에서 제거됨
+
+
+def _agent_to_guideline_paths(agent: str, plan) -> list[str]:
+    """agent 이름 → guideline_paths 문자열 리스트.
+
+    모바일 코더: 고정 매핑.
+    backend_coder: plan 의 profiles 중 첫 번째 backend 프로파일.
+    frontend_coder: plan 의 profiles 중 첫 번째 frontend 프로파일.
+    qa: plan 의 모든 프로파일 가이드라인 합집합 (정렬).
+    기타: 빈 리스트.
+    """
+    if agent in _AGENT_TO_PROFILE:
+        return [str(g) for g in resolve_guideline_paths(_AGENT_TO_PROFILE[agent])]
+
+    profile_ids = [ref.id for ref in plan.profiles]
+
+    if agent == "backend_coder":
+        for pid in profile_ids:
+            if pid in _BACKEND_PROFILES:
+                return [str(g) for g in resolve_guideline_paths(pid)]
+        return []
+
+    if agent == "frontend_coder":
+        for pid in profile_ids:
+            if pid in _FRONTEND_PROFILES:
+                return [str(g) for g in resolve_guideline_paths(pid)]
+        return []
+
+    if agent == "qa":
+        seen: set[str] = set()
+        paths: list[str] = []
+        for pid in profile_ids:
+            for g in resolve_guideline_paths(pid):
+                s = str(g)
+                if s not in seen:
+                    seen.add(s)
+                    paths.append(s)
+        return sorted(paths)
+
+    return []
 
 
 _TASK_ROW_RE = re.compile(
@@ -100,6 +152,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
                 "id": tid,
                 **tasks[tid],
                 "agent_prompt": str(HARNESS_HOME / "backend" / "agents" / tasks[tid]["agent"] / "CLAUDE.md"),
+                "guideline_paths": _agent_to_guideline_paths(tasks[tid]["agent"], plan),
             }
             for tid in target_ids
         ],

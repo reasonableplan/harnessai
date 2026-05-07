@@ -49,8 +49,10 @@ SAMPLE_SKELETON = """\
 
 
 class TestSectionTitlesMap:
-    def test_all_20_standard_sections_present(self) -> None:
+    def test_all_33_standard_sections_present(self) -> None:
+        """M0-D: SECTION_TITLES 20→33 정합 (v0.5.0 fragments 10 + 모바일 3)."""
         expected_ids = {
+            # 기본 20
             "overview",
             "requirements",
             "stack",
@@ -71,18 +73,38 @@ class TestSectionTitlesMap:
             "deployment",
             "tasks",
             "notes",
+            # v0.5.0 신규 (10) — auto-fit skeleton
+            "data_model",
+            "threat_model",
+            "audit_log",
+            "slo",
+            "runbook",
+            "test_strategy",
+            "user_journey",
+            "authorization_matrix",
+            "ci_cd",
+            "external_deps",
+            # 모바일 (3) — M0-A
+            "mobile.navigation",
+            "mobile.build_config",
+            "mobile.lifecycle",
         }
         assert set(SECTION_TITLES.keys()) == expected_ids
 
 
 class TestAgentSectionsById:
     def test_all_agents_have_id_mapping(self) -> None:
+        """M0-D2/D5: 11 agents (7 기본 + 4 mobile_coder_*)."""
         expected = {
             "architect",
             "designer",
             "orchestrator",
             "backend_coder",
             "frontend_coder",
+            "mobile_coder_rn",
+            "mobile_coder_flutter",
+            "mobile_coder_android",
+            "mobile_coder_ios",
             "reviewer",
             "qa",
         }
@@ -285,3 +307,119 @@ class TestBuildContext:
         root_pos = result.index("Root Rules")
         conv_pos = result.index("Conventions")
         assert root_pos < conv_pos, "루트 CLAUDE.md 가 conventions.md 보다 먼저 나와야 함"
+
+
+# ── M0-D2/D3: harness-global guidelines 직접 로드 ─────────────────────────
+
+
+class TestHarnessGlobalDocs:
+    """mobile_coder 가 harness/templates/guidelines/<framework>/ 를 직접 로드.
+
+    docs/guidelines/ 가 비어 있어도 외부 사용자가 즉시 production-grade 컨벤션을 받음.
+    """
+
+    def test_mobile_coder_rn_loads_harness_guidelines(self, tmp_path: Path) -> None:
+        """mobile_coder_rn 이 templates/guidelines/react-native-expo/*.md 4개를 받음."""
+        # Harness dir mock — templates/guidelines/react-native-expo/ 4 파일 작성
+        harness = tmp_path / "harness"
+        rn_guidelines = harness / "templates" / "guidelines" / "react-native-expo"
+        rn_guidelines.mkdir(parents=True)
+        (rn_guidelines / "navigation.md").write_text("# RN Nav\nExpo Router rules.", encoding="utf-8")
+        (rn_guidelines / "state.md").write_text("# RN State\nZustand rules.", encoding="utf-8")
+        (rn_guidelines / "storage.md").write_text("# RN Storage\nSecureStore rules.", encoding="utf-8")
+        (rn_guidelines / "style.md").write_text("# RN Style\nNativeWind rules.", encoding="utf-8")
+
+        # Project dir mock — empty docs/
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / "docs").mkdir()
+
+        result = build_context(
+            agent="mobile_coder_rn",
+            skeleton_path=project / "docs" / "skeleton.md",
+            docs_dir=project / "docs",
+            project_root=project,
+            harness_dir=harness,
+        )
+
+        # 4개 guidelines 본문이 모두 context 에 포함
+        assert "Expo Router rules" in result
+        assert "Zustand rules" in result
+        assert "SecureStore rules" in result
+        assert "NativeWind rules" in result
+
+    def test_mobile_coder_flutter_loads_harness_guidelines(self, tmp_path: Path) -> None:
+        """mobile_coder_flutter 가 templates/guidelines/flutter/*.md 4개를 받음."""
+        harness = tmp_path / "harness"
+        flutter_guidelines = harness / "templates" / "guidelines" / "flutter"
+        flutter_guidelines.mkdir(parents=True)
+        (flutter_guidelines / "navigation.md").write_text(
+            "# Flutter Nav\ngo_router rules.", encoding="utf-8"
+        )
+        (flutter_guidelines / "state.md").write_text(
+            "# Flutter State\nRiverpod rules.", encoding="utf-8"
+        )
+        (flutter_guidelines / "storage.md").write_text(
+            "# Flutter Storage\ndrift rules.", encoding="utf-8"
+        )
+        (flutter_guidelines / "style.md").write_text(
+            "# Flutter Style\nThemeData rules.", encoding="utf-8"
+        )
+
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / "docs").mkdir()
+
+        result = build_context(
+            agent="mobile_coder_flutter",
+            skeleton_path=project / "docs" / "skeleton.md",
+            docs_dir=project / "docs",
+            project_root=project,
+            harness_dir=harness,
+        )
+
+        assert "go_router rules" in result
+        assert "Riverpod rules" in result
+        assert "drift rules" in result
+        assert "ThemeData rules" in result
+
+    def test_harness_dir_none_skips_global_docs(self, tmp_path: Path) -> None:
+        """harness_dir=None (legacy 호환) 시 EXTRA_HARNESS_DOCS 로딩 안 됨."""
+        # mobile_coder_rn 이지만 harness_dir 미지정
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / "docs").mkdir()
+
+        result = build_context(
+            agent="mobile_coder_rn",
+            skeleton_path=project / "docs" / "skeleton.md",
+            docs_dir=project / "docs",
+            project_root=project,
+            harness_dir=None,
+        )
+
+        # harness 본문 키워드 없음 (loading skipped)
+        assert "Expo Router" not in result
+        assert "Zustand" not in result
+
+    def test_non_mobile_agent_unaffected_by_harness_dir(self, tmp_path: Path) -> None:
+        """backend_coder 는 EXTRA_HARNESS_DOCS 에 없으므로 harness_dir 영향 X."""
+        harness = tmp_path / "harness"
+        # 가상의 backend guidelines 파일 — backend_coder 매핑에 없으니 무시되어야
+        backend_guidelines = harness / "templates" / "guidelines" / "should-not-load"
+        backend_guidelines.mkdir(parents=True)
+        (backend_guidelines / "ghost.md").write_text("SECRET_GHOST", encoding="utf-8")
+
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / "docs").mkdir()
+
+        result = build_context(
+            agent="backend_coder",
+            skeleton_path=project / "docs" / "skeleton.md",
+            docs_dir=project / "docs",
+            project_root=project,
+            harness_dir=harness,
+        )
+
+        assert "SECRET_GHOST" not in result

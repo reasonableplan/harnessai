@@ -158,6 +158,21 @@ def assert_state(plan: HarnessPlan, allowed: list[str], skill_name: str) -> None
         sys.exit(2)
 
 
+def resolve_guideline_paths(profile_id: str) -> list[Path]:
+    """profile_id 의 templates/guidelines/<profile_id>/*.md 정렬된 절대 경로 리스트.
+
+    - HARNESS_HOME / "harness" / "templates" / "guidelines" / profile_id 검색
+    - *.md 파일 정렬(sorted) 해서 Path 리스트 반환
+    - 디렉토리 없거나 *.md 없으면 빈 리스트 반환 (silent skip — 비-모바일/비-web 프로파일 호환)
+    """
+    if HARNESS_HOME is None:
+        return []
+    guidelines_dir = HARNESS_HOME / "harness" / "templates" / "guidelines" / profile_id
+    if not guidelines_dir.is_dir():
+        return []
+    return sorted(guidelines_dir.glob("*.md"))
+
+
 def info(*args: Any) -> None:
     """stderr 로 안내 메시지 출력 (stdout 은 JSON 결과용)."""
     print(*args, file=sys.stderr)

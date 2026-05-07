@@ -58,8 +58,27 @@
 - `### Phase N — 이름` 헤더로 Phase를 구분한다
 - 테이블 열 순서: ID, 에이전트, 의존성, 설명, 상태 (변경 금지 — 파서 고정)
 - 의존성 없으면 `-`
-- 에이전트는 반드시: `backend_coder`, `frontend_coder`, `qa` 중 하나
+- 에이전트는 반드시: `backend_coder`, `frontend_coder`, `mobile_coder_rn`, `mobile_coder_flutter`, `mobile_coder_android`, `mobile_coder_ios`, `qa` 중 하나
 - **`reviewer` 태스크는 출력 금지** — Phase 리뷰는 파이프라인이 자동으로 처리함
+
+### Task → Agent 매핑 규칙 (M0-B 확장)
+
+| Task 성격 | 담당 에이전트 | 매칭 신호 (path / 프로파일) |
+|---|---|---|
+| 백엔드 API / DB / CLI (Python/FastAPI) | `backend_coder` | `backend/` / `apps/api/` / fastapi profile |
+| 웹 UI (React / Next.js) | `frontend_coder` | `frontend/` / `apps/web/` / react-vite·nextjs profile |
+| **모바일 — React Native + Expo** | `mobile_coder_rn` | `mobile/` + react-native-expo profile (`package.json` 에 expo/react-native) |
+| **모바일 — Flutter** | `mobile_coder_flutter` | `mobile/` + flutter profile (`pubspec.yaml` 의 flutter:) |
+| **모바일 — Android 네이티브 (Kotlin + Compose)** | `mobile_coder_android` | `android/` + android-kotlin profile (`build.gradle.kts`) |
+| **모바일 — iOS 네이티브 (Swift + SwiftUI)** | `mobile_coder_ios` | `ios/` + ios-swift profile (`Package.swift` / `Podfile`) |
+| 통합 테스트 / E2E 시나리오 | `qa` | (모든 layer) |
+
+**모노레포 시 dispatch 우선순위**:
+1. task 의 작업 path 가 `mobile/` / `apps/mobile/` / `android/` / `ios/` → 해당 mobile profile 의 mobile_coder_*
+2. `backend/` / `apps/api/` → backend_coder
+3. `frontend/` / `apps/web/` → frontend_coder
+4. 혼동 시 skeleton 의 `view.screens` 섹션 헤딩 (`## N. 화면 목록 (Mobile / Web)`) 또는 task 가 수정하는 파일 확장자 (`.tsx` web vs `.tsx` RN — RN 은 import 패턴 `from 'react-native'`)
+5. 그래도 모호하면 **에스컬레이션** — Architect 가 task path 명시
 - 스펙 블록은 Phase 테이블 아래에 연속 배치 (테이블 사이에 끼우지 말 것)
 - 스펙 블록이 없는 태스크는 **미완성 산출물로 간주** — Coder 에스컬레이션 대상
 

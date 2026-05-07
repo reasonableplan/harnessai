@@ -36,18 +36,21 @@ from src.orchestrator.state import StateManager
 logger = logging.getLogger(__name__)
 
 # Batch-mode directive prepended to architect/designer prompts in non-interactive runs.
-# Prevents agents from entering interview/question mode and ensures all 17 skeleton
-# sections are filled immediately using the exact SECTION_TITLES headings.
+# Prevents agents from entering interview/question mode and ensures skeleton sections
+# are filled immediately using the exact SECTION_TITLES headings.
+# M0-D: 17 → 33 정합 (v0.5.0 fragments 10 + 모바일 3 추가). 프로젝트에 따라 일부만
+# 활성 — skeleton.md 에 존재하는 섹션만 채워야 함 (전부 채울 필요 없음).
 _BATCH_MODE_DIRECTIVE = """\
 [BATCH MODE — NO QUESTIONS, NO INTERVIEW]
 비대화형 실행 모드입니다. 사용자는 답변할 수 없습니다.
-모호한 항목은 합리적 기본값으로 결정하고 즉시 skeleton 섹션을 전부 채워 출력하세요.
+모호한 항목은 합리적 기본값으로 결정하고 즉시 skeleton 섹션을 채워 출력하세요.
 
 ## 출력 규칙 (필수)
 각 담당 섹션을 `## <번호>. <한국어 제목>` 형식으로 출력하세요.
 제목은 SECTION_TITLES 와 정확히 일치해야 합니다 (토씨 하나 틀리면 섹션 merge 실패).
+**skeleton.md 에 실제 존재하는 섹션만** 채우세요 — 모든 헤딩이 모든 프로젝트에 해당되지 않습니다.
 
-사용 가능한 헤딩:
+사용 가능한 헤딩 (프로젝트별 활성 섹션은 skeleton.md 에서 확인):
 - `## 1. 프로젝트 개요`
 - `## 2. 기능 요구사항`
 - `## 3. 기술 스택`
@@ -57,14 +60,30 @@ _BATCH_MODE_DIRECTIVE = """\
 - `## 7. 저장소 / 스키마`
 - `## 8. 외부 통합`
 - `## 9. HTTP API`
-- `## 10. 상태 흐름`
-- `## 11. 도메인 로직`
-- `## 12. 로깅 / 모니터링`
-- `## 13. 배포 설정`
-- `## 14. 태스크 분해`
-- `## 15. 구현 노트`
-- `## 16. 화면 목록`
-- `## 17. 컴포넌트 트리`
+- `## 10. CLI 커맨드`
+- `## 11. IPC 채널`
+- `## 12. Public API (SDK)`
+- `## 13. 화면 목록`
+- `## 14. 컴포넌트 트리`
+- `## 15. 상태 흐름`
+- `## 16. 도메인 로직`
+- `## 17. 로깅 / 모니터링`
+- `## 18. 배포 설정`
+- `## 19. 태스크 분해`
+- `## 20. 구현 노트`
+- `## 21. 데이터 모델`
+- `## 22. 위협 모델 (Threat Model)`
+- `## 23. 감사 로그 (Audit Log)`
+- `## 24. SLO / 성능 목표`
+- `## 25. 운영 Runbook`
+- `## 26. 테스트 전략`
+- `## 27. 사용자 시나리오 (User Journey)`
+- `## 28. 권한 행렬 (Authorization Matrix)`
+- `## 29. CI/CD 파이프라인`
+- `## 30. 외부 의존 (External Dependencies)`
+- `## 31. 네비게이션`
+- `## 32. 빌드 설정`
+- `## 33. 라이프사이클 / 권한`
 
 ---
 
@@ -496,6 +515,7 @@ class Orchestra:
         task_id: str,
         *,
         is_frontend: bool = False,
+        is_mobile: bool = False,
         allowed_endpoints: list[str] | None = None,
     ) -> dict[str, Any]:
         """Verification phase — SecurityHooks + ValidationPipeline + Reviewer agent.
@@ -521,6 +541,7 @@ class Orchestra:
         security_result: SecurityResult = self._get_security_hooks().run_all(
             agent_output,
             is_frontend=is_frontend,
+            is_mobile=is_mobile,
             allowed_endpoints=allowed_endpoints,
         )
         if security_result.blocked:
@@ -595,6 +616,7 @@ class Orchestra:
         max_retries: int = 3,
         *,
         is_frontend: bool = False,
+        is_mobile: bool = False,
         allowed_endpoints: list[str] | None = None,
     ) -> dict[str, Any]:
         """Implement + verify in a retry loop until Reviewer APPROVE.
@@ -614,6 +636,7 @@ class Orchestra:
                 verify_result = await self.verify(
                     task_id,
                     is_frontend=is_frontend,
+                    is_mobile=is_mobile,
                     allowed_endpoints=allowed_endpoints,
                 )
                 last_impl = impl_result
@@ -826,6 +849,9 @@ class Orchestra:
                     async def _run_task(task: TaskItem) -> tuple[str, dict[str, Any]]:
                         tid = task.id
                         is_frontend: bool = task.agent == "frontend_coder"
+                        # M0-C: mobile_coder_* (rn/flutter/android/ios) 도 별도 분기.
+                        # is_frontend 와 상호 배타적 — security_hooks 가 둘 다 True 시 ValueError.
+                        is_mobile: bool = task.agent.startswith("mobile_coder_")
                         try:
                             result = await self.implement_with_retry(
                                 tid,
@@ -833,6 +859,7 @@ class Orchestra:
                                 task.description,
                                 max_retries=max_task_retries,
                                 is_frontend=is_frontend,
+                                is_mobile=is_mobile,
                                 allowed_endpoints=allowed_endpoints,
                             )
                         except Exception as exc:

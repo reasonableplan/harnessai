@@ -202,6 +202,19 @@ python ~/.claude/skills/ha-init/run.py write \
   - harness-plan.md 의 pipeline.skipped_steps 에 생략하고 싶은 단계 추가 가능
 ```
 
+### 출력의 guideline_paths 도 읽으세요
+
+`detect` 및 `write` 출력 JSON 의 `matches[].guideline_paths` / `profiles[].guideline_paths` 에
+프로파일별 컨벤션 문서 경로가 포함됩니다. **반드시 작업 시작 전 모두 읽으세요**:
+
+- `react-native-expo`: navigation/state/storage/style 4 파일 — Expo Router + Zustand + SecureStore 컨벤션
+- `flutter`: navigation/state/storage/style 4 파일 — go_router + Riverpod + drift + ThemeData
+- `android-kotlin`: architecture/compose/network/storage 4 파일 — MVVM + Compose + Retrofit + Room
+- `ios-swift`: architecture/swiftui/network/storage 4 파일 — MV pattern + SwiftUI + URLSession + Keychain
+- `fastapi`: api/services/structure 3 파일 — Clean Arch + DI + 패키지 구조
+
+**모바일 사용자**: 위 가이드라인을 안 읽으면 LESSON-STYLE-001 / 보안 위반 / 컨벤션 drift 가능성. 시스템 프롬프트만으로는 부족합니다.
+
 ## 가드레일 — 절대 하지 마라
 
 - `--overwrite` 플래그 없이 기존 파일 덮어쓰기 (run.py 가 자동 백업하지만 직접 Write 도구로 우회 금지)
@@ -225,3 +238,28 @@ python ~/.claude/skills/ha-init/run.py write \
 **`detect` 가 매칭 0건**:
 - 프로젝트 루트에 `pyproject.toml` / `package.json` 등 마커 파일이 없거나, `_registry.yaml` 의 paths 에 해당 위치가 없음.
 - `python ~/.claude/harness/bin/harness validate registry` 로 규칙 확인.
+
+## 모바일 프로젝트 사용 예시 (Flutter)
+
+**1단계** — 빈 디렉토리에 `pubspec.yaml` 생성:
+```yaml
+name: my_flutter_app
+flutter:
+  sdk: flutter
+```
+
+**2단계** — `/ha-init` 호출:
+- `detect` 출력 JSON 의 `is_mobile: true` 확인
+- `guideline_paths` 4개 (navigation/state/storage/style) 모두 읽기
+- stderr 에 "[INFO] 모바일 프로젝트 감지: flutter" 안내 확인
+- 6축 답변 시 `data_sensitivity=pii` 면 audit_log/threat_model 자동 활성
+
+**react-native-expo 의 경우**:
+- `package.json` 에 `"expo"` 의존성 있으면 자동 감지
+- `mobile_coder_rn` 에이전트 사용 안내 확인
+- android / iOS 양쪽 빌드 고려해 `team_size` 답변 시 반영
+
+**android-kotlin / ios-swift 의 경우**:
+- `build.gradle.kts` / `Package.swift` 마커로 자동 감지
+- JAVA_HOME (android) / Xcode (ios) 사전 설치 필요
+- `platform_warnings` 출력으로 누락 도구 확인 가능 (`/ha-verify` 단계)

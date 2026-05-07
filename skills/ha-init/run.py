@@ -26,7 +26,7 @@ except (AttributeError, OSError):
 # _ha_shared/utils.py 의 HARNESS_HOME 탐지 재사용 — 다른 스킬들과 일관성 유지.
 # import 자체가 side effect (sys.path 에 backend 추가). cmd_write 가 직접 사용도 함.
 sys.path.insert(0, str(Path(__file__).parent.parent / "_ha_shared"))
-from utils import HARNESS_HOME  # noqa: E402, I001
+from utils import HARNESS_HOME, info, resolve_guideline_paths  # noqa: E402, I001
 
 from src.orchestrator.plan_manager import (  # noqa: E402
     PlanManager,
@@ -47,6 +47,20 @@ def _docs_dir(project: Path, profile_path: str) -> Path:
     return (base / "docs") if base.exists() else (project / "docs")
 
 
+# ── mobile 프로파일 ID 집합 ────────────────────────────────────────────
+
+_MOBILE_PROFILE_IDS: frozenset[str] = frozenset(
+    {"react-native-expo", "flutter", "android-kotlin", "ios-swift"}
+)
+
+_MOBILE_AGENT_SUFFIX: dict[str, str] = {
+    "react-native-expo": "rn",
+    "flutter": "flutter",
+    "android-kotlin": "android",
+    "ios-swift": "ios",
+}
+
+
 # ── detect 서브커맨드 ─────────────────────────────────────────────────
 
 
@@ -60,13 +74,18 @@ def cmd_detect(args: argparse.Namespace) -> int:
     matches = loader.detect()
 
     output: dict = {"project": str(project), "matches": []}
+    mobile_detected: list[str] = []
     for m in matches:
         p = m.profile
+        is_mobile = p.id in _MOBILE_PROFILE_IDS
+        if is_mobile:
+            mobile_detected.append(p.id)
         output["matches"].append({
             "profile_id": p.id,
             "name": p.name,
             "path": m.path,
             "status": p.status,
+            "is_mobile": is_mobile,
             "required_sections": list(p.skeleton_sections.required),
             "optional_sections": list(p.skeleton_sections.optional),
             "section_order": list(p.skeleton_sections.order),
@@ -81,7 +100,16 @@ def cmd_detect(args: argparse.Namespace) -> int:
             "whitelist_dev": list(p.whitelist.dev),
             "gstack_mode": p.gstack_mode,
             "gstack_recommended": dict(p.gstack_recommended),
+            "guideline_paths": [str(g) for g in resolve_guideline_paths(p.id)],
         })
+
+    # 모바일 프로파일 감지 시 stderr 안내
+    for profile_id in mobile_detected:
+        agent_suffix = _MOBILE_AGENT_SUFFIX.get(profile_id, profile_id)
+        info(f"[INFO] 모바일 프로젝트 감지: {profile_id}")
+        info(f"→ 4개 가이드라인 (guideline_paths) 함께 읽으세요")
+        info(f"→ mobile_coder_{agent_suffix} 에이전트 사용")
+        info(f"→ HARNESS_AI_HOME 환경변수 설정 필수 (외부 사용자)")
 
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0
@@ -258,7 +286,14 @@ def cmd_write(args: argparse.Namespace) -> int:
         "skeleton_path": str(out_skeleton),
         "plan_path": str(out_plan),
         "included_sections": ordered_included,
-        "profiles": [{"id": p.id, "path": p.path} for p in profiles_for_plan],
+        "profiles": [
+            {
+                "id": p.id,
+                "path": p.path,
+                "guideline_paths": [str(g) for g in resolve_guideline_paths(p.id)],
+            }
+            for p in profiles_for_plan
+        ],
     }, ensure_ascii=False, indent=2))
     return 0
 

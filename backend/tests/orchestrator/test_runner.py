@@ -1,12 +1,13 @@
 """CLI subprocess 실행기 테스트."""
 
 import asyncio
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from src.orchestrator.config import AgentConfig, OrchestratorConfig
 from src.orchestrator.logger import AgentLogger
-from src.orchestrator.runner import AgentRunner, RunResult
+from src.orchestrator.runner import AgentRunner, RunResult, _resolve_prompt_path
 
 
 def _make_config(max_concurrent: int = 2, **overrides: object) -> OrchestratorConfig:
@@ -27,6 +28,10 @@ def _make_config(max_concurrent: int = 2, **overrides: object) -> OrchestratorCo
         orchestrator=AgentConfig(**agent),
         backend_coder=AgentConfig(**agent),
         frontend_coder=AgentConfig(**agent),
+        mobile_coder_rn=AgentConfig(**agent),
+        mobile_coder_flutter=AgentConfig(**agent),
+        mobile_coder_android=AgentConfig(**agent),
+        mobile_coder_ios=AgentConfig(**agent),
         reviewer=AgentConfig(**agent),
         qa=AgentConfig(**agent),
         max_concurrent=max_concurrent,
@@ -276,3 +281,73 @@ class TestContextInjection:
 
         call_kwargs = mock_provider.execute.call_args
         assert call_kwargs.kwargs["system_prompt"] is None
+
+
+# ── M0-D6: HARNESS_AI_HOME fallback for prompt_path ─────────────────────
+
+
+class TestResolvePromptPath:
+    """외부 사용자 프로젝트가 backend/agents/ 없이도 mobile_coder 프롬프트 로드 가능."""
+
+    def test_uses_project_local_when_exists(self, tmp_path: Path) -> None:
+        """프로젝트 내 prompt 파일이 존재하면 그쪽 우선 (override 패턴)."""
+        project = tmp_path / "project"
+        (project / "agents" / "architect").mkdir(parents=True)
+        local_prompt = project / "agents" / "architect" / "CLAUDE.md"
+        local_prompt.write_text("LOCAL", encoding="utf-8")
+
+        result = _resolve_prompt_path(project, "agents/architect/CLAUDE.md")
+        assert result == local_prompt
+
+    def test_falls_back_to_harness_home_when_project_missing(self, tmp_path: Path) -> None:
+        """프로젝트에 없으면 $HARNESS_AI_HOME/backend/<path> 로 fallback."""
+        project = tmp_path / "project"
+        project.mkdir()
+
+        harness_home = tmp_path / "harness_repo"
+        (harness_home / "backend" / "agents" / "mobile_coder_rn").mkdir(parents=True)
+        global_prompt = harness_home / "backend" / "agents" / "mobile_coder_rn" / "CLAUDE.md"
+        global_prompt.write_text("GLOBAL", encoding="utf-8")
+
+        with patch.dict(os.environ, {"HARNESS_AI_HOME": str(harness_home)}):
+            result = _resolve_prompt_path(project, "agents/mobile_coder_rn/CLAUDE.md")
+        assert result == global_prompt
+
+    def test_returns_none_when_neither_exists(self, tmp_path: Path) -> None:
+        """둘 다 없으면 None — 호출자가 prompt 없이 진행하거나 skip."""
+        project = tmp_path / "project"
+        project.mkdir()
+        harness_home = tmp_path / "harness_repo"
+        harness_home.mkdir()
+
+        with patch.dict(os.environ, {"HARNESS_AI_HOME": str(harness_home)}):
+            result = _resolve_prompt_path(project, "agents/missing/CLAUDE.md")
+        assert result is None
+
+    def test_no_env_returns_none_when_project_missing(self, tmp_path: Path) -> None:
+        """HARNESS_AI_HOME 미설정 + 프로젝트에 없음 → None (silent skip)."""
+        project = tmp_path / "project"
+        project.mkdir()
+
+        env = dict(os.environ)
+        env.pop("HARNESS_AI_HOME", None)
+        with patch.dict(os.environ, env, clear=True):
+            result = _resolve_prompt_path(project, "agents/mobile_coder_rn/CLAUDE.md")
+        assert result is None
+
+    def test_project_local_overrides_harness_home(self, tmp_path: Path) -> None:
+        """프로젝트 + HARNESS_AI_HOME 둘 다 있으면 프로젝트가 이김 (override)."""
+        project = tmp_path / "project"
+        (project / "agents" / "architect").mkdir(parents=True)
+        local_prompt = project / "agents" / "architect" / "CLAUDE.md"
+        local_prompt.write_text("LOCAL_OVERRIDE", encoding="utf-8")
+
+        harness_home = tmp_path / "harness_repo"
+        (harness_home / "backend" / "agents" / "architect").mkdir(parents=True)
+        global_prompt = harness_home / "backend" / "agents" / "architect" / "CLAUDE.md"
+        global_prompt.write_text("GLOBAL_DEFAULT", encoding="utf-8")
+
+        with patch.dict(os.environ, {"HARNESS_AI_HOME": str(harness_home)}):
+            result = _resolve_prompt_path(project, "agents/architect/CLAUDE.md")
+        assert result == local_prompt
+        assert result.read_text(encoding="utf-8") == "LOCAL_OVERRIDE"

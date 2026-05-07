@@ -363,3 +363,45 @@ class TestProfileWhitelistInjection:
         # fastapi 는 모듈 _PYTHON_WHITELIST 에 있음
         result = hooks.run_all("import fastapi\n")
         assert not any("fastapi" in f.message for f in result.findings)
+
+
+# ---------------------------------------------------------------------------
+# is_mobile flag (M0-C)
+# ---------------------------------------------------------------------------
+
+
+class TestIsMobileFlag:
+    """M0-C: is_mobile 플러밍. 현재는 frontend 와 동일한 dep 룰 (RN TS imports)."""
+
+    def test_is_mobile_alone_uses_frontend_dep_rules(self) -> None:
+        """is_mobile=True 단독 → check_dependency 가 frontend 모드 (Python imports 무시)."""
+        hooks = SecurityHooks()
+        # Python import 는 frontend 모드에서 검사 안 함 (TS/JS imports 만 검사)
+        # 모바일 코드에 가상의 Python 라인이 있어도 dep 위반으로 잡히지 않아야 함
+        result = hooks.run_all(
+            "import some_unknown_python_pkg\n",
+            is_mobile=True,
+        )
+        # Python pkg 가 dep finding 에 없어야 함 (frontend/mobile 모드 → Python skip)
+        assert not any(
+            "some_unknown_python_pkg" in f.message
+            for f in result.findings
+            if f.hook == "dependency-check"
+        )
+
+    def test_is_frontend_and_is_mobile_mutually_exclusive(self) -> None:
+        """is_frontend + is_mobile 둘 다 True 시 ValueError — 호출자 의도 확인 강제."""
+        hooks = SecurityHooks()
+        try:
+            hooks.run_all("x", is_frontend=True, is_mobile=True)
+        except ValueError as exc:
+            assert "mutually exclusive" in str(exc)
+        else:
+            raise AssertionError("ValueError 가 발생해야 함")
+
+    def test_default_no_mobile(self) -> None:
+        """is_mobile 미지정 시 기본 False — 기존 backend 동작 유지."""
+        hooks = SecurityHooks()
+        result = hooks.run_all("print('x')\n")
+        # 기본은 backend 모드. ValueError 안 나야 함.
+        assert isinstance(result.findings, list)

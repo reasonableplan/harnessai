@@ -11,8 +11,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-# Standard 20 section IDs → heading titles matching fragment frontmatter `name`.
+# Standard 33 section IDs → heading titles matching fragment frontmatter `name`.
 # Must stay in sync with ~/.claude/harness/templates/skeleton/<id>.md name fields.
+# M0-D: v0.5.0 fragments 10 + 모바일 fragments 3 정합 (20→33).
 SECTION_TITLES: dict[str, str] = {
     "overview": "프로젝트 개요",
     "requirements": "기능 요구사항",
@@ -34,9 +35,45 @@ SECTION_TITLES: dict[str, str] = {
     "deployment": "배포 설정",
     "tasks": "태스크 분해",
     "notes": "구현 노트",
+    # v0.5.0 신규 fragments (10) — required_when 으로 6축 답변 따라 자동 활성
+    "data_model": "데이터 모델",
+    "threat_model": "위협 모델 (Threat Model)",
+    "audit_log": "감사 로그 (Audit Log)",
+    "slo": "SLO / 성능 목표",
+    "runbook": "운영 Runbook",
+    "test_strategy": "테스트 전략",
+    "user_journey": "사용자 시나리오 (User Journey)",
+    "authorization_matrix": "권한 행렬 (Authorization Matrix)",
+    "ci_cd": "CI/CD 파이프라인",
+    "external_deps": "외부 의존 (External Dependencies)",
+    # 모바일 fragments (3) — has.navigation/build_config/lifecycle 으로 mobile 활성
+    "mobile.navigation": "네비게이션",
+    "mobile.build_config": "빌드 설정",
+    "mobile.lifecycle": "라이프사이클 / 권한",
 }
 
 # Per-agent section ID mapping. "*" means all sections.
+# M0-D2: mobile_coder_* 4개 추가. mobile.* 섹션 + view/state + interface.http (paired) +
+# persistence (local-only) 받음.
+# M0-D5: Designer 의 sections 에 mobile.navigation/mobile.lifecycle 추가
+# (모바일 화면/UX/네비게이션은 Designer 영역).
+_MOBILE_CODER_SECTIONS: list[str] = [
+    "overview",
+    "requirements",
+    "stack",
+    "view.screens",
+    "view.components",
+    "state.flow",
+    "mobile.navigation",
+    "mobile.build_config",
+    "mobile.lifecycle",
+    "persistence",
+    "interface.http",
+    "errors",
+    "core.logic",
+    "notes",
+]
+
 AGENT_SECTIONS_BY_ID: dict[str, list[str]] = {
     "architect": ["*"],
     "designer": [
@@ -47,6 +84,8 @@ AGENT_SECTIONS_BY_ID: dict[str, list[str]] = {
         "view.screens",
         "view.components",
         "state.flow",
+        "mobile.navigation",
+        "mobile.lifecycle",
         "errors",
     ],
     "orchestrator": ["overview", "requirements", "stack", "tasks"],
@@ -62,6 +101,10 @@ AGENT_SECTIONS_BY_ID: dict[str, list[str]] = {
         "core.logic",
         "notes",
     ],
+    "mobile_coder_rn": _MOBILE_CODER_SECTIONS,
+    "mobile_coder_flutter": _MOBILE_CODER_SECTIONS,
+    "mobile_coder_android": _MOBILE_CODER_SECTIONS,
+    "mobile_coder_ios": _MOBILE_CODER_SECTIONS,
     "frontend_coder": [
         "overview",
         "requirements",
@@ -86,7 +129,7 @@ AGENT_SECTIONS_BY_ID: dict[str, list[str]] = {
     ],
 }
 
-# Additional docs per agent
+# Additional docs per agent — paths are project-local (relative to <project>/docs/).
 EXTRA_DOCS: dict[str, list[str]] = {
     "architect": ["conventions.md", "shared-lessons.md", "adr/"],
     "designer": ["conventions.md", "shared-lessons.md", "guidelines/frontend/style.md"],
@@ -106,8 +149,44 @@ EXTRA_DOCS: dict[str, list[str]] = {
         "guidelines/frontend/api.md",
         "guidelines/frontend/style.md",
     ],
+    "mobile_coder_rn": ["conventions.md", "shared-lessons.md"],
+    "mobile_coder_flutter": ["conventions.md", "shared-lessons.md"],
+    "mobile_coder_android": ["conventions.md", "shared-lessons.md"],
+    "mobile_coder_ios": ["conventions.md", "shared-lessons.md"],
     "reviewer": ["conventions.md", "shared-lessons.md", "adr/"],
     "qa": ["conventions.md", "shared-lessons.md"],
+}
+
+# M0-D2/D3: harness-global docs per agent — paths are relative to harness_dir
+# (~/.claude/harness/). 사용자 프로젝트의 <project>/docs/guidelines/ 가 비어 있어도
+# 글로벌 SoT 에서 직접 로드하므로 외부 사용자도 즉시 production-grade 컨벤션을 받음.
+# 이전 EXTRA_DOCS 의 guidelines/<role>/ 경로는 프로젝트가 직접 관리하는 옵션 유지
+# (override 패턴 — 프로젝트 docs/guidelines/ 가 있으면 그쪽도 함께 로드).
+EXTRA_HARNESS_DOCS: dict[str, list[str]] = {
+    "mobile_coder_rn": [
+        "templates/guidelines/react-native-expo/navigation.md",
+        "templates/guidelines/react-native-expo/state.md",
+        "templates/guidelines/react-native-expo/storage.md",
+        "templates/guidelines/react-native-expo/style.md",
+    ],
+    "mobile_coder_flutter": [
+        "templates/guidelines/flutter/navigation.md",
+        "templates/guidelines/flutter/state.md",
+        "templates/guidelines/flutter/storage.md",
+        "templates/guidelines/flutter/style.md",
+    ],
+    "mobile_coder_android": [
+        "templates/guidelines/android-kotlin/architecture.md",
+        "templates/guidelines/android-kotlin/compose.md",
+        "templates/guidelines/android-kotlin/network.md",
+        "templates/guidelines/android-kotlin/storage.md",
+    ],
+    "mobile_coder_ios": [
+        "templates/guidelines/ios-swift/architecture.md",
+        "templates/guidelines/ios-swift/swiftui.md",
+        "templates/guidelines/ios-swift/network.md",
+        "templates/guidelines/ios-swift/storage.md",
+    ],
 }
 
 
@@ -160,8 +239,20 @@ def build_context(
     docs_dir: Path,
     prompt_path: Path | None = None,
     project_root: Path | None = None,
+    harness_dir: Path | None = None,
 ) -> str:
-    """Assemble the full context to inject into an agent (section-ID based)."""
+    """Assemble the full context to inject into an agent (section-ID based).
+
+    Args:
+        agent: agent name — must be in AGENT_SECTIONS_BY_ID.
+        skeleton_path: <project>/docs/skeleton.md.
+        docs_dir: <project>/docs/ — EXTRA_DOCS 의 project-local 경로 base.
+        prompt_path: agent 시스템 프롬프트 (CLAUDE.md).
+        project_root: <project>/ — root CLAUDE.md 로딩 base.
+        harness_dir: ~/.claude/harness/ (M0-D2 추가) — EXTRA_HARNESS_DOCS 의
+            harness-global 경로 base. None 이면 harness-relative docs 로딩 skip
+            (legacy 호환).
+    """
     parts: list[str] = []
 
     # 1. Agent system prompt (CLAUDE.md)
@@ -191,7 +282,7 @@ def build_context(
             if extracted:
                 parts.append("# Skeleton (relevant sections)\n\n" + "\n\n".join(extracted))
 
-    # 5. Extra docs
+    # 5. Extra docs (project-local)
     extra = EXTRA_DOCS.get(agent, [])
     for doc_name in extra:
         if doc_name.endswith("/"):
@@ -204,6 +295,17 @@ def build_context(
                         parts.append(f"# {md_file.stem}\n{content}")
         else:
             doc_path = docs_dir / doc_name
+            if doc_path.exists():
+                content = doc_path.read_text(encoding="utf-8").strip()
+                if content:
+                    parts.append(f"# {doc_name}\n{content}")
+
+    # 6. Harness-global docs (M0-D2/D3) — templates/guidelines/, lessons/ 등 SoT 에서 직접 로드.
+    # 프로젝트 docs/guidelines/ 가 비어 있어도 외부 사용자가 즉시 컨벤션을 받음.
+    if harness_dir is not None:
+        harness_extra = EXTRA_HARNESS_DOCS.get(agent, [])
+        for doc_name in harness_extra:
+            doc_path = harness_dir / doc_name
             if doc_path.exists():
                 content = doc_path.read_text(encoding="utf-8").strip()
                 if content:

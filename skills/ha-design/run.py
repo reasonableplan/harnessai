@@ -21,6 +21,7 @@ from utils import (  # noqa: E402
     get_active_profiles,
     info,
     load_plan,
+    resolve_guideline_paths,
     save_plan,
     transition,
 )
@@ -53,6 +54,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
                     {"id": c.id, "skeleton_section": c.skeleton_section}
                     for c in p.components
                 ],
+                "guideline_paths": [str(g) for g in resolve_guideline_paths(p.id)],
             }
             for p in profiles
         ],

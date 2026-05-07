@@ -75,8 +75,48 @@ run.py 가:
        또는 /ha-build <T-ID>로 해당 태스크 재구현
 ```
 
+### 출력의 guideline_paths 도 읽으세요
+
+`prepare` 출력 JSON 의 `profiles[].guideline_paths` 에
+프로파일별 컨벤션 문서 경로가 포함됩니다. **반드시 작업 시작 전 모두 읽으세요**:
+
+- `react-native-expo`: navigation/state/storage/style 4 파일 — Expo Router + Zustand + SecureStore 컨벤션
+- `flutter`: navigation/state/storage/style 4 파일 — go_router + Riverpod + drift + ThemeData
+- `android-kotlin`: architecture/compose/network/storage 4 파일 — MVVM + Compose + Retrofit + Room
+- `ios-swift`: architecture/swiftui/network/storage 4 파일 — MV pattern + SwiftUI + URLSession + Keychain
+- `fastapi`: api/services/structure 3 파일 — Clean Arch + DI + 패키지 구조
+
+**모바일 사용자**: 위 가이드라인을 안 읽으면 LESSON-STYLE-001 / 보안 위반 / 컨벤션 drift 가능성. 시스템 프롬프트만으로는 부족합니다.
+
 ## 가드레일
 
 - 명령 실행 전 `cwd` 확인 (모노레포에서 잘못된 디렉토리 실행 방지)
 - 테스트 결과 임의 조작 X — 실패는 실패로 기록
 - timeout 60~600초 사이 (큰 테스트 스위트는 백그라운드 실행 권장)
+
+## 모바일 프로젝트 사용 예시 (Flutter)
+
+**5단계 — `/ha-verify` 로 toolchain 실행**:
+
+- `prepare` 출력의 `platform_warnings` 먼저 확인 — 도구 미설치 경고 처리
+- Flutter toolchain 실행 순서:
+  ```bash
+  flutter pub get          # install
+  flutter test             # test
+  flutter analyze          # lint
+  dart format --set-exit-if-changed .  # format
+  ```
+- `platform_warnings` 에 경고 있어도 toolchain 실행은 시도 (경고는 참고용)
+
+**react-native-expo 의 경우**:
+- `bun install` → `bun test` → `bun run lint` → `bunx tsc --noEmit`
+- iOS 시뮬레이터 테스트는 macOS 에서만 가능
+
+**android-kotlin 의 경우**:
+- JAVA_HOME 미설정 시 `platform_warnings` 에 경고 — Gradle 실행 전 설정 필수
+- `./gradlew test` 실패 시 로그에서 실패 테스트 확인
+
+**ios-swift on Windows**:
+- `platform_warnings`: "Windows host: swift build dry-run only"
+- `swift build` 는 실행하되 `xcodebuild test` 는 macOS CI 에서만 실행
+- SwiftLint 는 Docker 또는 CI 환경에서 실행 권장

@@ -48,13 +48,9 @@ rules:
           - "console_scripts"
 
   # ── JavaScript frontends ───────────────────────────────────────────────
-  - profile: nextjs
-    paths: [".", "frontend/", "apps/web/", "apps/frontend/"]
-    detect:
-      files: [package.json]
-      contains:
-        package.json: ['"next"']
-
+  # Note: nextjs detection rule removed (R1) — `harness/profiles/nextjs.md` 미구현.
+  # Next.js 사용자는 react-vite 프로파일 채택 + frontend_coder 시스템 프롬프트만 수정 (SETUP.md 예시 2 참조).
+  # Next.js 정식 지원은 외부 사용자 요청 시 별도 phase.
   - profile: react-vite
     paths: [".", "frontend/", "apps/web/", "apps/frontend/"]
     detect:
@@ -74,13 +70,35 @@ rules:
       contains:
         package.json: ['"electron"']
 
-  # ── Mobile ─────────────────────────────────────────────────────────────
-  - profile: react-native
+  # ── Mobile (cross-platform) ────────────────────────────────────────────
+  # M0-C: 4개 모바일 룰 (구 react-native stub 대체). 프로파일 파일은 M1+ 에서 추가 —
+  # 그때까지는 detect 가 매칭해도 load 실패로 silent skip (정상 동작, /ha-init 가 fallback prompt).
+  - profile: react-native-expo
     paths: [".", "apps/mobile/", "mobile/"]
     detect:
       files: [package.json]
       contains_any:
-        package.json: ['"react-native"', '"expo"']
+        package.json: ['"expo"', '"react-native"']
+      not_contains:
+        package.json: ['"react-native-windows"']  # 데스크톱 RN 분기
+
+  - profile: flutter
+    paths: [".", "apps/mobile/", "mobile/"]
+    detect:
+      files: [pubspec.yaml]
+      contains:
+        pubspec.yaml: ["flutter:"]
+
+  # ── Mobile (native) ────────────────────────────────────────────────────
+  - profile: android-kotlin
+    paths: [".", "android/", "apps/android/"]
+    detect:
+      files_any: [build.gradle.kts, build.gradle, settings.gradle.kts]
+
+  - profile: ios-swift
+    paths: [".", "ios/", "apps/ios/"]
+    detect:
+      files_any: [Package.swift, Podfile]
 
 # ── Fallback ─────────────────────────────────────────────────────────────
 # If ZERO rules match, /ha-init asks the user which profile to use or

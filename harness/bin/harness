@@ -54,22 +54,30 @@ HARNESS_ROOT = Path(
 )
 
 STANDARD_SECTION_IDS = {
+    # 기본 20 (v0.4 까지)
     "overview", "requirements", "stack", "configuration", "errors",
     "auth", "persistence", "integrations",
     "interface.http", "interface.cli", "interface.ipc", "interface.sdk",
     "view.screens", "view.components", "state.flow", "core.logic",
     "observability", "deployment", "tasks", "notes",
+    # v0.5.0 신규 (10) — auto-fit skeleton (required_when 6축)
+    "data_model", "threat_model", "audit_log", "slo", "runbook",
+    "test_strategy", "user_journey", "authorization_matrix", "ci_cd", "external_deps",
+    # 모바일 (3) — M0-A
+    "mobile.navigation", "mobile.build_config", "mobile.lifecycle",
 }
 
 ALLOWED_GSTACK_MODES = {"auto", "manual", "prompt"}
 ALLOWED_PROFILE_STATUS = {"confirmed", "draft"}
 
-# required_when 표준 vocabulary (design doc §4.6)
+# required_when 표준 vocabulary (design doc §4.6 + 모바일 확장 §4.4)
 REQUIRED_WHEN_ATOMS = {
     "always",
     "has.users", "has.storage", "has.env_config", "has.external_deps",
     "has.http_server", "has.cli_entrypoint", "has.ipc", "has.ui",
     "has.complex_state", "has.sdk_surface", "has.production_concerns",
+    # Mobile (M0-A) — mobile.* 섹션 선언 시 활성. _SECTION_TO_HAS_KEY 와 동기.
+    "has.navigation", "has.build_config", "has.lifecycle",
     "scale.small_or_larger", "scale.medium_or_larger", "scale.large",
 }
 
@@ -89,7 +97,8 @@ _AXIS_MEMBERSHIP_RE = re.compile(
 )
 
 # detect 블록 허용 연산자
-DETECT_OPERATORS = {"files", "contains", "contains_any", "not_contains"}
+# files: 모두 존재 (AND). files_any: 하나라도 존재 (OR — Android Gradle 등 디스점션 케이스).
+DETECT_OPERATORS = {"files", "files_any", "contains", "contains_any", "not_contains"}
 
 FRONTMATTER_RE = re.compile(r"^---\r?\n(.*?)\r?\n---", re.DOTALL)
 
@@ -263,9 +272,9 @@ def validate_profile(path: Path, report: Report) -> None:
                 if op not in DETECT_OPERATORS:
                     report.error(name, f"detect.{op}: 알 수 없는 연산자 (허용: {sorted(DETECT_OPERATORS)})")
                     continue
-                if op == "files":
+                if op in ("files", "files_any"):
                     if not isinstance(val, list):
-                        report.error(name, "detect.files: list 필요")
+                        report.error(name, f"detect.{op}: list 필요")
                 elif op in ("contains", "contains_any", "not_contains"):
                     if not isinstance(val, dict):
                         report.error(name, f"detect.{op}: dict (file → substrings) 필요")

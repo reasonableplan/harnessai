@@ -50,6 +50,46 @@ frontend_coder:
   max_retries_on_timeout: 1
   max_tokens: 16384
 
+# M0 first gate — React Native + Expo mobile coder (M1 에서 본 작업)
+mobile_coder_rn:
+  provider: claude-cli
+  model: claude-haiku-4-5-20251001
+  prompt_path: agents/mobile_coder_rn/CLAUDE.md
+  timeout_seconds: 600
+  on_timeout: retry
+  max_retries_on_timeout: 1
+  max_tokens: 16384
+
+# M0-B — Flutter mobile coder (M2 에서 본 작업, Dart 비주류라 sonnet)
+mobile_coder_flutter:
+  provider: claude-cli
+  model: claude-sonnet-4-6
+  prompt_path: agents/mobile_coder_flutter/CLAUDE.md
+  timeout_seconds: 600
+  on_timeout: retry
+  max_retries_on_timeout: 1
+  max_tokens: 16384
+
+# M0-B — Android Kotlin native (M3 에서 본 작업, Gradle 빌드 시간 고려 900s)
+mobile_coder_android:
+  provider: claude-cli
+  model: claude-sonnet-4-6
+  prompt_path: agents/mobile_coder_android/CLAUDE.md
+  timeout_seconds: 900
+  on_timeout: retry
+  max_retries_on_timeout: 1
+  max_tokens: 16384
+
+# M0-B — iOS Swift native (M3, Windows 호스트는 SwiftLint + swift build 만)
+mobile_coder_ios:
+  provider: claude-cli
+  model: claude-sonnet-4-6
+  prompt_path: agents/mobile_coder_ios/CLAUDE.md
+  timeout_seconds: 900
+  on_timeout: retry
+  max_retries_on_timeout: 1
+  max_tokens: 16384
+
 reviewer:
   provider: claude-cli
   model: claude-opus-4-6

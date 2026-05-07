@@ -32,7 +32,7 @@ cd backend
 uv sync
 
 # 4) 검증
-uv run pytest tests/ --rootdir=.   # 420 tests
+uv run pytest tests/ --rootdir=.   # 496 tests
 uv run ruff check src/             # 0 errors
 uv run pyright src/                # 0 errors (타입 체크)
 python ../harness/bin/harness validate  # 프로파일 스키마 검증
@@ -56,6 +56,33 @@ python ../harness/bin/harness validate  # 프로파일 스키마 검증
 6. `backend/tests/` 에 프로파일 단위 테스트 (감지 + 화이트리스트 적용)
 
 **템플릿**: 기존 `harness/profiles/fastapi.md` 또는 `python-cli.md` 참고.
+
+### A-1. 신규 모바일 프로파일 추가
+
+기존 4 모바일 프로파일 (`react-native-expo` / `flutter` / `android-kotlin` / `ios-swift`) 패턴 따라 새 모바일 스택 추가 시:
+
+1. **`harness/profiles/<new-profile>.md`** — 9 컴포넌트 + skeleton_sections + toolchain + whitelist
+   - `mobile.navigation` / `mobile.build_config` / `mobile.lifecycle` 3개 섹션 required 에 포함
+   - profile.skeleton_sections.required 에 mobile.* 추가 → `_SECTION_TO_HAS_KEY` 가 자동 활성
+
+2. **`harness/templates/guidelines/<new-profile>/*.md`** — 4 가이드 (네비게이션/상태/저장소/스타일 또는 framework-specific)
+
+3. **`harness/profiles/_registry.yaml`** — 신규 detect 룰 추가
+   - mobile 스택은 종종 `files_any` (OR 매처) 필요
+
+4. **`backend/src/orchestrator/config.py`** — `OrchestratorConfig` 에 `mobile_coder_<id>: AgentConfig` 필드 추가
+
+5. **`backend/agents.yaml` + `backend/agents/mobile_coder_<id>/CLAUDE.md`** — 신규 mobile_coder agent (sonnet/haiku 적절 선택)
+
+6. **`skills/ha-build/run.py`** — `_AGENT_TO_PROFILE` 매핑에 신규 추가
+
+7. **`skills/ha-init/run.py`** — `_MOBILE_PROFILE_IDS` + `_MOBILE_AGENT_SUFFIX` 매핑
+
+8. **테스트** — `backend/tests/orchestrator/test_profile_loader.py` 에 통합 테스트 (load + detect + 오탐 방지)
+
+9. **CHANGELOG.md** — 신규 profile 명시
+
+10. **SETUP.md / README.md** — 비교 표 + 시작 예시 추가
 
 ### B. 새 LESSON 추가
 
@@ -108,7 +135,7 @@ python ../harness/bin/harness validate  # 프로파일 스키마 검증
 
 제출 전 확인:
 
-- [ ] `cd backend && uv run pytest tests/` — 모두 통과 (현재 420개)
+- [ ] `cd backend && uv run pytest tests/` — 모두 통과 (현재 496개)
 - [ ] `uv run ruff check src/` — 0 errors
 - [ ] `uv run pyright src/` — 0 errors
 - [ ] `python harness/bin/harness validate` — 0 errors
@@ -155,7 +182,7 @@ react-vite) 초기 integrity 4개 false positive → 0.
 
 | 레벨 | 명령 | 역할 |
 |---|---|---|
-| pytest | `uv run pytest tests/` | 420개 단위/통합 테스트 |
+| pytest | `uv run pytest tests/` | 496개 단위/통합 테스트 |
 | ruff | `uv run ruff check src/` | 코드 스타일 |
 | pyright | `uv run pyright src/` | 타입 체크 |
 | harness validate | `python harness/bin/harness validate` | 프로파일/스킬 스키마 |

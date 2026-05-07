@@ -101,6 +101,23 @@ run.py 가:
   또는 모든 태스크 완료 시: /ha-verify
 ```
 
+### 출력의 guideline_paths 도 읽으세요
+
+`prepare` 출력 JSON 의 `tasks[].guideline_paths` 에
+담당 에이전트가 참조해야 할 프로파일별 컨벤션 문서 경로가 포함됩니다. **반드시 작업 시작 전 모두 읽으세요**:
+
+- `react-native-expo`: navigation/state/storage/style 4 파일 — Expo Router + Zustand + SecureStore 컨벤션
+- `flutter`: navigation/state/storage/style 4 파일 — go_router + Riverpod + drift + ThemeData
+- `android-kotlin`: architecture/compose/network/storage 4 파일 — MVVM + Compose + Retrofit + Room
+- `ios-swift`: architecture/swiftui/network/storage 4 파일 — MV pattern + SwiftUI + URLSession + Keychain
+- `fastapi`: api/services/structure 3 파일 — Clean Arch + DI + 패키지 구조
+
+에이전트별 매핑: `mobile_coder_flutter` → flutter, `mobile_coder_rn` → react-native-expo,
+`mobile_coder_android` → android-kotlin, `mobile_coder_ios` → ios-swift,
+`backend_coder` → plan 의 backend 프로파일, `frontend_coder` → plan 의 frontend 프로파일.
+
+**모바일 사용자**: 위 가이드라인을 안 읽으면 LESSON-STYLE-001 / 보안 위반 / 컨벤션 drift 가능성. 시스템 프롬프트만으로는 부족합니다.
+
 ## 가드레일
 
 - 태스크 description 외 작업 추가 금지 (scope creep 방지)
@@ -142,3 +159,30 @@ run.py 가:
 **depends_on 미만족**: run.py prepare 가 차단함. 의존하는 태스크 먼저 완료.
 **병렬 모드에서 race condition**: 같은 파일 수정하는 태스크는 병렬 X. depends_on 으로 직렬화.
 **3회 재시도 실패**: blocked 처리 후 사용자 개입 필요.
+
+## 모바일 프로젝트 사용 예시 (Flutter)
+
+**4단계 — `/ha-build` 로 태스크 구현**:
+
+- `/ha-plan` 완료 후 `tasks.md` 의 태스크를 순서대로 실행
+- Flutter 태스크 실행 예시:
+  ```bash
+  python ~/.claude/skills/ha-build/run.py prepare --task T-001
+  ```
+- `guideline_paths` 의 flutter 가이드라인 4개 읽은 후 구현 시작
+- 에이전트: `mobile_coder_flutter` — go_router + Riverpod + drift 컨벤션 준수
+
+**react-native-expo 의 경우**:
+- 에이전트: `mobile_coder_rn`
+- Expo SDK API 우선 사용 (react-native 직접 API 최소화)
+- `expo run:android` / `expo run:ios` 로 로컬 테스트
+
+**android-kotlin 의 경우**:
+- 에이전트: `mobile_coder_android`
+- MVVM + Hilt DI + Compose UI 패턴 준수
+- `./gradlew assembleDebug` 로 빌드 확인
+
+**ios-swift 의 경우**:
+- 에이전트: `mobile_coder_ios`
+- SwiftUI + Combine / async-await 패턴
+- Windows host 에서는 `swift build` dry-run 만 가능 (macOS CI 에서 전체 빌드)

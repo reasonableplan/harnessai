@@ -117,8 +117,41 @@ run.py 가:
   /ha-build --parallel T-XXX,T-YYY  — 병렬 (의존성 없을 때)
 ```
 
+### 출력의 guideline_paths 도 읽으세요
+
+`prepare` 출력 JSON 의 `profiles[].guideline_paths` 에
+프로파일별 컨벤션 문서 경로가 포함됩니다. **반드시 작업 시작 전 모두 읽으세요**:
+
+- `react-native-expo`: navigation/state/storage/style 4 파일 — Expo Router + Zustand + SecureStore 컨벤션
+- `flutter`: navigation/state/storage/style 4 파일 — go_router + Riverpod + drift + ThemeData
+- `android-kotlin`: architecture/compose/network/storage 4 파일 — MVVM + Compose + Retrofit + Room
+- `ios-swift`: architecture/swiftui/network/storage 4 파일 — MV pattern + SwiftUI + URLSession + Keychain
+- `fastapi`: api/services/structure 3 파일 — Clean Arch + DI + 패키지 구조
+
+**모바일 사용자**: 위 가이드라인을 안 읽으면 LESSON-STYLE-001 / 보안 위반 / 컨벤션 drift 가능성. 시스템 프롬프트만으로는 부족합니다.
+
 ## 가드레일
 - 태스크에 reviewer/qa 직접 배정 금지 (Phase 리뷰는 자동 처리)
 - skeleton 에 정의된 모든 컴포넌트가 태스크로 커버되는지 확인
 - 의존성 순환 금지
 - skeleton 의 다른 섹션은 절대 수정 X (tasks 만)
+
+## 모바일 프로젝트 사용 예시 (Flutter)
+
+**3단계 — `/ha-plan` 에서 태스크 분해**:
+
+- `/ha-design` 완료 후 채워진 `skeleton.md` 기반으로 태스크 분해
+- Flutter 프로젝트 전형적 태스크 구조:
+  - `T-001 mobile_coder_flutter`: 프로젝트 초기화 + pubspec.yaml 의존성
+  - `T-002 mobile_coder_flutter`: go_router 네비게이션 설정 (depends_on: T-001)
+  - `T-003 mobile_coder_flutter`: Riverpod 상태 관리 레이어 (depends_on: T-001)
+  - `T-004 mobile_coder_flutter`: 주요 화면 구현 (depends_on: T-002, T-003)
+  - `T-005 mobile_coder_flutter`: drift DB + flutter_secure_storage (depends_on: T-001)
+
+**react-native-expo 의 경우**:
+- 에이전트: `mobile_coder_rn`
+- android + iOS 동시 지원 태스크는 단일 T-NNN 으로 처리 (Expo 가 추상화)
+
+**android-kotlin / ios-swift 의 경우**:
+- 에이전트: `mobile_coder_android` / `mobile_coder_ios`
+- 플랫폼별 빌드 설정 태스크 별도 분리 권장

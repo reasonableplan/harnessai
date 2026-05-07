@@ -56,6 +56,12 @@ _SECTION_TO_HAS_KEY: dict[str, str] = {
     "deployment": "production_concerns",
     "ci_cd": "production_concerns",
     "runbook": "production_concerns",
+    # Mobile (M0-A) — profile 이 mobile.* 를 declared sections 에 포함하면
+    # has.navigation / has.build_config / has.lifecycle atom 활성. Web/CLI/Lib
+    # 프로파일은 이 섹션을 선언 안 하므로 자동 비활성 (호환성 유지).
+    "mobile.navigation": "navigation",
+    "mobile.build_config": "build_config",
+    "mobile.lifecycle": "lifecycle",
 }
 
 # user_scale → scale.X 토큰 (cumulative — small 은 small_or_larger 까지만,
@@ -449,11 +455,21 @@ class ProfileLoader:
 
 
 def _matches_detect(base: Path, detect: dict[str, Any]) -> bool:
-    """Evaluate a single detect block — files / contains / contains_any / not_contains."""
+    """Evaluate a single detect block — files / files_any / contains / contains_any / not_contains.
+
+    `files_any` 는 후보 중 **하나라도** 존재하면 매칭 (Android build.gradle.kts vs
+    build.gradle 같은 OR 케이스). 빈 리스트는 vacuous match 가 아니라 fail —
+    의도하지 않은 silent match 방어.
+    """
     if "files" in detect:
         for f in detect["files"] or []:
             if not (base / f).exists():
                 return False
+
+    if "files_any" in detect:
+        candidates = detect["files_any"] or []
+        if not candidates or not any((base / f).exists() for f in candidates):
+            return False
 
     for op in ("contains", "contains_any", "not_contains"):
         if op not in detect:

@@ -279,9 +279,67 @@ python ~/.claude/harness/bin/harness validate   # 프로파일 스키마 체크
 [ ] agents/[에이전트]/CLAUDE.md 수정 완료
 [ ] 프로파일 whitelist 업데이트 (라이브러리 변경 시)
 [ ] agents.yaml 모델/타임아웃 조정 (필요 시)
-[ ] harness validate — 37 files, 0 errors
-[ ] cd backend && uv run pytest tests/ — 420 pass
+[ ] harness validate — 44 files, 0 errors
+[ ] cd backend && uv run pytest tests/ — 496 pass
 ```
+
+---
+
+## 모바일 프로젝트 시작하기 (v0.6.0+)
+
+HarnessAI 는 4개 모바일 스택을 지원합니다:
+- React Native + Expo (`react-native-expo`)
+- Flutter (`flutter`)
+- Android Native (Kotlin + Jetpack Compose, `android-kotlin`)
+- iOS Native (Swift + SwiftUI, `ios-swift`)
+
+### 빠른 시작 (Flutter 예시)
+
+```bash
+# 1. HarnessAI clone + install
+git clone https://github.com/reasonableplan/harnessai.git
+cd harnessai && ./install.sh   # Windows: .\install.ps1
+export HARNESS_AI_HOME=$(pwd)   # PowerShell: $env:HARNESS_AI_HOME='...'
+
+# 2. Flutter 프로젝트 디렉토리로 이동 (또는 신규 생성)
+cd ~/my-flutter-app
+# 최소 pubspec.yaml 만 있으면 감지됨:
+#   name: my_app
+#   flutter:
+#     sdk: flutter
+
+# 3. /ha-init 호출 (Claude Code 세션에서)
+# → detect 출력의 is_mobile: true 확인
+# → guideline_paths 4개 모두 읽기
+# → 6축 답변 시 data_sensitivity=pii 면 audit_log/threat_model 자동 활성
+
+# 4. 이후 흐름: /ha-design → /ha-plan → /ha-build → /ha-verify → /ha-review
+```
+
+### iOS 개발 환경 제약
+
+iOS native (`ios-swift`) 는 **macOS 가 권장 환경**:
+- Windows 호스트: SwiftLint + `swift build` dry-run 만 가능
+- 시뮬레이터 / 실기기 / `xcodebuild test` 는 macOS 에서만
+- 호환성 문제 발생 시 `/ha-verify` 의 `platform_warnings` 가 친절 안내
+
+### Android 개발 환경
+
+- JAVA_HOME 환경변수 필수 (JDK 17+)
+- `JAVA_HOME` 미설정 시 `/ha-verify` 의 `platform_warnings` 안내
+
+### 모노레포 (모바일 + 백엔드 페어링)
+
+`apps/mobile/` (Flutter) + `apps/api/` (FastAPI) 같은 monorepo 도 자동 감지. `/ha-init detect` 가 두 프로파일 모두 매칭 → `/ha-build` 가 task 별로 mobile_coder_flutter / backend_coder 분배.
+
+### 4 프레임워크 비교 (어떤 걸 선택?)
+
+| 스택 | 장점 | 적합 케이스 |
+|---|---|---|
+| react-native-expo | TypeScript / web 개발자 친숙 / 빠른 배포 | MVP / 모바일 우선 |
+| flutter | 단일 코드베이스 / 풍부한 위젯 | 고품질 UI 우선 |
+| android-kotlin | Material 3 네이티브 / 최고 성능 | Android 전용 / 성능 critical |
+| ios-swift | iOS 통합 / Apple 생태계 | iOS 전용 / Apple 표준 |
 
 ---
 

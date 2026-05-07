@@ -21,6 +21,7 @@ from utils import (  # noqa: E402, I001
     info,
     load_plan,
     record_verify,
+    resolve_guideline_paths,
     save_plan,
     transition,
 )
@@ -320,6 +321,125 @@ def _check_test_distribution(
     return findings
 
 
+# ── mobile 보안 룰 ──────────────────────────────────────────────────
+#
+# 활성 profile 이 mobile 인 경우에만 적용. non-mobile profile_id → 빈 리스트.
+
+_MOBILE_PROFILE_IDS: frozenset[str] = frozenset(
+    {"react-native-expo", "flutter", "android-kotlin", "ios-swift"}
+)
+
+# mobile secret storage 위반 패턴 (BLOCK)
+_MOBILE_SECRET_STORAGE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (
+        re.compile(r"AsyncStorage\.setItem\s*\(.*[Tt]oken", re.MULTILINE),
+        "AsyncStorage 에 토큰 저장 금지 — react-native-keychain 또는 expo-secure-store 사용",
+    ),
+    (
+        re.compile(r"SharedPreferences.*[Tt]oken|[Tt]oken.*SharedPreferences", re.MULTILINE),
+        "SharedPreferences 에 토큰 저장 금지 — Android Keystore 또는 EncryptedSharedPreferences 사용",
+    ),
+    (
+        re.compile(r"UserDefaults.*[Tt]oken|[Tt]oken.*UserDefaults", re.MULTILINE),
+        "UserDefaults 에 토큰 저장 금지 — iOS Keychain 사용",
+    ),
+    (
+        re.compile(r"shared_preferences.*token|token.*shared_preferences", re.MULTILINE | re.IGNORECASE),
+        "shared_preferences 에 토큰 저장 금지 — flutter_secure_storage 사용",
+    ),
+]
+
+# mobile 권한 일괄 요청 위반 패턴 (WARN): 한 diff 블록에 3개 이상 권한 추가 라인
+_PERMISSION_KEYWORDS = re.compile(
+    r"CAMERA|LOCATION|NOTIFICATION|MICROPHONE|CONTACTS|STORAGE|READ_|WRITE_|ACCESS_",
+    re.IGNORECASE,
+)
+
+# CocoaPods 신규 사용 (WARN, ios-swift only)
+_COCOAPODS_NEW_POD_RE = re.compile(r"^\+\s*pod\s+['\"]", re.MULTILINE)
+
+# react-native CLI 직접 사용 (WARN, react-native-expo only)
+_RN_CLI_DIRECT_RE = re.compile(
+    r"react-native\s+run-(?:android|ios)", re.MULTILINE
+)
+
+
+def _check_mobile_secret_storage(diff: str, profile_id: str) -> list[dict[str, str]]:
+    """모바일 시크릿 storage 위반 탐지 (BLOCK). mobile profile 만."""
+    if profile_id not in _MOBILE_PROFILE_IDS:
+        return []
+    findings: list[dict[str, str]] = []
+    # diff 에서 추가된 라인(+로 시작)만 검사
+    added = "\n".join(
+        line[1:] for line in diff.splitlines() if line.startswith("+") and not line.startswith("+++")
+    )
+    for pat, msg in _MOBILE_SECRET_STORAGE_PATTERNS:
+        if pat.search(added):
+            findings.append({
+                "hook": "mobile-secret-storage",
+                "severity": "BLOCK",
+                "message": msg,
+            })
+    return findings
+
+
+def _check_mobile_permission_burst(diff: str, profile_id: str) -> list[dict[str, str]]:
+    """모바일 권한 일괄 요청 위반 탐지 (WARN). mobile profile 만."""
+    if profile_id not in _MOBILE_PROFILE_IDS:
+        return []
+    # 추가된 라인에서 권한 키워드 수 카운트
+    added_lines = [
+        line[1:]
+        for line in diff.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    ]
+    permission_lines = [l for l in added_lines if _PERMISSION_KEYWORDS.search(l)]
+    if len(permission_lines) >= 3:
+        return [{
+            "hook": "mobile-permission-burst",
+            "severity": "WARN",
+            "message": (
+                f"권한 {len(permission_lines)}개 일괄 요청 감지 — "
+                "사용 시점(just-in-time)에 개별 요청 권장 (UX + 스토어 정책)"
+            ),
+        }]
+    return []
+
+
+def _check_cocoapods_new(diff: str, profile_id: str) -> list[dict[str, str]]:
+    """CocoaPods 신규 pod 추가 탐지 (WARN). ios-swift profile 만."""
+    if profile_id != "ios-swift":
+        return []
+    findings: list[dict[str, str]] = []
+    for m in _COCOAPODS_NEW_POD_RE.finditer(diff):
+        findings.append({
+            "hook": "cocoapods-new",
+            "severity": "WARN",
+            "message": (
+                f"CocoaPods 신규 pod 추가 감지: {m.group(0).strip()} — "
+                "Swift Package Manager(SPM) 우선 검토 권장"
+            ),
+        })
+    return findings
+
+
+def _check_rn_cli(diff: str, profile_id: str) -> list[dict[str, str]]:
+    """react-native CLI 직접 사용 탐지 (WARN). react-native-expo profile 만."""
+    if profile_id != "react-native-expo":
+        return []
+    findings: list[dict[str, str]] = []
+    for m in _RN_CLI_DIRECT_RE.finditer(diff):
+        findings.append({
+            "hook": "rn-cli-direct",
+            "severity": "WARN",
+            "message": (
+                f"react-native CLI 직접 사용 감지: '{m.group(0)}' — "
+                "Expo 프로젝트는 'expo run:android' / 'expo run:ios' 사용"
+            ),
+        })
+    return findings
+
+
 # ── 명령 ───────────────────────────────────────────────────────────
 
 
@@ -369,7 +489,12 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         "project": str(project),
         "plan_path": str(plan_path),
         "profiles": [
-            {"id": p.id, "lessons_applied": list(p.lessons_applied), "body_path": str(Path.home() / ".claude" / "harness" / "profiles" / f"{p.id}.md")}
+            {
+                "id": p.id,
+                "lessons_applied": list(p.lessons_applied),
+                "body_path": str(Path.home() / ".claude" / "harness" / "profiles" / f"{p.id}.md"),
+                "guideline_paths": [str(g) for g in resolve_guideline_paths(p.id)],
+            }
             for p in profiles
         ],
         "lessons_path": str(HARNESS_HOME / "backend" / "docs" / "shared-lessons.md"),

@@ -626,3 +626,480 @@ def test_compute_active_sections_invalid_expression_conservative_activate(
     loader = ProfileLoader()
     active = loader.compute_active_sections(ScaleAxes(), [_make_profile()], fragments_dir)
     assert "broken" in active
+
+
+# ── files_any 매처 (모바일 확장 M-spike 1) ───────────────────────────────
+
+
+def test_detect_files_any_matches_when_one_exists(tmp_path: Path) -> None:
+    """files_any: [a, b, c] — 하나라도 존재하면 매칭 (Android Gradle 케이스).
+
+    Android Studio 프로젝트는 build.gradle.kts (Kotlin DSL) 또는 build.gradle
+    (Groovy DSL) 둘 중 하나만 존재. 기존 files (AND) 매처로는 표현 불가능.
+    """
+    harness = tmp_path / "harness"
+    project = tmp_path / "project"
+    project.mkdir()
+
+    _write_profile(harness / "profiles", "android-kotlin", required_sections=["overview"])
+    _write_registry(
+        harness,
+        rules=[
+            {
+                "profile": "android-kotlin",
+                "paths": ["."],
+                "detect": {
+                    "files_any": ["build.gradle.kts", "build.gradle", "settings.gradle.kts"],
+                },
+            }
+        ],
+    )
+
+    # case A: build.gradle.kts 만 존재 → 매칭
+    (project / "build.gradle.kts").write_text("plugins {}", encoding="utf-8")
+    loader = ProfileLoader(harness_dir=harness, project_dir=project)
+    matches = loader.detect()
+    assert len(matches) == 1
+    assert matches[0].profile.id == "android-kotlin"
+
+
+def test_detect_files_any_excludes_when_none_exist(tmp_path: Path) -> None:
+    """files_any 의 모든 후보가 없으면 매칭 X."""
+    harness = tmp_path / "harness"
+    project = tmp_path / "project"
+    project.mkdir()
+
+    _write_profile(harness / "profiles", "android-kotlin", required_sections=["overview"])
+    _write_registry(
+        harness,
+        rules=[
+            {
+                "profile": "android-kotlin",
+                "paths": ["."],
+                "detect": {
+                    "files_any": ["build.gradle.kts", "build.gradle"],
+                },
+            }
+        ],
+    )
+
+    # 후보 둘 다 없음 → 매칭 X
+    (project / "README.md").write_text("not a gradle project", encoding="utf-8")
+    loader = ProfileLoader(harness_dir=harness, project_dir=project)
+    assert loader.detect() == []
+
+
+# ── 모바일 has 키 매핑 (M0-A — atom 인프라) ─────────────────────────────
+
+
+def test_compute_has_keys_includes_mobile_navigation(tmp_path: Path) -> None:
+    """프로파일이 mobile.navigation 을 declared sections 에 포함 → has.navigation 활성.
+
+    M0-A: `_SECTION_TO_HAS_KEY` 에 mobile.navigation→navigation 매핑 추가 시
+    compute_has_keys 가 'navigation' 을 반환해야 함. fragment 의 `required_when:
+    has.navigation` 이 정상 평가되는 전제.
+    """
+    profile = _make_profile(required=["overview", "mobile.navigation"])
+    loader = ProfileLoader()
+    keys = loader.compute_has_keys([profile])
+    assert "navigation" in keys
+
+
+def test_compute_has_keys_includes_mobile_build_config_and_lifecycle(tmp_path: Path) -> None:
+    """mobile.build_config / mobile.lifecycle 도 매핑되어 has 키 생성."""
+    profile = _make_profile(
+        required=["overview", "mobile.build_config", "mobile.lifecycle"],
+    )
+    loader = ProfileLoader()
+    keys = loader.compute_has_keys([profile])
+    assert "build_config" in keys
+    assert "lifecycle" in keys
+
+
+def test_compute_has_keys_excludes_mobile_when_web_only_profile(tmp_path: Path) -> None:
+    """Web 프로파일 (mobile.* 미선언) → mobile has 키 생성 X."""
+    profile = _make_profile(required=["overview", "view.screens"])
+    loader = ProfileLoader()
+    keys = loader.compute_has_keys([profile])
+    assert "navigation" not in keys
+    assert "build_config" not in keys
+    assert "lifecycle" not in keys
+
+
+def test_compute_active_sections_mobile_navigation_activates_via_has_atom(
+    tmp_path: Path,
+) -> None:
+    """End-to-end: profile 이 mobile.navigation 선언 → fragment(required_when:has.navigation)
+    가 active 에 포함."""
+    fragments_dir = tmp_path / "skeleton"
+    _write_fragment(fragments_dir, "mobile.navigation", "has.navigation")
+    profile = _make_profile(required=["overview", "mobile.navigation"])
+    loader = ProfileLoader()
+    active = loader.compute_active_sections(ScaleAxes(), [profile], fragments_dir)
+    assert "mobile.navigation" in active
+
+
+def test_compute_active_sections_mobile_navigation_excluded_for_web(
+    tmp_path: Path,
+) -> None:
+    """Web 프로파일에서는 mobile.navigation 활성 X (잘못된 누수 방지)."""
+    fragments_dir = tmp_path / "skeleton"
+    _write_fragment(fragments_dir, "mobile.navigation", "has.navigation")
+    profile = _make_profile(required=["overview", "view.screens"])
+    loader = ProfileLoader()
+    active = loader.compute_active_sections(ScaleAxes(), [profile], fragments_dir)
+    assert "mobile.navigation" not in active
+
+
+# ── _registry.yaml 모바일 4 룰 (M0-C) ──────────────────────────────────
+
+
+def test_detect_react_native_expo_matches_with_expo_dependency(tmp_path: Path) -> None:
+    """react-native-expo: package.json 에 expo 또는 react-native 포함 시 매칭."""
+    harness = tmp_path / "harness"
+    project = tmp_path / "project"
+    project.mkdir()
+
+    _write_profile(harness / "profiles", "react-native-expo", required_sections=["overview"])
+    _write_registry(
+        harness,
+        rules=[
+            {
+                "profile": "react-native-expo",
+                "paths": ["."],
+                "detect": {
+                    "files": ["package.json"],
+                    "contains_any": {"package.json": ['"expo"', '"react-native"']},
+                    "not_contains": {"package.json": ['"react-native-windows"']},
+                },
+            }
+        ],
+    )
+
+    (project / "package.json").write_text(
+        '{"dependencies": {"expo": "~52.0.0"}}', encoding="utf-8"
+    )
+    loader = ProfileLoader(harness_dir=harness, project_dir=project)
+    matches = loader.detect()
+    assert len(matches) == 1
+    assert matches[0].profile.id == "react-native-expo"
+
+
+def test_detect_react_native_expo_excludes_react_native_windows(tmp_path: Path) -> None:
+    """RN-Windows 데스크톱 프로젝트는 react-native-expo 매칭 안 됨 (not_contains 가드)."""
+    harness = tmp_path / "harness"
+    project = tmp_path / "project"
+    project.mkdir()
+
+    _write_profile(harness / "profiles", "react-native-expo", required_sections=["overview"])
+    _write_registry(
+        harness,
+        rules=[
+            {
+                "profile": "react-native-expo",
+                "paths": ["."],
+                "detect": {
+                    "files": ["package.json"],
+                    "contains_any": {"package.json": ['"expo"', '"react-native"']},
+                    "not_contains": {"package.json": ['"react-native-windows"']},
+                },
+            }
+        ],
+    )
+
+    (project / "package.json").write_text(
+        '{"dependencies": {"react-native": "*", "react-native-windows": "*"}}',
+        encoding="utf-8",
+    )
+    loader = ProfileLoader(harness_dir=harness, project_dir=project)
+    assert loader.detect() == []
+
+
+def test_detect_android_kotlin_matches_with_gradle_kts(tmp_path: Path) -> None:
+    """android-kotlin: build.gradle.kts 만 있어도 매칭 (files_any OR)."""
+    harness = tmp_path / "harness"
+    project = tmp_path / "project"
+    project.mkdir()
+
+    _write_profile(harness / "profiles", "android-kotlin", required_sections=["overview"])
+    _write_registry(
+        harness,
+        rules=[
+            {
+                "profile": "android-kotlin",
+                "paths": ["."],
+                "detect": {
+                    "files_any": ["build.gradle.kts", "build.gradle", "settings.gradle.kts"],
+                },
+            }
+        ],
+    )
+
+    (project / "build.gradle.kts").write_text("plugins {}", encoding="utf-8")
+    loader = ProfileLoader(harness_dir=harness, project_dir=project)
+    matches = loader.detect()
+    assert len(matches) == 1
+    assert matches[0].profile.id == "android-kotlin"
+
+
+def test_detect_ios_swift_matches_with_package_swift(tmp_path: Path) -> None:
+    """ios-swift: Package.swift 또는 Podfile 둘 중 하나로 매칭."""
+    harness = tmp_path / "harness"
+    project = tmp_path / "project"
+    project.mkdir()
+
+    _write_profile(harness / "profiles", "ios-swift", required_sections=["overview"])
+    _write_registry(
+        harness,
+        rules=[
+            {
+                "profile": "ios-swift",
+                "paths": ["."],
+                "detect": {"files_any": ["Package.swift", "Podfile"]},
+            }
+        ],
+    )
+
+    (project / "Package.swift").write_text("// swift-tools-version:5.9", encoding="utf-8")
+    loader = ProfileLoader(harness_dir=harness, project_dir=project)
+    matches = loader.detect()
+    assert len(matches) == 1
+    assert matches[0].profile.id == "ios-swift"
+
+
+# ── M1: 실제 react-native-expo 프로파일 통합 ─────────────────────────────
+
+
+def test_real_react_native_expo_profile_loads_with_full_schema() -> None:
+    """M1: 실제 harness/profiles/react-native-expo.md 가 ProfileLoader 로 정상 로드.
+
+    profile 파일의 frontmatter 가 schema 를 통과하고, _base 상속이 작동하며,
+    whitelist / skeleton_sections / toolchain 모두 채워져 있어야 함.
+    """
+    repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
+    if not (repo_harness / "profiles" / "react-native-expo.md").exists():
+        import pytest
+
+        pytest.skip("react-native-expo profile not yet installed (M1 작업 중)")
+    loader = ProfileLoader(harness_dir=repo_harness)
+    profile = loader.load("react-native-expo")
+    assert profile.id == "react-native-expo"
+    assert profile.status == "confirmed"
+    # 핵심 whitelist 멤버
+    assert "expo" in profile.whitelist.runtime
+    assert "expo-router" in profile.whitelist.runtime
+    assert "zustand" in profile.whitelist.runtime
+    assert "expo-secure-store" in profile.whitelist.runtime
+    # 모바일 fragment 들이 required 에 포함
+    assert "mobile.navigation" in profile.skeleton_sections.required
+    assert "mobile.build_config" in profile.skeleton_sections.required
+    assert "mobile.lifecycle" in profile.skeleton_sections.required
+    # toolchain 검증
+    assert profile.toolchain.install == "bun install"
+    assert profile.toolchain.test == "bun test"
+
+
+def test_real_react_native_expo_detect_matches_expo_project(tmp_path: Path) -> None:
+    """M1: 실제 _registry.yaml 의 react-native-expo 룰이 Expo 프로젝트와 매칭."""
+    repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
+    if not (repo_harness / "profiles" / "react-native-expo.md").exists():
+        import pytest
+
+        pytest.skip("react-native-expo profile not yet installed (M1 작업 중)")
+
+    project = tmp_path / "expo-project"
+    project.mkdir()
+    (project / "package.json").write_text(
+        '{"name": "test", "dependencies": {"expo": "~52.0.0", "react-native": "0.76.0"}}',
+        encoding="utf-8",
+    )
+
+    loader = ProfileLoader(harness_dir=repo_harness, project_dir=project)
+    matches = loader.detect()
+    profile_ids = [m.profile.id for m in matches]
+    assert "react-native-expo" in profile_ids
+
+
+# ── M2: 실제 flutter 프로파일 통합 ──────────────────────────────────────
+
+
+def test_real_flutter_profile_loads_with_full_schema() -> None:
+    """M2: 실제 harness/profiles/flutter.md 가 ProfileLoader 로 정상 로드."""
+    repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
+    if not (repo_harness / "profiles" / "flutter.md").exists():
+        import pytest
+
+        pytest.skip("flutter profile not yet installed (M2 작업 중)")
+    loader = ProfileLoader(harness_dir=repo_harness)
+    profile = loader.load("flutter")
+    assert profile.id == "flutter"
+    assert profile.status == "confirmed"
+    # 핵심 whitelist 멤버
+    assert "flutter" in profile.whitelist.runtime
+    assert "flutter_riverpod" in profile.whitelist.runtime
+    assert "go_router" in profile.whitelist.runtime
+    assert "flutter_secure_storage" in profile.whitelist.runtime
+    assert "drift" in profile.whitelist.runtime
+    # 모바일 fragment 들이 required 에 포함
+    assert "mobile.navigation" in profile.skeleton_sections.required
+    assert "mobile.build_config" in profile.skeleton_sections.required
+    assert "mobile.lifecycle" in profile.skeleton_sections.required
+    # toolchain 검증 — flutter analyze 가 type 검사 포함하므로 type=null
+    assert profile.toolchain.install == "flutter pub get"
+    assert profile.toolchain.test == "flutter test"
+    assert profile.toolchain.lint == "flutter analyze"
+    assert profile.toolchain.type is None
+
+
+def test_real_flutter_detect_matches_pubspec_yaml(tmp_path: Path) -> None:
+    """M2: pubspec.yaml 에 flutter: 섹션 있으면 flutter 프로파일 매칭."""
+    repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
+    if not (repo_harness / "profiles" / "flutter.md").exists():
+        import pytest
+
+        pytest.skip("flutter profile not yet installed (M2 작업 중)")
+
+    project = tmp_path / "flutter-project"
+    project.mkdir()
+    (project / "pubspec.yaml").write_text(
+        "name: my_app\nflutter:\n  sdk: flutter\n",
+        encoding="utf-8",
+    )
+
+    loader = ProfileLoader(harness_dir=repo_harness, project_dir=project)
+    matches = loader.detect()
+    profile_ids = [m.profile.id for m in matches]
+    assert "flutter" in profile_ids
+
+
+def test_real_flutter_does_not_match_dart_only_project(tmp_path: Path) -> None:
+    """순수 Dart 라이브러리 (flutter: 섹션 없음) 는 flutter 프로파일 매칭 X."""
+    repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
+    if not (repo_harness / "profiles" / "flutter.md").exists():
+        import pytest
+
+        pytest.skip("flutter profile not yet installed (M2 작업 중)")
+
+    project = tmp_path / "dart-only"
+    project.mkdir()
+    (project / "pubspec.yaml").write_text(
+        "name: pure_dart\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\n",
+        encoding="utf-8",
+    )
+
+    loader = ProfileLoader(harness_dir=repo_harness, project_dir=project)
+    matches = loader.detect()
+    profile_ids = [m.profile.id for m in matches]
+    assert "flutter" not in profile_ids
+
+
+# ── M3: 실제 android-kotlin + ios-swift 프로파일 통합 ───────────────────
+
+
+def test_real_android_kotlin_profile_loads_with_full_schema() -> None:
+    """M3: 실제 harness/profiles/android-kotlin.md 가 ProfileLoader 로 정상 로드."""
+    repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
+    if not (repo_harness / "profiles" / "android-kotlin.md").exists():
+        import pytest
+
+        pytest.skip("android-kotlin profile not yet installed (M3 작업 중)")
+    loader = ProfileLoader(harness_dir=repo_harness)
+    profile = loader.load("android-kotlin")
+    assert profile.id == "android-kotlin"
+    assert profile.status == "confirmed"
+    # 핵심 whitelist 멤버
+    assert "androidx.compose" in profile.whitelist.runtime
+    assert "androidx.room" in profile.whitelist.runtime
+    assert "com.squareup.retrofit2" in profile.whitelist.runtime
+    assert "com.google.dagger" in profile.whitelist.runtime
+    # mobile fragments required
+    assert "mobile.navigation" in profile.skeleton_sections.required
+    assert "mobile.build_config" in profile.skeleton_sections.required
+    assert "mobile.lifecycle" in profile.skeleton_sections.required
+    # toolchain
+    assert profile.toolchain.install == "./gradlew --refresh-dependencies"
+    assert profile.toolchain.test == "./gradlew test"
+    assert profile.toolchain.lint == "./gradlew ktlintCheck"
+
+
+def test_real_android_detect_matches_gradle_kts(tmp_path: Path) -> None:
+    """M3: build.gradle.kts 만 있어도 android-kotlin 매칭 (files_any OR)."""
+    repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
+    if not (repo_harness / "profiles" / "android-kotlin.md").exists():
+        import pytest
+
+        pytest.skip("android-kotlin profile not yet installed (M3 작업 중)")
+
+    project = tmp_path / "android-app"
+    project.mkdir()
+    (project / "build.gradle.kts").write_text("plugins {}", encoding="utf-8")
+
+    loader = ProfileLoader(harness_dir=repo_harness, project_dir=project)
+    matches = loader.detect()
+    profile_ids = [m.profile.id for m in matches]
+    assert "android-kotlin" in profile_ids
+
+
+def test_real_ios_swift_profile_loads_with_full_schema() -> None:
+    """M3: 실제 harness/profiles/ios-swift.md 가 ProfileLoader 로 정상 로드.
+
+    Windows 호스트 제약 — toolchain.test = null (macOS 에서만 xcodebuild test).
+    """
+    repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
+    if not (repo_harness / "profiles" / "ios-swift.md").exists():
+        import pytest
+
+        pytest.skip("ios-swift profile not yet installed (M3 작업 중)")
+    loader = ProfileLoader(harness_dir=repo_harness)
+    profile = loader.load("ios-swift")
+    assert profile.id == "ios-swift"
+    assert profile.status == "confirmed"
+    # 핵심 whitelist (Apple SPM packages)
+    assert "swift-collections" in profile.whitelist.runtime
+    assert "keychain-access" in profile.whitelist.runtime
+    assert "swiftlint" in profile.whitelist.dev
+    # mobile fragments required
+    assert "mobile.navigation" in profile.skeleton_sections.required
+    assert "mobile.build_config" in profile.skeleton_sections.required
+    assert "mobile.lifecycle" in profile.skeleton_sections.required
+    # toolchain — Windows host 제약: test=null, type=swift build
+    assert profile.toolchain.install == "swift package resolve"
+    assert profile.toolchain.test is None
+    assert profile.toolchain.lint == "swiftlint lint --strict"
+    assert profile.toolchain.type == "swift build"
+
+
+def test_real_ios_swift_detect_matches_package_swift(tmp_path: Path) -> None:
+    """M3: Package.swift 만 있어도 ios-swift 매칭 (files_any OR)."""
+    repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
+    if not (repo_harness / "profiles" / "ios-swift.md").exists():
+        import pytest
+
+        pytest.skip("ios-swift profile not yet installed (M3 작업 중)")
+
+    project = tmp_path / "ios-app"
+    project.mkdir()
+    (project / "Package.swift").write_text("// swift-tools-version:5.9", encoding="utf-8")
+
+    loader = ProfileLoader(harness_dir=repo_harness, project_dir=project)
+    matches = loader.detect()
+    profile_ids = [m.profile.id for m in matches]
+    assert "ios-swift" in profile_ids
+
+
+def test_real_ios_swift_detect_matches_podfile(tmp_path: Path) -> None:
+    """Podfile 도 ios-swift 매칭 (files_any 두번째 후보)."""
+    repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
+    if not (repo_harness / "profiles" / "ios-swift.md").exists():
+        import pytest
+
+        pytest.skip("ios-swift profile not yet installed (M3 작업 중)")
+
+    project = tmp_path / "ios-app-pods"
+    project.mkdir()
+    (project / "Podfile").write_text("platform :ios, '16.0'", encoding="utf-8")
+
+    loader = ProfileLoader(harness_dir=repo_harness, project_dir=project)
+    matches = loader.detect()
+    profile_ids = [m.profile.id for m in matches]
+    assert "ios-swift" in profile_ids

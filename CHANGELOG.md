@@ -17,6 +17,78 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.6.0] — 2026-05-07 — "mobile expansion"
+
+Final verification snapshot at release time:
+**pytest 496 pass / ruff clean / pyright 0 / harness validate 44 files 0 errors / 글로벌 install 82 files**.
+
+핵심 사용자 가치: HarnessAI 의 9 quality gates + 21 LESSONs + skeleton contract + profile system 가치를 모바일 (React Native + Expo / Flutter / Android Kotlin + Compose / iOS Swift + SwiftUI) 까지 확장. 외부 사용자가 자기 모바일 프로젝트에서 `HARNESS_AI_HOME` 설정 + `/ha-init` 만으로 production-grade 컨벤션 + 가이드라인 + 보안 룰을 즉시 받음.
+
+### Added
+
+- **4 mobile profiles** (`harness/profiles/`):
+  - `react-native-expo.md` — Expo SDK + Bun + Zustand + NativeWind + Expo Router
+  - `flutter.md` — Flutter SDK + Riverpod + go_router + drift + dio + Material3
+  - `android-kotlin.md` — Jetpack Compose + StateFlow + Room + Retrofit + Hilt + Gradle Version Catalog
+  - `ios-swift.md` — SwiftUI + `@Observable` + NavigationStack + CoreData/SwiftData + URLSession + Keychain (Win 호스트 제약 명시)
+
+- **3 mobile fragments** (`harness/templates/skeleton/mobile.{navigation,build_config,lifecycle}.md`)
+
+- **4 mobile_coder agents** + 공통 prefix `mobile_coder_shared.md` (10 원칙, 4 prompts 에 인라인됨)
+
+- **16 framework guidelines** (`harness/templates/guidelines/<profile>/*.md` × 4 frameworks × 4 files)
+
+- **`/ha-*` skill 모바일 awareness**:
+  - 6 skill cmd_prepare 출력에 `guideline_paths` 필드 (Phase A) — `skills/_ha_shared/utils.py` 의 `resolve_guideline_paths(profile_id)` helper
+  - `/ha-init detect` 의 `is_mobile: bool` 필드 + stderr `[INFO]` 안내 (Phase B1)
+  - `/ha-review` 의 4 mobile 보안 룰 — AsyncStorage/UserDefaults/SharedPreferences/shared_preferences 시크릿 저장 BLOCK / 권한 일괄 요청 WARN / CocoaPods 신규 추가 WARN / RN CLI 직접 사용 WARN (Phase B2)
+  - `/ha-verify` 의 `platform_warnings` (`shutil.which` 점검 + iOS-on-Windows 가드 + JAVA_HOME 가드, Phase B3)
+  - 6 SKILL.md 모바일 워크플로우 예시 섹션 (Phase B4)
+
+- **신규 atom + 매핑** (`profile_loader._SECTION_TO_HAS_KEY` + `harness/bin/harness REQUIRED_WHEN_ATOMS`):
+  `has.navigation` / `has.build_config` / `has.lifecycle`
+
+- **`files_any` registry 매처** — Android Gradle (`build.gradle.kts` OR `build.gradle` OR `settings.gradle.kts`) / iOS (`Package.swift` OR `Podfile`) 등 OR 매칭 케이스
+
+- **Backend Orchestra path 보강** (대시보드 사용자):
+  - `OrchestratorConfig` Pydantic 7→11 agent fields (4 mobile_coder)
+  - `AGENT_SECTIONS_BY_ID` mobile_coder × 4 + Designer 의 mobile.navigation/lifecycle
+  - `EXTRA_HARNESS_DOCS` + `build_context.harness_dir` 파라미터 — harness-global guidelines 직접 로드
+  - `_resolve_prompt_path` HARNESS_AI_HOME fallback (외부 프로젝트에서 `agent_prompts` 경로 자동 해결)
+  - `is_mobile` 플래그 플러밍 (verify / implement_with_retry / run_phases / SecurityHooks.run_all, frontend 와 상호배타)
+
+- **테스트 +76** (420 → 496, 회귀 0):
+  - 매처 확장 / 4 mobile profile 통합 / context 매핑 / harness-global doc 로딩 / HARNESS_AI_HOME fallback / mobile 보안 룰 / platform_warnings / SKILL.md 모바일 예시 / guideline_paths 출력 (12 파라미터 통합 테스트 포함)
+
+### Changed
+
+- **Architect / Designer 시스템 프롬프트** — "## 모바일 프로파일 — 추가 책임" 섹션 신설. Architect 는 mobile.build_config / mobile.lifecycle / persistence (mobile DB), Designer 는 mobile.navigation / mobile.lifecycle UX / view.screens (mobile 변형)
+- **Frontend Coder 시스템 프롬프트** — "web only" 명시. 모바일 task 잘못 라우팅 시 즉시 에스컬레이션
+- **Orchestrator 시스템 프롬프트** — Task→Agent 매핑 표 6-row 확장 (mobile_coder × 4) + 모노레포 dispatch 우선순위
+- **`SECTION_TITLES` / `STANDARD_SECTION_IDS` / `_BATCH_MODE_DIRECTIVE`** — 20 → 33 정합 (v0.5.0 가 추가했지만 미동기였던 fragment 10개도 동시 회복)
+- **`_FRONTEND_PROFILES`** — `("react-vite",)` 단일화 (`nextjs.md` 미구현 → 룰 제거, R1)
+
+### Fixed
+
+- **v0.5.0 partial drift 회복** — `data_model` / `threat_model` / `audit_log` / `slo` / `runbook` / `test_strategy` / `user_journey` / `authorization_matrix` / `ci_cd` / `external_deps` 10 fragment 가 SECTION_TITLES + STANDARD_SECTION_IDS + _BATCH_MODE_DIRECTIVE 에 누락되어 있던 silent drift 동시 회복
+- **글로벌 install drift** — v0.5.0 release 이후 `./install.sh` 재실행 누락으로 사용자 컴퓨터 글로벌 install 이 27 files 에서 정지. v0.6.0 작업 중 발견 + `./install.ps1 -Force` 실행으로 27 → 37 → 82 동기화
+- **사용자 흐름 결함 D1~D6 + 2차 점검 결함** — backend Orchestra path 와 /ha-* skill path 가 분리된 두 codepath 임을 발견 + 양쪽 모두 fix
+- **R1: nextjs registry stub** — `_registry.yaml` 에 룰만 있고 `harness/profiles/nextjs.md` 미구현 → 잠재 사용자 silent fail. 룰 제거. Next.js 사용자는 react-vite 프로파일 + frontend_coder 시스템 프롬프트 수정 (SETUP.md 예시 2)
+
+### Migration
+
+기존 v0.5.0 사용자:
+- `./install.ps1 -Force` 또는 `./install.sh --force` 재실행 — 글로벌 install 동기화 필수
+- `HARNESS_AI_HOME` 환경변수 설정 권장 (외부 모바일 프로젝트에서 mobile_coder 사용 시)
+- 기존 web/CLI 프로젝트는 영향 없음
+
+알려진 제약 (Phase 7 후속):
+- iOS native 의 `xcodebuild` 빌드 검증은 Windows 호스트에서 불가능 — macOS GitHub Actions runner CI 추가 예정
+- examples/<framework>-todo/ 등 sample app E2E 는 별도 (LLM 비용 + 실 빌드 필요)
+- 라이브 LLM dispatch 검증 (D7) 은 외부 사용자 첫 dogfood 시 자동 검증으로 대체
+
+---
+
 ## [0.5.0] — 2026-05-02 — "auto-fit skeleton"
 
 Final verification snapshot at release time:
