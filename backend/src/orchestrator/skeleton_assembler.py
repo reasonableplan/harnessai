@@ -21,6 +21,8 @@ _PLACEHOLDER_NUMBER = "{{section_number}}"
 _ANGLE_PLACEHOLDER_RE = re.compile(r"<[a-z_][a-z0-9_]*>")
 # Non-filesystem code fences (```python, ```ts, …) — example placeholders allowed inside.
 _NON_FS_CODE_BLOCK_RE = re.compile(r"```(?!filesystem)\w*\n.*?\n```", re.DOTALL)
+# Inline backtick code spans — stripped before placeholder scanning.
+_INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
 # Standard HTML/MDX tags — excluded to prevent placeholder false positives.
 # KEEP IN SYNC with harness/bin/harness._HTML_TAGS — drift is caught by
 # backend/tests/skills/test_html_tags_sync.py.
@@ -188,7 +190,7 @@ def find_placeholders(text: str) -> dict[str, list[int]]:
     for lineno, line in enumerate(sanitized.splitlines(), 1):
         # Strip inline backtick code (e.g. `<pkg>` in markdown) — these are
         # illustrative format markers, not placeholders to replace.
-        stripped = re.sub(r"`[^`\n]*`", "", line)
+        stripped = _INLINE_CODE_RE.sub("", line)
         for match in _ANGLE_PLACEHOLDER_RE.finditer(stripped):
             literal = match.group(0)
             tag_name = literal[1:-1]

@@ -85,7 +85,7 @@ def _check_platform_warnings(profile_id: str, current_platform: str) -> list[str
 
 def cmd_prepare(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
-    assert_state(plan, ["built", "building"], "/ha-verify")
+    assert_state(plan, ["built"], "/ha-verify")
 
     profiles = get_active_profiles(plan, project)
     current_platform = _detect_platform()
@@ -122,7 +122,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
 
 def cmd_record(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
-    assert_state(plan, ["built", "building", "verified"], "/ha-verify record")
+    assert_state(plan, ["built", "verified"], "/ha-verify record")
 
     passed = args.passed.lower() in ("true", "1", "yes", "y")
 
@@ -133,7 +133,7 @@ def cmd_record(args: argparse.Namespace) -> int:
             transition(plan, "verified", completed_step="ha-verify")
         # 이미 verified 면 verify_history 에만 추가하고 상태 유지
     else:
-        if plan.pipeline.current_step == "built":
+        if plan.pipeline.current_step != "building":
             regress(plan, "building")
 
     save_plan(plan, plan_path)

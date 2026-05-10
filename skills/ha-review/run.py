@@ -443,7 +443,7 @@ def _check_rn_cli(diff: str, profile_id: str) -> list[dict[str, str]]:
 
 def cmd_prepare(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
-    assert_state(plan, ["verified", "building"], "/ha-review")
+    assert_state(plan, ["verified"], "/ha-review")
 
     profiles = get_active_profiles(plan, project)
 
@@ -508,7 +508,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
 
 def cmd_record(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
-    assert_state(plan, ["verified", "building"], "/ha-review record")
+    assert_state(plan, ["verified"], "/ha-review record")
 
     verdict = args.verdict.lower()
     if verdict not in ("approve", "reject"):

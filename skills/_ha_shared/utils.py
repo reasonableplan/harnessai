@@ -173,8 +173,8 @@ def assert_state(plan: HarnessPlan, allowed: list[str], skill_name: str) -> None
 MOBILE_PROFILE_IDS: frozenset[str] = frozenset(
     {"react-native-expo", "flutter", "android-kotlin", "ios-swift"}
 )
-FRONTEND_PROFILE_IDS: frozenset[str] = frozenset({"react-vite"})
-BACKEND_PROFILE_IDS: frozenset[str] = frozenset({"fastapi", "python-cli", "python-lib"})
+FRONTEND_PROFILE_IDS: frozenset[str] = frozenset({"react-vite", "nextjs", "electron"})
+BACKEND_PROFILE_IDS: frozenset[str] = frozenset({"fastapi", "nestjs", "python-cli", "python-lib"})
 
 
 def resolve_guideline_paths(profile_id: str) -> list[Path]:
