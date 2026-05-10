@@ -36,8 +36,8 @@
                                     ▼
                 ┌──────────────────────────────────────┐
                 │  품질 게이트                         │
-                │  · 보안 훅 6개                       │
-                │  · ai-slop (LESSON-018 포함) 7패턴   │
+                │  · 보안 훅 7개                       │
+                │  · ai-slop (LESSON-018 포함) 6패턴   │
                 │  · 테스트 분포 체크                  │
                 │  · skeleton 정합성 (harness integrity)│
                 └──────────────────────────────────────┘
@@ -57,14 +57,26 @@ v2는 **프로파일** 로 추상화했다. 한 파일(`<profile>.md`)이 스택
 
 ```
 ~/.claude/harness/profiles/
-  _base.md          # 공통 원칙 11개 (테스트·git·에러·보안·코드 품질·
-                    #                 의존성·타입·설정 중앙화·2대 원칙)
-  _registry.yaml    # 감지 규칙 (어떤 파일 있으면 어느 프로파일)
-  fastapi.md        # FastAPI 백엔드 규칙
-  react-vite.md     # React + Vite 프런트엔드
-  python-cli.md     # Python CLI (click 기반)
-  python-lib.md     # Python 라이브러리
-  claude-skill.md   # Claude Code 스킬
+  _base.md              # 공통 원칙 11개 (테스트·git·에러·보안·코드 품질·
+                        #                 의존성·타입·설정 중앙화·2대 원칙)
+  _registry.yaml        # 감지 규칙 (어떤 파일 있으면 어느 프로파일)
+  # 백엔드
+  fastapi.md            # FastAPI 백엔드 (SQLAlchemy · Pydantic · JWT)
+  nestjs.md             # NestJS 백엔드 (TypeORM · class-validator · Passport JWT)
+  # 프런트엔드 / 웹
+  nextjs.md             # Next.js App Router (Server Components · Drizzle · Zustand)
+  react-vite.md         # React + Vite SPA
+  # 데스크톱
+  electron.md           # Electron (Context Isolation · preload IPC · 코드 서명)
+  # 모바일
+  react-native-expo.md  # React Native + Expo (Expo Router · NativeWind)
+  flutter.md            # Flutter + Dart (Riverpod · go_router · Material3)
+  android-kotlin.md     # Android Kotlin + Jetpack Compose (StateFlow · Room · Hilt)
+  ios-swift.md          # iOS Swift + SwiftUI (@Observable · NavigationStack · Keychain)
+  # CLI / 라이브러리 / 스킬
+  python-cli.md         # Python CLI (click 기반)
+  python-lib.md         # Python 라이브러리
+  claude-skill.md       # Claude Code 스킬
 ```
 
 ### 프로파일 파일 구조
@@ -141,14 +153,15 @@ harness-plan.md 의 profiles 필드에 기록
 
 ### Skeleton 이란?
 
-프로젝트의 **계약서**. "이 프로젝트는 무엇을 갖춰야 하는가"를 20개 표준 섹션으로 명세.
+프로젝트의 **계약서**. "이 프로젝트는 무엇을 갖춰야 하는가"를 36개 표준 섹션으로 명세.
 
 ```
-20개 표준 섹션 ID:
+기본 섹션 22개 (모든 프로파일):
   overview         project 정체
   requirements     기능 요구사항
   stack            기술 스택
-  configuration    환경/설정
+  configuration    환경변수 / 설정
+  environments     환경별 config (dev/staging/prod)
   errors           에러 처리 규약
   auth             인증
   persistence      DB 스키마
@@ -163,8 +176,27 @@ harness-plan.md 의 profiles 필드에 기록
   core.logic       순수 함수 로직
   observability    로깅/메트릭
   deployment       배포
+  error_ux         에러 UX (has.ui 시 활성)
   tasks            태스크 분해
   notes            메모
+
+조건부 섹션 11개 (6축 required_when 표현식으로 자동 활성):
+  data_model            데이터 모델
+  threat_model          위협 모델
+  audit_log             감사 로그
+  slo                   SLO / 성능 목표
+  runbook               운영 Runbook
+  test_strategy         테스트 전략
+  user_journey          사용자 시나리오
+  authorization_matrix  권한 행렬
+  ci_cd                 CI/CD 파이프라인
+  external_deps         외부 의존성
+  rate_limiting         Rate Limiting (has.http_server 시 활성)
+
+모바일 섹션 3개 (모바일 프로파일 has.* atom 으로 활성):
+  mobile.navigation     네비게이션
+  mobile.build_config   빌드 설정
+  mobile.lifecycle      라이프사이클 / 권한
 ```
 
 ### 조립 방식
@@ -236,7 +268,7 @@ plan 파일은 `plan_manager.py::PlanManager` 가 로드/저장/전이. 스키�
 /ha-init        → (에이전트 X) profile_loader + skeleton_assembler
 /ha-design      → Architect + Designer (ACCEPT/CONFLICT 협의 최대 3회)
 /ha-plan        → Orchestrator
-/ha-build       → Backend Coder / Frontend Coder (태스크 agent 필드로 결정)
+/ha-build       → Backend / Frontend / mobile_coder_* (태스크 agent 필드로 Orchestrator 라우팅)
 /ha-verify      → (에이전트 X) toolchain + harness integrity 실행
 /ha-review      → Reviewer (보안 훅 + LESSON + ai-slop + 테스트 분포)
 /ha-deepinit    → (기존 코드베이스용) 전 11개 에이전트 분석
@@ -256,24 +288,25 @@ plan 파일은 `plan_manager.py::PlanManager` 가 로드/저장/전이. 스키�
 
 ## 6. 품질 게이트
 
-### 6.1 보안 훅 6개 (`security_hooks.py`)
+### 6.1 보안 훅 7개 (`security_hooks.py`)
 
 `Orchestra` 가 에이전트 출력에 강제:
 
 | 훅 | 검사 |
 |---|---|
-| check_dependency | 프로파일 whitelist 외 의존성 추가 금지 |
-| check_path_traversal | `../` 등 경로 상향 참조 차단 |
-| check_secret_leak | 토큰/키/비밀번호 하드코딩 감지 |
-| check_cli_arg_secret | CLI 인자로 시크릿 전달 금지 |
-| check_sql_injection | raw SQL concat 차단 |
-| check_xml_delimiter | 에이전트 프롬프트의 사용자 입력 분리 |
+| secret-filter | 토큰/키/DB 연결 문자열 하드코딩 감지 |
+| command-guard | `rm -rf`, `eval`, `DROP TABLE` 등 위험 명령 차단 |
+| db-guard | raw SQL, f-string SQL, WHERE 없는 DELETE/UPDATE 차단 |
+| dependency-check | 프로파일 whitelist 외 import/install 금지 |
+| code-quality | 빈 `except:`, `print` 디버깅, 과도한 `# type: ignore` |
+| contract-validator | skeleton `interface.http` 외 엔드포인트 차단 |
+| **auth-guard** | JWT type+ver claim 누락, localStorage 토큰 저장, logout no-op, MAX()+1 race (LESSON-022~027) |
 
-프로파일별 whitelist 는 `SecurityHooks.from_profile(profile)` 로 동적 주입.
+프로파일별 whitelist 는 `SecurityHooks.from_profile(profile)` 로 동적 주입. 모바일 프로파일은 `is_mobile=True` 로 `_AUTH_MOBILE_PATTERNS` 별도 적용 (AsyncStorage / SharedPreferences / UserDefaults 토큰 저장 BLOCK).
 
-### 6.2 ai-slop 훅 — 7번째 (LESSON-018 통합)
+### 6.2 ai-slop 훅 — 8번째 (LESSON-018 통합)
 
-`/ha-review` 가 git diff 에 정규식 패턴 매칭:
+`/ha-review` 가 git diff 에 정규식 6패턴 매칭:
 
 | 패턴 | 심각도 |
 |---|---|
@@ -326,7 +359,9 @@ LESSON 추가는 수동 (`backend/docs/shared-lessons.md` 직접 편집 + 해당
   backend/
     agents/               에이전트 시스템 프롬프트 (CLAUDE.md)
       architect/, designer/, orchestrator/, backend_coder/,
-      frontend_coder/, reviewer/, qa/
+      frontend_coder/, reviewer/, qa/,
+      mobile_coder_rn/, mobile_coder_flutter/,
+      mobile_coder_android/, mobile_coder_ios/
     agents.yaml           에이전트 운영 설정 (model, timeout, on_timeout)
     docs/
       shared-lessons.md   21 LESSONs
@@ -340,19 +375,19 @@ LESSON 추가는 수동 (`backend/docs/shared-lessons.md` 직접 편집 + 해당
         profile_loader.py       프로파일 로드/상속/감지
         skeleton_assembler.py   조각 조립 + find_placeholders
         plan_manager.py         상태 전이
-        context.py              섹션 ID 매핑 + extract_section_by_id
+        context.py              섹션 ID 매핑 + extract_section_by_id (36개)
         runner.py               AgentRunner (타임아웃/재시도)
-        security_hooks.py       보안 훅 6개 + from_profile
+        security_hooks.py       보안 훅 7개 + from_profile
         providers/              Claude CLI / 향후 Gemini/local
-    tests/                496 pytest
+    tests/                569 pytest
       orchestrator/
       dashboard/
-      skills/              신규 — harness integrity + 테스트 분포 회귀 방지
+      skills/              harness integrity + 테스트 분포 회귀 방지
 
   harness/                ~/.claude/harness 소스 이관 (B8)
     bin/harness           CLI (validate + integrity 서브커맨드)
-    profiles/             _base + 5개 스택 프로파일 + _registry.yaml
-    templates/skeleton/   20개 조각
+    profiles/             _base + 12개 스택 프로파일 + _registry.yaml
+    templates/skeleton/   36개 조각
 
   skills/                 ~/.claude/skills/ha-* 소스 이관 (B8)
     ha-init/, ha-design/, ha-plan/, ha-build/,
@@ -380,7 +415,7 @@ LESSON 추가는 수동 (`backend/docs/shared-lessons.md` 직접 편집 + 해당
 | D3 | `/my-*` 완전 삭제 → `/ha-*` (Phase 4a + 4b 완료 — [ADR-005](decisions/005-ha-skills-cut-over.md)) | 스킬 중복 유지 비용 |
 | D4 | `docs/harness-plan.md` 단일 파일 + YAML frontmatter 상태 | 사람이 직접 편집 가능, git 친화 |
 | D5 | 프로파일이 `gstack_mode` 선언 (auto/manual/prompt) | 스택별 CI/CD 정도 차이 |
-| D6 | 섹션 ID 20개 표준 | 번호 기반보다 refactor-safe |
+| D6 | 섹션 ID 36개 표준 | 번호 기반보다 refactor-safe |
 
 ---
 
@@ -405,6 +440,6 @@ LESSON 추가는 수동 (`backend/docs/shared-lessons.md` 직접 편집 + 해당
 
 **참고 문서**:
 - `docs/harness-v2-design.md` — 이번 재설계의 상세 작업 로그 (1,270+ lines)
-- `backend/docs/shared-lessons.md` — 20개 과거 실수 패턴
+- `backend/docs/shared-lessons.md` — 21개 과거 실수 패턴
 - `README.md` — 사용자 관점 소개
 - `CLAUDE.md` — 구현 시 엄격 규칙 (현업 수준 품질 기준)

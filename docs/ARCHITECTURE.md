@@ -29,7 +29,8 @@
                 │  11 agents (Claude CLI subprocess)   │
                 │   Architect / Designer / Orchestrator│
                 │   Backend Coder / Frontend Coder /   │
-                │   Reviewer / QA                      │
+                │   mobile_coder × 4 (RN/Flutter/      │
+                │   Android/iOS) / Reviewer / QA       │
                 └──────────────────────────────────────┘
                                     │
                                     ▼
@@ -56,20 +57,32 @@ v2 abstracts them into **profiles** — one file per stack holding every rule.
 
 ```
 ~/.claude/harness/profiles/
-  _base.md          # 11 shared principles (testing, git, errors, security,
-                    #   code quality, dependencies, typing, config, two laws)
-  _registry.yaml    # detection rules (which files → which profile)
-  fastapi.md        # FastAPI backend rules
-  react-vite.md     # React + Vite frontend rules
-  python-cli.md     # click-based CLI rules
-  python-lib.md     # pure library rules
-  claude-skill.md   # Claude Code skill rules
+  _base.md              # 11 shared principles (testing, git, errors, security,
+                        #   code quality, dependencies, typing, config, two laws)
+  _registry.yaml        # detection rules (which files → which profile)
+  # backend
+  fastapi.md            # FastAPI (SQLAlchemy · Pydantic · JWT)
+  nestjs.md             # NestJS (TypeORM · class-validator · Passport JWT)
+  # frontend / web
+  nextjs.md             # Next.js App Router (Server Components · Drizzle · Zustand)
+  react-vite.md         # React + Vite SPA
+  # desktop
+  electron.md           # Electron (Context Isolation · preload IPC · code signing)
+  # mobile
+  react-native-expo.md  # React Native + Expo (Expo Router · NativeWind)
+  flutter.md            # Flutter + Dart (Riverpod · go_router · Material3)
+  android-kotlin.md     # Android Kotlin + Jetpack Compose (StateFlow · Room · Hilt)
+  ios-swift.md          # iOS Swift + SwiftUI (@Observable · NavigationStack · Keychain)
+  # CLI / library / skill
+  python-cli.md         # click-based CLI
+  python-lib.md         # pure library
+  claude-skill.md       # Claude Code skill
 ```
 
 Each profile frontmatter declares:
 - `paths` + `detect` — which directories / files trigger this profile
 - `components` — required / optional component types
-- `skeleton_sections` — which of the 33 section IDs apply
+- `skeleton_sections` — which of the 36 section IDs apply
 - `toolchain` — test / lint / type / format commands
 - `whitelist` — allowed runtime and dev dependencies
 - `lessons_applied` — LESSON IDs the Reviewer must enforce
@@ -85,13 +98,21 @@ One file under `harness/profiles/<stack>.md` + one entry in `_registry.yaml`. Op
 
 ## 3. Skeleton — the contract
 
-`skeleton.md` is the **single source of truth** declaring what the project is. Thirty-three standard section IDs; each profile picks a subset.
+`skeleton.md` is the **single source of truth** declaring what the project is. Thirty-six standard section IDs; each profile picks a subset.
 
 ```
-overview · requirements · stack · configuration · errors · auth ·
+Base (22, all profiles):
+overview · requirements · stack · configuration · environments · errors · auth ·
 persistence · integrations · interface.{http,cli,ipc,sdk} ·
 view.{screens,components} · state.flow · core.logic ·
-observability · deployment · tasks · notes
+observability · deployment · error_ux · tasks · notes
+
+Conditional (11, activated by 6-axis required_when expressions):
+data_model · threat_model · audit_log · slo · runbook ·
+test_strategy · user_journey · authorization_matrix · ci_cd · external_deps · rate_limiting
+
+Mobile (3, activated by has.* profile atoms):
+mobile.navigation · mobile.build_config · mobile.lifecycle
 ```
 
 ### Assembly
@@ -131,7 +152,7 @@ The plan file has a YAML frontmatter (profiles, skeleton sections, pipeline step
 | `/ha-init` | — | Opus | Detect profile, interview user, write plan + empty skeleton |
 | `/ha-design` | Architect + Designer | Opus | Fill skeleton sections (up to 3 negotiation rounds) |
 | `/ha-plan` | Orchestrator | Opus | Decompose into `tasks.md` with dependency graph |
-| `/ha-build` | Backend / Frontend Coder | Sonnet | Implement one task (parallel via `--parallel`) |
+| `/ha-build` | Backend / Frontend / mobile_coder_* | Sonnet | Implement one task; Orchestrator routes to coder by profile (parallel via `--parallel`) |
 | `/ha-verify` | — | Sonnet | Run toolchain + integrity gate + record verify_history |
 | `/ha-review` | Reviewer | Opus | Security hooks + LESSONs + ai-slop + test distribution |
 | `/ha-deepinit` | — | Opus | Analyze existing codebase → hierarchical AGENTS.md |
@@ -142,24 +163,25 @@ Sonnet for mechanical work (build / verify); Opus for judgement (design / plan /
 
 ## 6. Quality gates
 
-### 6.1 Six security hooks (`security_hooks.py`)
+### 6.1 Seven security hooks (`security_hooks.py`)
 
 Enforced by Orchestra on every agent output:
 
 | Hook | Checks |
 |---|---|
-| `check_dependency` | Imports outside the profile whitelist |
-| `check_command_guard` | `rm -rf`, `curl \| bash`, `eval`, `DROP TABLE`, … |
-| `check_secret_filter` | Hardcoded tokens / keys / DB connection strings |
-| `check_db_guard` | Raw SQL, f-string SQL, WHERE-less DELETE/UPDATE |
-| `check_code_quality` | Bare `except:`, `print` debugging, excessive `# type: ignore` |
-| `check_contract_validator` | Endpoints outside the skeleton's `interface.http` |
+| `secret-filter` | Hardcoded tokens / keys / DB connection strings |
+| `command-guard` | `rm -rf`, `curl \| bash`, `eval`, `DROP TABLE`, … |
+| `db-guard` | Raw SQL, f-string SQL, WHERE-less DELETE/UPDATE |
+| `dependency-check` | Imports outside the profile whitelist |
+| `code-quality` | Bare `except:`, `print` debugging, excessive `# type: ignore` |
+| `contract-validator` | Endpoints outside the skeleton's `interface.http` |
+| **`auth-guard`** | JWT type+ver claim missing, localStorage token storage, logout no-op, MAX()+1 race (LESSON-022~027) |
 
-Profile whitelist is injected via `SecurityHooks.from_profile(profile)`.
+Profile whitelist is injected via `SecurityHooks.from_profile(profile)`. Mobile profiles use `is_mobile=True` for `_AUTH_MOBILE_PATTERNS` (AsyncStorage / SharedPreferences / UserDefaults token storage → BLOCK).
 
-### 6.2 ai-slop — the seventh hook (integrates LESSON-018)
+### 6.2 ai-slop — the eighth hook (integrates LESSON-018)
 
-`/ha-review` runs 7 regex patterns against the git diff:
+`/ha-review` runs 6 regex patterns against the git diff:
 
 | Pattern | Severity |
 |---|---|
@@ -208,7 +230,9 @@ LESSONs are added manually by editing `shared-lessons.md` + each profile's `less
   backend/
     agents/               Agent system prompts (CLAUDE.md)
       architect/, designer/, orchestrator/, backend_coder/,
-      frontend_coder/, reviewer/, qa/
+      frontend_coder/, reviewer/, qa/,
+      mobile_coder_rn/, mobile_coder_flutter/,
+      mobile_coder_android/, mobile_coder_ios/
     agents.yaml           Per-agent runtime (model, timeout, on_timeout)
     docs/
       shared-lessons.md   21 LESSONs
@@ -224,17 +248,17 @@ LESSONs are added manually by editing `shared-lessons.md` + each profile's `less
         plan_manager.py         State transitions
         context.py              Section ID map + extract_section_by_id
         runner.py               AgentRunner (timeout / retry)
-        security_hooks.py       6 hooks + from_profile
+        security_hooks.py       7 hooks + from_profile
         providers/              Claude CLI / Gemini / local
-    tests/                496 pytest tests
+    tests/                569 pytest tests
       orchestrator/
       dashboard/
       skills/              Regression guards for harness integrity + test distribution
 
   harness/                Installed to ~/.claude/harness
     bin/harness           CLI (validate + integrity subcommands)
-    profiles/             _base + 5 stack profiles + _registry.yaml
-    templates/skeleton/   20 section fragments
+    profiles/             _base + 12 stack profiles + _registry.yaml
+    templates/skeleton/   36 section fragments
 
   skills/                 Installed to ~/.claude/skills/ha-*
     ha-init/, ha-design/, ha-plan/, ha-build/,
@@ -267,7 +291,7 @@ LESSONs are added manually by editing `shared-lessons.md` + each profile's `less
 | D2 | `~/.claude/harness/` global + `{project}/.claude/harness/` local override | Global rules + project-specific exceptions | [001](decisions/001-profile-based-architecture.md) |
 | D3 | `/my-*` fully deleted → `/ha-*` (single cut-over, Phase 4 done) | Two-skill maintenance cost outweighed gradual migration | [005](decisions/005-ha-skills-cut-over.md) |
 | D4 | `docs/harness-plan.md` single file + YAML frontmatter state | Human-editable, git-friendly | [003](decisions/003-harness-plan-state-machine.md) |
-| D5 | Section IDs (20 standard) instead of numbers | Refactor-safe | [002](decisions/002-skeleton-section-ids.md) |
+| D5 | Section IDs (36 standard) instead of numbers | Refactor-safe | [002](decisions/002-skeleton-section-ids.md) |
 | D6 | ai-slop as the 7th Reviewer hook | Same enforcement model as the 6 security hooks | [004](decisions/004-ai-slop-as-7th-hook.md) |
 
 ---

@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-# Standard 33 section IDs → heading titles matching fragment frontmatter `name`.
+# Standard 36 section IDs → heading titles matching fragment frontmatter `name`.
 # Must stay in sync with ~/.claude/harness/templates/skeleton/<id>.md name fields.
 SECTION_TITLES: dict[str, str] = {
     "overview": "프로젝트 개요",
@@ -34,6 +34,9 @@ SECTION_TITLES: dict[str, str] = {
     "deployment": "배포 설정",
     "tasks": "태스크 분해",
     "notes": "구현 노트",
+    "environments": "환경 설정 (Environments)",
+    "error_ux": "에러 UX",
+    "rate_limiting": "Rate Limiting",
     # required_when 표현식으로 6축 답변에 따라 자동 활성
     "data_model": "데이터 모델",
     "threat_model": "위협 모델 (Threat Model)",

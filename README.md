@@ -2,7 +2,7 @@
 
 🌐 **English** · [한국어](README.ko.md)
 
-![tests](https://img.shields.io/badge/tests-551%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-569%20passing-brightgreen)
 ![pyright](https://img.shields.io/badge/pyright-0%20errors-brightgreen)
 ![ruff](https://img.shields.io/badge/ruff-clean-brightgreen)
 ![gate coverage](https://img.shields.io/badge/gate%20coverage-100%25-brightgreen)
@@ -17,7 +17,7 @@ HarnessAI closes that loop:
 
 1. **A contract** (`skeleton.md` with 36 standard section IDs, **auto-selected by 6-axis project answers**) declares what will be built before any code exists.
 2. **Eleven agents** (Architect · Designer · Orchestrator · Backend Coder · Frontend Coder · 4× mobile_coder (RN/Flutter/Android/iOS) · Reviewer · QA) implement the declaration — Orchestrator routes each task to the matching coder by stack profile.
-3. **Nine quality gates** automatically block contract violations — 6 security hooks + ai-slop detection + test distribution + skeleton-integrity.
+3. **Ten quality gates** automatically block contract violations — 7 security hooks + ai-slop detection + test distribution + skeleton-integrity.
 
 HarnessAI doesn't replace the AI. It **controls** it.
 
@@ -47,7 +47,7 @@ The constant declares 4 elements; the loop reads 2. Dead code that no test catch
 }
 ```
 
-This is the kind of error LLMs reliably introduce and humans miss in review. Across **35 fixture cases**, the 9 gates score **precision 100% / recall 100%** — see [gate-coverage.md](docs/benchmarks/gate-coverage.md).
+This is the kind of error LLMs reliably introduce and humans miss in review. Across **35 fixture cases**, the 10 gates score **precision 100% / recall 100%** — see [gate-coverage.md](docs/benchmarks/gate-coverage.md).
 
 ---
 
@@ -189,7 +189,7 @@ LESSONs are enforced in three ways: text reference (Reviewer agent reads them), 
 | | HarnessAI | Cursor / Copilot | Claude Code (plain) | aider |
 |---|---|---|---|---|
 | Scope | Whole project | File / function | Conversation-based | Diff-based |
-| Rule enforcement | **Profiles + 9 gates** | `.cursorrules` (advisory) | `CLAUDE.md` (advisory) | Commit style only |
+| Rule enforcement | **Profiles + 10 gates** | `.cursorrules` (advisory) | `CLAUDE.md` (advisory) | Commit style only |
 | Mistake accumulation | **21 LESSONs** (auto-detect + reviewer context) | ❌ | ❌ | ❌ |
 | Stack auto-detection | **12 built-in + extensible (web · desktop · CLI · lib · 4 mobile)** | ❌ | ❌ | ❌ |
 | Parallel implementation | **`/ha-build --parallel`** | ❌ | ❌ | ❌ |
@@ -221,17 +221,18 @@ What it does:
 
 ---
 
-## 🧪 Quality gates (9)
+## 🧪 Quality gates (10)
 
 | Gate | Location | Role |
 |---|---|---|
-| profile whitelist | `security_hooks.py` | Block non-whitelisted dependencies |
-| path traversal | ` " ` | Block `../` upward references |
-| secret leak | ` " ` | Detect hardcoded tokens / keys |
-| CLI arg secret | ` " ` | Forbid passing secrets via CLI args |
-| SQL injection | ` " ` | Block raw SQL concatenation |
-| XML delimiter | ` " ` | Enforce separation of user input in agent prompts |
-| **ai-slop** (7th hook) | `ha-review/run.py` | 7 regex patterns — verbose docstrings, cosmetic try/except, dead constants (LESSON-018), TODO/FIXME, unused funcs, stub `pass` |
+| secret-filter | `security_hooks.py` | Detect hardcoded tokens / keys / DB connection strings |
+| command-guard | ` " ` | Block `rm -rf`, `eval`, `DROP TABLE`, … |
+| db-guard | ` " ` | Block raw SQL, f-string SQL, WHERE-less DELETE/UPDATE |
+| dependency-check | ` " ` | Block non-whitelisted imports / installs |
+| code-quality | ` " ` | Bare `except:`, `print` debugging, excessive `# type: ignore` |
+| contract-validator | ` " ` | Endpoints outside the skeleton's `interface.http` |
+| **auth-guard** | ` " ` | JWT type+ver claim missing, localStorage token storage, logout no-op, MAX()+1 race (LESSON-022~027) |
+| **ai-slop** (8th hook) | `ha-review/run.py` | 6 regex patterns — verbose docstrings, cosmetic try/except, dead constants (LESSON-018), TODO/FIXME, unused funcs, stub `pass` |
 | **test distribution** | ` " ` | Detect skewed test coverage (BLOCK: 0 tests for a src module, WARN: 10x variance) |
 | **skeleton integrity** | `harness integrity` | Declared paths ↔ real filesystem + placeholder residue |
 
@@ -268,7 +269,7 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 
 ## 🗺 Roadmap
 
-**Phase 1–4 (completed)**: profile system · 7 `/ha-*` skills · 21 LESSONs · 9 quality gates · single-command install · `/my-*` legacy skills removed · v1 legacy code (SECTION_MAP / extract_section / fill_skeleton_template) removed · Orchestra v2 wiring
+**Phase 1–4 (completed)**: profile system · 7 `/ha-*` skills · 21 LESSONs · 10 quality gates · single-command install · `/my-*` legacy skills removed · v1 legacy code (SECTION_MAP / extract_section / fill_skeleton_template) removed · Orchestra v2 wiring
 
 **Phase 5 — v0.5.0 (completed, 2026-05-02)**: auto-fit skeleton — 6-axis interview answers (`user_scale` / `data_sensitivity` / `team_size` / `availability` / `monetization` / `lifecycle`) auto-activate fragments via `required_when` expressions. 30 standard sections, custom AST + parser + evaluator.
 
@@ -292,9 +293,9 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 - **Package manager**: uv
 - **Agent execution**: Claude CLI subprocess (swappable — Gemini / local LLM)
 - **State**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (no DB)
-- **Tests**: **551** backend pytest + **12** install-snapshot assertions (0 regressions)
+- **Tests**: **569** backend pytest + **12** install-snapshot assertions (0 regressions)
 - **Type check**: pyright **0 errors** on `src/`
-- **Gate coverage** (self-test): 7 of the 9 gates measured on 35 fixtures (positive / negative) → **precision 100% / recall 100% / accuracy 100%**. The other 2 (test-distribution, skeleton-integrity) are covered by filesystem-level pytest fixtures. Details: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
+- **Gate coverage** (self-test): 8 of the 10 gates measured on 35 fixtures (positive / negative) → **precision 100% / recall 100% / accuracy 100%**. The other 2 (test-distribution, skeleton-integrity) are covered by filesystem-level pytest fixtures. Details: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **Latency** (30-iter median, no LLM calls): profile detect **~5 ms**, skeleton assemble **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. Details: [benchmarks/](docs/benchmarks/)
 - **v2 infrastructure**: `profile_loader`, `skeleton_assembler`, `plan_manager`, `harness` validation CLI
 
@@ -313,7 +314,7 @@ backend/
   docs/shared-lessons.md      21 LESSONs
   src/orchestrator/           profile_loader / skeleton_assembler /
                               plan_manager / security_hooks / runner
-  tests/                      496 pytest + skills/ regression guards
+  tests/                      569 pytest + skills/ regression guards
 
 docs/
   ARCHITECTURE.md             System structure — read this first
@@ -329,7 +330,7 @@ docs/
 ```bash
 cd backend
 uv sync
-uv run pytest tests/ --rootdir=.      # 551 tests
+uv run pytest tests/ --rootdir=.      # 569 tests
 uv run ruff check src/                 # 0 errors
 uv run pyright src/                    # 0 errors
 uv run python -m src.main              # dashboard server (port 3002)

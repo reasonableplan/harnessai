@@ -10,7 +10,7 @@ HarnessAI 는 그 문제를 닫힌 루프로 푼다:
 
 1. **계약서** (`skeleton.md` — 36개 표준 섹션, **사용자 6축 답변에 따라 자동 활성화**) 에 무엇을 만들지 먼저 선언
 2. **11개 에이전트** (Architect · Designer · Orchestrator · Backend Coder · Frontend Coder · 4× mobile_coder (RN/Flutter/Android/iOS) · Reviewer · QA) 가 선언대로 구현 — Orchestrator 가 스택 프로파일에 따라 적합한 coder 에게 라우팅
-3. **9개 품질 게이트** 가 계약 위반을 자동 차단 — 보안 훅 6 + ai-slop + 테스트 분포 + skeleton 정합성
+3. **10개 품질 게이트** 가 계약 위반을 자동 차단 — 보안 훅 7 + ai-slop + 테스트 분포 + skeleton 정합성
 
 AI 를 대체하는 게 아니라 **통제하는** 도구다.
 
@@ -29,7 +29,7 @@ for i in range(max_retries):              # 그런데 2개만 사용
 
 상수는 4개를 선언했는데 루프는 2개만 읽는다. 어떤 테스트도 못 잡는 dead code — 프로그램이 정상 동작하기 때문. 실제 사례 — dogfooding 로그의 [LESSON-018](docs/benchmarks/dogfooding-catches.md).
 
-`/ha-review` 의 `ai-slop` 훅(9개 게이트 중 7번째) 이 잡아낸다:
+`/ha-review` 의 `ai-slop` 훅(10개 게이트 중 8번째) 이 잡아낸다:
 
 ```json
 {
@@ -40,7 +40,7 @@ for i in range(max_retries):              # 그런데 2개만 사용
 }
 ```
 
-LLM 이 자주 만드는데 사람 리뷰에서 놓치는 종류의 실수. **35개 fixture** 에서 9개 게이트가 **precision 100% / recall 100%** — [gate-coverage.md](docs/benchmarks/gate-coverage.md).
+LLM 이 자주 만드는데 사람 리뷰에서 놓치는 종류의 실수. **35개 fixture** 에서 10개 게이트가 **precision 100% / recall 100%** — [gate-coverage.md](docs/benchmarks/gate-coverage.md).
 
 ---
 
@@ -181,7 +181,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 | | HarnessAI | Cursor / Copilot | Claude Code (plain) | aider |
 |---|---|---|---|---|
 | 범위 | 프로젝트 전체 | 파일/함수 단위 | 대화 기반 | diff 기반 |
-| 규칙 강제 | **프로파일 + 게이트 9개** | .cursorrules (선언만) | CLAUDE.md (선언만) | 커밋 스타일만 |
+| 규칙 강제 | **프로파일 + 게이트 10개** | .cursorrules (선언만) | CLAUDE.md (선언만) | 커밋 스타일만 |
 | 실수 축적 | **LESSON 21** (자동 감지 + 리뷰어 참조) | ❌ | ❌ | ❌ |
 | 스택 자동감지 | **12개 기본 + 확장 가능 (web · desktop · CLI · lib · 4 mobile)** | ❌ | ❌ | ❌ |
 | 병렬 구현 | **/ha-build --parallel** | ❌ | ❌ | ❌ |
@@ -213,17 +213,18 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 
 ---
 
-## 🧪 품질 게이트 (9개)
+## 🧪 품질 게이트 (10개)
 
 | 게이트 | 위치 | 역할 |
 |---|---|---|
-| 프로파일 whitelist | `security_hooks.py` | 허용 외 의존성 차단 |
-| path traversal | ` " ` | `../` 등 상향 참조 차단 |
-| secret leak | ` " ` | 토큰/키 하드코딩 감지 |
-| CLI arg secret | ` " ` | CLI 인자로 시크릿 전달 금지 |
-| SQL injection | ` " ` | raw SQL concat 차단 |
-| XML delimiter | ` " ` | 에이전트 프롬프트에 사용자 입력 분리 |
-| **ai-slop** (7번째) | `ha-review/run.py` | 정규식 7패턴 — 장황한 docstring, 껍데기 try/except, dead 상수(LESSON-018), TODO/FIXME, unused 함수, 임시 pass |
+| secret-filter | `security_hooks.py` | 토큰/키/DB 연결 문자열 하드코딩 감지 |
+| command-guard | ` " ` | `rm -rf`, `eval`, `DROP TABLE` 등 위험 명령 차단 |
+| db-guard | ` " ` | raw SQL, f-string SQL, WHERE 없는 DELETE/UPDATE |
+| dependency-check | ` " ` | 허용 외 의존성 차단 |
+| code-quality | ` " ` | 빈 `except:`, `print` 디버깅, `# type: ignore` 남용 |
+| contract-validator | ` " ` | skeleton `interface.http` 외 엔드포인트 차단 |
+| **auth-guard** | ` " ` | JWT type+ver claim 누락, localStorage 토큰 저장, logout no-op, MAX()+1 race (LESSON-022~027) |
+| **ai-slop** (8번째) | `ha-review/run.py` | 정규식 6패턴 — 장황한 docstring, 껍데기 try/except, dead 상수(LESSON-018), TODO/FIXME, unused 함수, 임시 pass |
 | **테스트 분포** | ` " ` | src 모듈 대비 테스트 편중 감지 (BLOCK: 0개, WARN: 10x 편차) |
 | **skeleton 정합성** | `harness integrity` | 선언 경로 ↔ 실재 + 플레이스홀더 검증 |
 
@@ -266,7 +267,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 
 **Phase 6 — v0.6.0 (완료, 2026-05-07)**: **모바일 확장**. 4개 신규 프로파일 (`react-native-expo` · `flutter` · `android-kotlin` · `ios-swift`) + 4개 mobile_coder 에이전트 (Pydantic + 시스템 프롬프트 + dispatch 라우팅) + 3개 mobile.* fragment (`navigation` / `build_config` / `lifecycle`) + harness-global guidelines 외부 사용자 자동 로딩 + `HARNESS_AI_HOME` fallback. iOS native 는 Windows 호스트 친화적 (SwiftLint + `swift build` dry-run; 전체 `xcodebuild` 는 macOS CI 에서).
 
-**Phase 7 — v0.7.0 (진행 중)**: **웹 + 데스크톱 프로파일** — `nextjs` (App Router · Server Actions · better-auth · Drizzle) · `nestjs` (TypeORM · class-validator · Passport JWT · GlobalExceptionFilter) · `electron` (Context Isolation · preload IPC · electron-updater · 코드 서명). 신규 skeleton fragment 3개 (`environments` / `error_ux` / `rate_limiting`). 상태 머신 버그 수정 (`ha-review` / `ha-verify`). 크로스 플랫폼 toolchain 게이트 테스트.
+**Phase 7 — v0.7.0 (완료, 2026-05-11)**: **웹 + 데스크톱 프로파일** — `nextjs` (App Router · Server Actions · better-auth · Drizzle) · `nestjs` (TypeORM · class-validator · Passport JWT · GlobalExceptionFilter) · `electron` (Context Isolation · preload IPC · electron-updater · 코드 서명). 신규 skeleton fragment 3개 (`environments` / `error_ux` / `rate_limiting`). 상태 머신 버그 수정 (`ha-review` / `ha-verify`). 크로스 플랫폼 toolchain 게이트 테스트.
 
 **Phase 8 (계획)**:
 - Live LESSONS 자동 학습 (ha-review 반복 패턴 → 후보 등록)
@@ -284,7 +285,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 - **패키지**: uv
 - **에이전트 실행**: Claude CLI subprocess (Gemini/로컬 LLM 교체 가능)
 - **상태**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (DB 없음)
-- **테스트**: pytest **551개** backend + **12개** install 스냅샷 (회귀 0건)
+- **테스트**: pytest **569개** backend + **12개** install 스냅샷 (회귀 0건)
 - **타입 체크**: pyright **0 errors** (`src/` 전수)
 - **게이트 커버리지 (자기 검증)**: 9개 게이트 중 정규식/AST 기반 7개를 35 fixtures (positive/negative) 로 측정 → **precision 100% / recall 100% / accuracy 100%**. 나머지 2개 (test-distribution, skeleton-integrity) 는 filesystem fixture 로 별도 회귀 테스트. 상세 한계/방법: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **성능** (30 iter, LLM 제외): profile 감지 **~5 ms**, skeleton 조립 **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. [docs/benchmarks/](docs/benchmarks/)
@@ -305,7 +306,7 @@ backend/
   docs/shared-lessons.md      21 LESSONs
   src/orchestrator/           profile_loader / skeleton_assembler /
                               plan_manager / security_hooks / runner
-  tests/                      496 pytest + skills/ 회귀 방지
+  tests/                      569 pytest + skills/ 회귀 방지
 
 docs/
   ARCHITECTURE.md             시스템 구조 30분 이해
