@@ -196,6 +196,8 @@ def _run_security_gate(project: Path, plan) -> list[str]:
                 git_args, cwd=str(project),
                 capture_output=True, text=True, timeout=30,
             )
+            if r.returncode != 0:
+                continue
             diff_text = r.stdout
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return []
@@ -203,6 +205,14 @@ def _run_security_gate(project: Path, plan) -> list[str]:
             break
 
     if not diff_text.strip():
+        return []
+
+    # Scan added lines only — deleted code (- prefix) must not trigger findings.
+    added_text = "\n".join(
+        line[1:] for line in diff_text.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    )
+    if not added_text.strip():
         return []
 
     security_src = HARNESS_HOME / "backend" / "src"
@@ -226,14 +236,14 @@ def _run_security_gate(project: Path, plan) -> list[str]:
             continue
         seen_modes.add(mode)
         result = SecurityHooks().run_all(
-            diff_text,
+            added_text,
             is_frontend=(mode == "frontend"),
             is_mobile=(mode == "mobile"),
         )
         for f in result.findings:
             if f.severity == Severity.BLOCK:
-                loc = f" (line {f.line})" if f.line else ""
-                failures.append(f"[security:{f.hook}]{loc} {f.message}")
+                detail = f" — {f.snippet}" if f.snippet else ""
+                failures.append(f"[security:{f.hook}]{detail} {f.message}")
     return failures
 
 
@@ -303,13 +313,14 @@ def cmd_complete(args: argparse.Namespace) -> int:
             return 1
         info("[gate] toolchain 전부 통과")
 
+    if args.status == "done" and not args.skip_security:
         info("[gate] security_hooks: BLOCK 패턴 검사 중 …")
         sec_failures = _run_security_gate(project, plan)
         if sec_failures:
             info(f"[BLOCK] security_hooks {len(sec_failures)}건 — done 마킹 거부:")
             for f in sec_failures:
                 info(f"  · {f}")
-            info("위반 수정 후 재시도. 의도적 skip 이면 --skip-toolchain 명시.")
+            info("위반 수정 후 재시도. 의도적 skip 이면 --skip-security 명시.")
             return 1
         info("[gate] security_hooks 통과 — done 마킹 진행")
 
@@ -382,6 +393,11 @@ def main() -> int:
         "--skip-toolchain",
         action="store_true",
         help="LESSON-021 toolchain 게이트 스킵 (문서/설계 태스크 등 의도적일 때만)",
+    )
+    c.add_argument(
+        "--skip-security",
+        action="store_true",
+        help="security_hooks 게이트 스킵 (의도적 보안 패턴 우회 시에만, toolchain 과 독립)",
     )
 
     args = parser.parse_args()

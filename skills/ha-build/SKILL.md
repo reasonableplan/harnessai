@@ -121,6 +121,7 @@ python ~/.claude/skills/ha-build/run.py complete --task T-001 --status done
 - `--status done` 시 프로파일의 **`toolchain.test + toolchain.lint + toolchain.type`
   전부** 강제 실행. 하나라도 실패하면 done 거부 (태스크는 마킹 안 됨).
 - 문서/설계처럼 toolchain 무관한 태스크엔 `--skip-toolchain` 명시.
+- security_hooks 만 의도적으로 우회할 땐 `--skip-security` (toolchain 과 독립).
 - 배경: ui-assistant 2차 E2E 에서 단위 테스트만 통과 → done 흐름으로 pyright 15 errors 누적 발견.
 
 run.py 가:

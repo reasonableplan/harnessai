@@ -4,10 +4,10 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
-## [Unreleased — v0.7.0] — "web + desktop profiles"
+## [0.7.0] — 2026-05-11 — "web + desktop profiles"
 
-Final verification snapshot (in progress):
-**pytest 551 pass / ruff clean / pyright 0 / harness validate 50 files 0 errors**.
+Final verification snapshot at release time:
+**pytest 569 pass / ruff clean / pyright 0 / harness validate 50 files 0 errors**.
 
 핵심 사용자 가치: Next.js / NestJS / Electron 3개 프로파일 추가로 HarnessAI 커버리지를 풀스택 웹(App Router) · Node.js 백엔드 · 데스크톱까지 확장. 신규 skeleton fragment 3개 (environments / error_ux / rate_limiting) 로 HTTP/UI/CLI 프로젝트 계약서 품질 향상. 상태 머신 버그 2건 + 크로스 플랫폼 테스트 버그 수정.
 
@@ -44,6 +44,11 @@ Final verification snapshot (in progress):
 - **`error_ux.md` required_when**: `has.frontend` → `has.ui` — `has.frontend` 가 `_SECTION_TO_HAS_KEY` 에 없어 항상 False 로 평가되던 버그.
 - **toolchain gate 테스트**: `true`/`false` Unix 명령 → `subprocess.run` monkeypatch — Windows 에서 5개 테스트 전부 실패하던 크로스 플랫폼 버그.
 - **paired-profile section ordering**: 2차 프로파일(mobile.*) 섹션이 tasks/notes 뒤에 추가되던 버그. 모든 프로파일 `order` 배열 병합 후 tasks/notes 마지막 배치로 수정.
+- **`security_hooks` auth-guard 모바일 분리**: `is_mobile=True` 시 `_AUTH_MOBILE_PATTERNS` 독립 적용 — AsyncStorage / SharedPreferences / UserDefaults 토큰 저장 BLOCK, `.getString` 토큰 읽기 WARN. 기존엔 `is_frontend=True` 로 합산돼 백엔드 전용 룰(logout no-op 등)이 모바일 코드에도 적용되던 버그 수정.
+- **`security_hooks` false positive 2건**: (1) `func.max()+1` 패턴 — 쓰기 연산(`session.add` / `bulk_save_objects` 등) 없는 순수 조회에서 WARN 미발생. (2) `author*` 식별자(`authorName`, `authorId`) — `auth` 앵커 정규식으로 오탐 제거.
+- **`security_hooks` LESSON-024 severity**: `RefreshRequest` body schema → BLOCK → WARN (휴리스틱 패턴이라 확정 위반이 아님).
+- **`ha-build/run.py` security gate 2건**: (1) git diff 추가 줄만 스캔 (`+` prefix) — 삭제된 코드가 BLOCK 트리거하던 버그. (2) `git log` returncode 비정상 시 조용히 건너뛰던 버그 수정 (명시적 `continue`).
+- **`ha-build` `--skip-security` 플래그**: toolchain 과 독립적으로 security_hooks 게이트만 우회 가능. 기존 `--skip-toolchain` 이 security 까지 묶어서 우회하던 혼선 해소.
 
 ### Migration
 

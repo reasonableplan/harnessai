@@ -419,7 +419,7 @@ class TestAuthGuard:
         code = "localStorage.setItem('accessToken', token);"
         findings = check_auth_guard(code, is_frontend=True)
         assert any(f.severity == Severity.BLOCK for f in findings)
-        assert any("localStorage" in f.message for f in findings)
+        assert any("web storage" in f.message for f in findings)
 
     def test_frontend_localstorage_refreshtoken_blocked(self) -> None:
         """localStorage에 refreshToken 저장도 BLOCK."""
@@ -446,11 +446,11 @@ class TestAuthGuard:
         assert any(f.severity == Severity.BLOCK for f in findings)
         assert any("body" in f.message.lower() or "cookie" in f.message.lower() for f in findings)
 
-    def test_backend_refresh_request_schema_blocked(self) -> None:
-        """RefreshRequest body 스키마에 refresh_token 필드 → BLOCK."""
+    def test_backend_refresh_request_schema_warns(self) -> None:
+        """RefreshRequest body 스키마에 refresh_token 필드 → WARN (heuristic — LESSON-024)."""
         code = "class RefreshRequest(BaseModel):\n    refresh_token: str\n"
         findings = check_auth_guard(code, is_frontend=False)
-        assert any(f.severity == Severity.BLOCK for f in findings)
+        assert any(f.severity == Severity.WARN and "refresh_token" in f.snippet for f in findings)
 
     def test_backend_logout_noop_blocked(self) -> None:
         """logout() 본문이 pass 뿐인 no-op → BLOCK (LESSON-023)."""
@@ -471,20 +471,33 @@ class TestAuthGuard:
         assert block_findings == []
 
     def test_backend_max_plus_one_without_integrity_error_warns(self) -> None:
-        """func.max() 사용하면서 IntegrityError 처리 없음 → WARN (LESSON-025)."""
+        """func.max() + session.add() 조합에서 IntegrityError 처리 없음 → WARN (LESSON-025)."""
         code = (
             "max_result = await db.execute(select(func.max(Scene.scene_number)))\n"
             "scene_number = (max_result.scalar_one_or_none() or 0) + 1\n"
+            "db.add(Scene(scene_number=scene_number))\n"
+            "await db.commit()\n"
         )
         findings = check_auth_guard(code, is_frontend=False)
         assert any(f.severity == Severity.WARN and "IntegrityError" in f.message for f in findings)
 
+    def test_backend_max_plus_one_readonly_passes(self) -> None:
+        """func.max() 단독 조회 (쓰기 없음) → WARN 미발생 (false positive 방지)."""
+        code = (
+            "result = await db.execute(select(func.max(Order.order_id)))\n"
+            "max_id = result.scalar_one_or_none()\n"
+        )
+        findings = check_auth_guard(code, is_frontend=False)
+        warn_findings = [f for f in findings if f.severity == Severity.WARN and "IntegrityError" in f.message]
+        assert warn_findings == []
+
     def test_backend_max_plus_one_with_integrity_error_passes(self) -> None:
-        """func.max() + IntegrityError retry 패턴 → 통과."""
+        """func.max() + session.add() + IntegrityError retry 패턴 → WARN 미발생."""
         code = (
             "from sqlalchemy.exc import IntegrityError\n"
             "max_result = await db.execute(select(func.max(Scene.scene_number)))\n"
             "seq = (max_result.scalar_one_or_none() or 0) + 1\n"
+            "session.add(Scene(scene_number=seq))\n"
             "except IntegrityError:\n"
             "    await db.rollback()\n"
         )
@@ -501,6 +514,130 @@ class TestAuthGuard:
         )
         findings = check_auth_guard(code, is_frontend=False)
         assert findings == []
+
+    # --- frontend: sessionStorage + extended key names ---
+
+    def test_frontend_sessionstorage_jwt_blocked(self) -> None:
+        """sessionStorage에 jwt 키로 저장 → BLOCK (LESSON-027)."""
+        code = "sessionStorage.setItem('jwt', accessToken);"
+        findings = check_auth_guard(code, is_frontend=True)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    def test_frontend_localstorage_auth_key_blocked(self) -> None:
+        """localStorage에 auth 키로 저장 → BLOCK (LESSON-027)."""
+        code = "localStorage.setItem('authHeader', token);"
+        findings = check_auth_guard(code, is_frontend=True)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    def test_frontend_localstorage_bearer_key_blocked(self) -> None:
+        """localStorage에 Bearer 키로 저장 → BLOCK (LESSON-027)."""
+        code = "localStorage.setItem('Bearer', value);"
+        findings = check_auth_guard(code, is_frontend=True)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    # --- mobile patterns ---
+
+    def test_mobile_asyncstorage_token_blocked(self) -> None:
+        """AsyncStorage.setItem with token key → BLOCK (LESSON-027)."""
+        code = "await AsyncStorage.setItem('accessToken', token);"
+        findings = check_auth_guard(code, is_mobile=True)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    def test_mobile_asyncstorage_jwt_blocked(self) -> None:
+        """AsyncStorage.getItem with JWT key → BLOCK (LESSON-027)."""
+        code = "const token = await AsyncStorage.getItem('JWT_TOKEN');"
+        findings = check_auth_guard(code, is_mobile=True)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    def test_mobile_shared_prefs_token_blocked(self) -> None:
+        """SharedPreferences.putString with token key → BLOCK (LESSON-027)."""
+        code = 'prefs.putString("accessToken", token);'
+        findings = check_auth_guard(code, is_mobile=True)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    def test_mobile_userdefaults_token_blocked(self) -> None:
+        """UserDefaults.set forKey token → BLOCK (LESSON-027)."""
+        code = 'UserDefaults.standard.set(token, forKey: "authToken")'
+        findings = check_auth_guard(code, is_mobile=True)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    def test_mobile_clean_code_passes(self) -> None:
+        """토큰 저장 없는 모바일 코드 → 통과."""
+        code = "let username = UserDefaults.standard.string(forKey: \"username\")"
+        findings = check_auth_guard(code, is_mobile=True)
+        assert findings == []
+
+    def test_mobile_backend_patterns_not_applied(self) -> None:
+        """is_mobile=True → 백엔드 전용 패턴(logout no-op 등) 미적용."""
+        code = "async def logout(request):\n    pass\n"
+        findings = check_auth_guard(code, is_mobile=True)
+        block_logout = [f for f in findings if "logout" in f.message.lower()]
+        assert block_logout == []
+
+    # --- ALL_CAPS key coverage ---
+
+    def test_frontend_localstorage_caps_access_token_blocked(self) -> None:
+        """localStorage.setItem with ACCESS_TOKEN (ALL_CAPS) → BLOCK (re.IGNORECASE)."""
+        code = "localStorage.setItem('ACCESS_TOKEN', token);"
+        findings = check_auth_guard(code, is_frontend=True)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    def test_frontend_localstorage_auth_header_caps_blocked(self) -> None:
+        """localStorage.setItem with AUTH_HEADER key → BLOCK."""
+        code = "localStorage.setItem('AUTH_HEADER', value);"
+        findings = check_auth_guard(code, is_frontend=True)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    # --- author* false-positive regression ---
+
+    def test_frontend_localstorage_author_key_passes(self) -> None:
+        """localStorage.setItem with authorName key → no BLOCK (author* 오탐 방지)."""
+        code = "localStorage.setItem('authorName', name);"
+        findings = check_auth_guard(code, is_frontend=True)
+        assert not any(f.severity == Severity.BLOCK for f in findings)
+
+    def test_mobile_bundle_author_passes(self) -> None:
+        """bundle.getString('authorId') → no BLOCK (author* 오탐 방지)."""
+        code = 'bundle.getString("authorId")'
+        findings = check_auth_guard(code, is_mobile=True)
+        assert not any(f.severity == Severity.BLOCK for f in findings)
+
+    # --- Flutter setString coverage ---
+
+    def test_mobile_flutter_set_string_token_blocked(self) -> None:
+        """Flutter prefs.setString with token key → BLOCK (LESSON-027)."""
+        code = "await prefs.setString('authToken', token);"
+        findings = check_auth_guard(code, is_mobile=True)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    # --- .getString severity (WARN, not BLOCK) ---
+
+    def test_mobile_getstring_token_warns_not_blocks(self) -> None:
+        """prefs.getString('accessToken') → WARN only (receiver-unanchored heuristic)."""
+        code = 'prefs.getString("accessToken")'
+        findings = check_auth_guard(code, is_mobile=True)
+        assert any(f.severity == Severity.WARN for f in findings)
+        assert not any(f.severity == Severity.BLOCK and "getString" in (f.snippet or "") for f in findings)
+
+    # --- UserDefaults multi-line (Swift labeled arg style) ---
+
+    def test_mobile_userdefaults_multiline_blocked(self) -> None:
+        """UserDefaults multi-line Swift call → BLOCK (file-level DOTALL scan)."""
+        code = "UserDefaults.standard.set(\n    token,\n    forKey: \"authToken\"\n)"
+        findings = check_auth_guard(code, is_mobile=True)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    # --- bulk_save_objects MAX()+1 ---
+
+    def test_backend_max_bulk_save_objects_warns(self) -> None:
+        """func.max() + bulk_save_objects 조합 → WARN (LESSON-025)."""
+        code = (
+            "max_result = await db.execute(select(func.max(Item.id)))\n"
+            "next_id = (max_result.scalar_one_or_none() or 0) + 1\n"
+            "session.bulk_save_objects([Item(id=next_id)])\n"
+        )
+        findings = check_auth_guard(code, is_frontend=False)
+        assert any(f.severity == Severity.WARN and "IntegrityError" in f.message for f in findings)
 
     def test_hook_name_is_auth_guard(self) -> None:
         """finding.hook 이름이 'auth-guard'인지 확인."""

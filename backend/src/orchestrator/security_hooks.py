@@ -449,16 +449,72 @@ def check_code_quality(text: str) -> list[Finding]:
 # 7. auth-guard
 # ---------------------------------------------------------------------------
 
+# Credential key substring — case-insensitive (all patterns compiled with re.IGNORECASE).
+# `auth` is anchored to prevent false positives on author*/authority* identifiers:
+#   authToken, auth_key, auth-header, Authorization → match
+#   authorName, authorId, authority → no match
+_AUTH_STORAGE_KEY_RE = r"(?:token|jwt|auth(?:[_-]?(?:token|key|header)|orization\b)|bearer)"
+
 _AUTH_FRONTEND_PATTERNS: list[tuple[re.Pattern[str], str, Severity]] = [
     (
-        re.compile(r"localStorage\.setItem\s*\(\s*['\"][^'\"]*[Tt]oken"),
-        "토큰 localStorage 저장 — XSS 노출 위험. 메모리 변수 또는 httponly 쿠키 사용 필수 (LESSON-027)",
+        re.compile(
+            rf"(?:localStorage|sessionStorage)\.setItem\s*\(\s*['\"][^'\"]*{_AUTH_STORAGE_KEY_RE}",
+            re.IGNORECASE,
+        ),
+        "토큰 web storage 저장 — XSS 노출 위험. 메모리 변수 또는 httponly 쿠키 사용 필수 (LESSON-027)",
         Severity.BLOCK,
     ),
     (
-        re.compile(r"localStorage\.getItem\s*\(\s*['\"][^'\"]*[Tt]oken"),
-        "localStorage에서 토큰 읽기 — 토큰을 localStorage에 저장하지 말 것 (LESSON-027)",
+        re.compile(
+            rf"(?:localStorage|sessionStorage)\.getItem\s*\(\s*['\"][^'\"]*{_AUTH_STORAGE_KEY_RE}",
+            re.IGNORECASE,
+        ),
+        "web storage에서 토큰 읽기 — localStorage/sessionStorage에 토큰 저장하지 말 것 (LESSON-027)",
         Severity.BLOCK,
+    ),
+]
+
+# UserDefaults is scanned file-level (re.DOTALL) in check_auth_guard because Swift's
+# labeled-argument convention often places `forKey:` on a separate line.
+_USERDEFAULTS_TOKEN_RE = re.compile(
+    rf"UserDefaults\b.*?forKey:\s*['\"][^'\"]*{_AUTH_STORAGE_KEY_RE}",
+    re.IGNORECASE | re.DOTALL,
+)
+
+_AUTH_MOBILE_PATTERNS: list[tuple[re.Pattern[str], str, Severity]] = [
+    (
+        re.compile(
+            rf"AsyncStorage\.setItem\s*\(\s*['\"][^'\"]*{_AUTH_STORAGE_KEY_RE}",
+            re.IGNORECASE,
+        ),
+        "토큰 AsyncStorage 저장 — 평문 저장 위험. react-native-keychain 사용 필수 (LESSON-027)",
+        Severity.BLOCK,
+    ),
+    (
+        re.compile(
+            rf"AsyncStorage\.getItem\s*\(\s*['\"][^'\"]*{_AUTH_STORAGE_KEY_RE}",
+            re.IGNORECASE,
+        ),
+        "AsyncStorage에서 토큰 읽기 — AsyncStorage에 토큰 저장하지 말 것 (LESSON-027)",
+        Severity.BLOCK,
+    ),
+    # Covers Android putString (SharedPreferences.Editor) and Flutter setString (shared_preferences pkg)
+    (
+        re.compile(
+            rf"\.(?:set|put)String\s*\(\s*['\"][^'\"]*{_AUTH_STORAGE_KEY_RE}",
+            re.IGNORECASE,
+        ),
+        "토큰 SharedPreferences/Prefs 저장 — EncryptedSharedPreferences 또는 Android Keystore 사용 필수 (LESSON-027)",
+        Severity.BLOCK,
+    ),
+    # WARN only: .getString has no receiver anchor — Bundle/JSONObject/ResourceBundle all use it.
+    (
+        re.compile(
+            rf"\.getString\s*\(\s*['\"][^'\"]*{_AUTH_STORAGE_KEY_RE}",
+            re.IGNORECASE,
+        ),
+        "SharedPreferences에서 토큰 읽기 의심 — EncryptedSharedPreferences 사용 검토 (LESSON-027)",
+        Severity.WARN,
     ),
 ]
 
@@ -476,12 +532,19 @@ _REFRESH_BODY_SCHEMA_PATTERN = re.compile(
 )
 
 
-def check_auth_guard(text: str, *, is_frontend: bool = False) -> list[Finding]:
+def check_auth_guard(
+    text: str, *, is_frontend: bool = False, is_mobile: bool = False
+) -> list[Finding]:
     """Detect auth security anti-patterns: token storage, refresh fallback, logout no-op, race condition."""
     findings: list[Finding] = []
     lines = text.splitlines()
 
-    patterns = _AUTH_FRONTEND_PATTERNS if is_frontend else _AUTH_BACKEND_PATTERNS
+    if is_mobile:
+        patterns = _AUTH_MOBILE_PATTERNS
+    elif is_frontend:
+        patterns = _AUTH_FRONTEND_PATTERNS
+    else:
+        patterns = _AUTH_BACKEND_PATTERNS
     for i, line in enumerate(lines, start=1):
         for pattern, message, severity in patterns:
             if pattern.search(line):
@@ -495,14 +558,26 @@ def check_auth_guard(text: str, *, is_frontend: bool = False) -> list[Finding]:
                     )
                 )
 
-    if not is_frontend:
+    # File-level: UserDefaults — Swift labeled args often split `forKey:` onto its own line,
+    # so per-line scan misses canonical SwiftFormat style. DOTALL handles multi-line.
+    if is_mobile and _USERDEFAULTS_TOKEN_RE.search(text):
+        findings.append(
+            Finding(
+                hook="auth-guard",
+                severity=Severity.BLOCK,
+                message="토큰 UserDefaults 저장/읽기 — iOS Keychain Services 사용 필수 (LESSON-027)",
+                snippet='UserDefaults … forKey: "*token/jwt/auth*"',
+            )
+        )
+
+    if not is_frontend and not is_mobile:
         # File-level: RefreshRequest body schema with refresh_token field
         if _REFRESH_BODY_SCHEMA_PATTERN.search(text):
             findings.append(
                 Finding(
                     hook="auth-guard",
-                    severity=Severity.BLOCK,
-                    message="RefreshRequest body schema에 refresh_token 포함 — httponly 쿠키 전용으로 변경 (LESSON-024)",
+                    severity=Severity.WARN,
+                    message="RefreshRequest body schema에 refresh_token 포함 의심 — httponly 쿠키 전용 검토 (LESSON-024)",
                     snippet="class Refresh*(Model): refresh_token: str",
                 )
             )
@@ -522,8 +597,13 @@ def check_auth_guard(text: str, *, is_frontend: bool = False) -> list[Finding]:
                 )
             )
 
-        # File-level: MAX()+1 without IntegrityError handling
-        if re.search(r"func\.max\s*\(", text) and not re.search(r"\bIntegrityError\b", text):
+        # File-level: MAX()+1 without IntegrityError handling — only fires when a write
+        # operation is present to avoid false positives on read-only aggregations.
+        _has_write = re.search(
+            r"\b(?:session|db)\.(?:add|add_all|merge|bulk_save_objects|bulk_insert_mappings)|INSERT\s+INTO",
+            text,
+        )
+        if _has_write and re.search(r"func\.max\s*\(", text) and not re.search(r"\bIntegrityError\b", text):
             findings.append(
                 Finding(
                     hook="auth-guard",
@@ -662,5 +742,5 @@ class SecurityHooks:
         )
         findings.extend(check_code_quality(text))
         findings.extend(check_contract_validator(text, allowed_endpoints))
-        findings.extend(check_auth_guard(text, is_frontend=is_frontend or is_mobile))
+        findings.extend(check_auth_guard(text, is_frontend=is_frontend, is_mobile=is_mobile))
         return SecurityResult(findings=findings)
