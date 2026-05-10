@@ -1,7 +1,7 @@
 ---
 id: observability
 name: 로깅 / 모니터링
-required_when: has.production_concerns
+required_when: has.production_concerns and scale.medium_or_larger
 description: 로그 레벨, 메트릭, 알람, 트레이싱
 ---
 

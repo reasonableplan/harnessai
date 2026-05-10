@@ -1,9 +1,8 @@
 ---
 name: ha-verify
-model: sonnet
 description: |
   HarnessAI v2 — 프로파일의 toolchain (test/lint/type) 실행 + 결과 기록.
-  기계적 명령 실행 + 결과 파싱이 주 업무라 Sonnet 사용 (속도/비용 최적화).
+  기계적 명령 실행 + 짧은 결과 파싱이 전부라 부모 세션 모델 그대로 사용 (Opus 라도 비용 미미).
   Use when: /ha-build 완료 후, "검증해줘", "/ha-verify"
 allowed-tools:
   - Read
@@ -51,6 +50,34 @@ cd <profile.cwd>
 
 각 명령 결과 (exit code + stdout/stderr 마지막 30~50 라인) 수집.
 
+### 2.5. 실패 분석 — 재작업 태스크 특정
+
+`passed=false` 인 경우, **어떤 T-ID를 /ha-build 로 재작업할지** 명시해야 합니다.
+이 단계를 건너뛰면 사용자가 무엇을 고쳐야 할지 모릅니다.
+
+**1. 실패 항목 추출** (명령 출력에서):
+```
+pytest : FAILED tests/api/test_auth.py::test_login_missing_fields
+         FAILED tests/models/test_user.py::test_duplicate_email
+pyright: src/services/auth.py:42 — Argument of type "str | None" ...
+```
+
+**2. 태스크 매핑** — `tasks.md` 스펙 블록의 "생성/수정 파일" 에서 실패 파일 검색:
+```bash
+grep -n "test_auth\|auth\.py" docs/tasks.md
+grep -n "test_user\|user\.py" docs/tasks.md
+```
+→ 해당 파일을 "생성/수정 파일" 로 가진 T-ID 가 재작업 대상.
+
+**3. 부분 실패 처리** — 복수 프로파일 중 일부만 실패:
+- 실패 프로파일의 태스크만 재작업 대상
+- 통과 프로파일 태스크는 그대로 유지
+- `--summary` 에 어느 프로파일이 통과/실패인지 명시
+
+**4. depends_on 순서 우선** — 상위 의존 태스크를 먼저 수정.
+
+`passed=true` 이면 이 단계 skip.
+
 ### 3. 결과 기록
 ```bash
 python ~/.claude/skills/ha-verify/run.py record \
@@ -63,36 +90,47 @@ run.py 가:
 - `passed=false` 면 "building" 으로 회귀 (재구현 필요)
 
 ### 4. 다음 안내
+
+통과:
 ```
-✅ /ha-verify PASS — 327 tests, lint clean
+✅ /ha-verify PASS
+  pytest N passed  |  ruff clean  |  pyright 0 errors
 다음: /ha-review
-
-또는
-
-❌ /ha-verify FAIL — pytest 5 failed
-실패 케이스: <목록>
-다음: 실패 원인 수정 후 /ha-verify 재실행
-       또는 /ha-build <T-ID>로 해당 태스크 재구현
 ```
 
-### 출력의 guideline_paths 도 읽으세요
+실패 — **재작업 T-ID 를 반드시 명시** (단계 2.5 결과 기반):
+```
+❌ /ha-verify FAIL
 
-`prepare` 출력 JSON 의 `profiles[].guideline_paths` 에
-프로파일별 컨벤션 문서 경로가 포함됩니다. **반드시 작업 시작 전 모두 읽으세요**:
+실패 내역:
+  pytest : 5 failed
+    FAILED tests/api/test_auth.py::test_login_missing_fields
+    FAILED tests/api/test_auth.py::test_refresh_invalid
+    FAILED tests/models/test_user.py::test_duplicate_email
+  pyright: 3 errors (src/services/auth.py:42, :67, :89)
 
-- `react-native-expo`: navigation/state/storage/style 4 파일 — Expo Router + Zustand + SecureStore 컨벤션
-- `flutter`: navigation/state/storage/style 4 파일 — go_router + Riverpod + drift + ThemeData
-- `android-kotlin`: architecture/compose/network/storage 4 파일 — MVVM + Compose + Retrofit + Room
-- `ios-swift`: architecture/swiftui/network/storage 4 파일 — MV pattern + SwiftUI + URLSession + Keychain
-- `fastapi`: api/services/structure 3 파일 — Clean Arch + DI + 패키지 구조
+재작업 태스크:
+  → T-003 (auth 서비스): test_auth.py 2개 + pyright 3개
+  → T-001 (users 모델): test_user.py 1개
 
-**모바일 사용자**: 위 가이드라인을 안 읽으면 LESSON-STYLE-001 / 보안 위반 / 컨벤션 drift 가능성. 시스템 프롬프트만으로는 부족합니다.
+다음:
+  /ha-build T-003    ← depends_on 없음, 먼저 수정
+  /ha-build T-001    ← T-003 완료 후
+  모두 수정 후: /ha-verify 재실행
+```
+
+### 출력의 guideline_paths 읽기 (필수)
+
+출력 JSON 의 `profiles[].guideline_paths` 에 포함된 경로를 **작업 시작 전 모두 Read 로 읽으세요.**
+프로파일별 파일 목록 → `<HARNESS_AI_HOME>/skills/_ha_shared/GUIDELINES_NOTE.md` 참조.
 
 ## 가드레일
 
 - 명령 실행 전 `cwd` 확인 (모노레포에서 잘못된 디렉토리 실행 방지)
 - 테스트 결과 임의 조작 X — 실패는 실패로 기록
 - timeout 60~600초 사이 (큰 테스트 스위트는 백그라운드 실행 권장)
+- `passed=false` 시 **재작업 T-ID 없이 FAIL 보고 금지** — 단계 2.5 완료 후 record 호출
+- verify_history 활용: 동일 T-ID 가 2회 이상 FAIL 하면 `/ha-redesign` 으로 설계 근본 수정 검토
 
 ## 모바일 프로젝트 사용 예시 (Flutter)
 

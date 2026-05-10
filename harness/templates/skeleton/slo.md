@@ -1,7 +1,7 @@
 ---
 id: slo
 name: SLO / 성능 목표
-required_when: user_scale in [medium, large] or availability in [standard, high]
+required_when: scale.medium_or_larger or availability == high
 description: 응답시간 / 가용성 / 처리량 목표. 캐싱·인덱스·인프라 사이징의 전제. 정해지지 않으면 후반 아키텍처 재설계.
 ---
 

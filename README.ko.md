@@ -8,7 +8,7 @@ AI가 코드를 잘 짜는 건 알지만 **내 스타일대로 짜지는 않는�
 
 HarnessAI 는 그 문제를 닫힌 루프로 푼다:
 
-1. **계약서** (`skeleton.md` — 33개 표준 섹션, **사용자 6축 답변에 따라 자동 활성화**) 에 무엇을 만들지 먼저 선언
+1. **계약서** (`skeleton.md` — 36개 표준 섹션, **사용자 6축 답변에 따라 자동 활성화**) 에 무엇을 만들지 먼저 선언
 2. **11개 에이전트** (Architect · Designer · Orchestrator · Backend Coder · Frontend Coder · 4× mobile_coder (RN/Flutter/Android/iOS) · Reviewer · QA) 가 선언대로 구현 — Orchestrator 가 스택 프로파일에 따라 적합한 coder 에게 라우팅
 3. **9개 품질 게이트** 가 계약 위반을 자동 차단 — 보안 훅 6 + ai-slop + 테스트 분포 + skeleton 정합성
 
@@ -50,15 +50,15 @@ LLM 이 자주 만드는데 사람 리뷰에서 놓치는 종류의 실수. **35
 
 같은 `python-cli` 프로파일, 두 가지 인터뷰 답변 → 다른 skeleton.
 
-**기본선 — `data_sensitivity=none / lifecycle=poc / availability=casual` → 13 섹션**
+**기본선 — `data_sensitivity=none / lifecycle=poc / availability=casual` → 14 섹션**
 
 ```
 overview · stack · errors · interface.cli · core.logic ·
-configuration · persistence · data_model · external_deps ·
+configuration · environments · persistence · data_model · external_deps ·
 integrations · requirements · tasks · notes
 ```
 
-**상향 — `data_sensitivity=pii / lifecycle=mvp / availability=standard` → 18 섹션** (기본선 13 **+** 아래 5):
+**상향 — `data_sensitivity=pii / lifecycle=mvp / availability=standard` → 18 섹션** (기본선 14 **+** 아래 4):
 
 | + 섹션           | `required_when` 룰                                                  | 이 답변이 활성화한 이유                          |
 |------------------|---------------------------------------------------------------------|--------------------------------------------------|
@@ -66,7 +66,6 @@ integrations · requirements · tasks · notes
 | `threat_model`   | `data_sensitivity in [pii, payment] or availability == high`         | 민감 데이터 → STRIDE/OWASP                       |
 | `ci_cd`          | `lifecycle in [mvp, ga]`                                             | mvp 이상 → 파이프라인 / 롤백                     |
 | `test_strategy`  | `lifecycle in [mvp, ga]`                                             | mvp 이상 → 테스트 피라미드 / 컨트랙트 테스트     |
-| `slo`            | `user_scale in [medium, large] or availability in [standard, high]`  | "standard" 가용성만 돼도 → p50/p95/p99 예산      |
 
 6축 (`user_scale` / `data_sensitivity` / `team_size` / `availability` / `monetization` / `lifecycle`) 은 `/ha-init` 가 받음. 각 fragment 의 표현식은 [`scale_expression.py`](backend/src/orchestrator/scale_expression.py) 가 파싱 → 6축에 평가 → `ProfileLoader.compute_active_sections` 가 활성 섹션 목록 반환. 룰은 `harness/templates/skeleton/*.md` frontmatter 에 — 완전 투명, 바꾸면 로더가 즉시 반영.
 
@@ -75,8 +74,8 @@ integrations · requirements · tasks · notes
 ```bash
 cd backend && uv run python ../scripts/show_adapt_diff.py
 # A  pii + mvp + standard  ->  18 sections
-# B  none + poc + casual   ->  13 sections
-# diff (A only)            ->  ['audit_log', 'ci_cd', 'slo', 'test_strategy', 'threat_model']
+# B  none + poc + casual   ->  14 sections
+# diff (A only)            ->  ['audit_log', 'ci_cd', 'test_strategy', 'threat_model']
 ```
 
 ---
@@ -144,23 +143,23 @@ export HARNESS_AI_HOME="$(pwd)"       # (설치 스크립트가 안내)
 - **whitelist** (허용 의존성)
 - **lessons_applied** (강제 적용 LESSON)
 
-기본 9개 스택 제공: `fastapi` · `react-vite` · `python-cli` · `python-lib` · `claude-skill` · `react-native-expo` · `flutter` · `android-kotlin` · `ios-swift`. 새 스택은 파일 추가만으로 확장.
+기본 12개 스택 제공: `fastapi` · `nestjs` · `nextjs` · `react-vite` · `electron` · `python-cli` · `python-lib` · `claude-skill` · `react-native-expo` · `flutter` · `android-kotlin` · `ios-swift`. 새 스택은 파일 추가만으로 확장.
 
 ### 2. Skeleton — 프로젝트 계약서
 
-33개 표준 섹션 ID 중 프로파일이 요구하는 것 + **사용자 6축 답변** 으로 활성 결정 (모바일 프로파일은 `has.*` atom 으로 `mobile.*` 섹션 자동 활성):
+36개 표준 섹션 ID 중 프로파일이 요구하는 것 + **사용자 6축 답변** 으로 활성 결정 (모바일 프로파일은 `has.*` atom 으로 `mobile.*` 섹션 자동 활성):
 
 ```
-overview · requirements · stack · configuration · errors · auth ·
+overview · requirements · stack · configuration · environments · errors · auth ·
 persistence · integrations · interface.{http,cli,ipc,sdk} ·
 view.{screens,components} · state.flow · core.logic ·
-observability · deployment · tasks · notes ·
+observability · deployment · error_ux · tasks · notes ·
 data_model · threat_model · audit_log · slo · runbook ·
 test_strategy · user_journey · authorization_matrix · ci_cd · external_deps ·
-mobile.{navigation,build_config,lifecycle}
+rate_limiting · mobile.{navigation,build_config,lifecycle}
 ```
 
-마지막 10개 (data_model … external_deps) 는 6축에 대해 평가되는 `required_when` 표현식으로 활성 — 아래 [실제로 어떻게 맞춤되는가](#-실제로-어떻게-맞춤되는가) 참조. 3개 `mobile.*` 섹션은 모바일 프로파일 선언 (`has.navigation` / `has.build_config` / `has.lifecycle` atom) 으로 활성.
+마지막 13개 (data_model … rate_limiting) 는 6축에 대해 평가되는 `required_when` 표현식으로 활성 — 아래 [실제로 어떻게 맞춤되는가](#-실제로-어떻게-맞춤되는가) 참조. 3개 `mobile.*` 섹션은 모바일 프로파일 선언 (`has.navigation` / `has.build_config` / `has.lifecycle` atom) 으로 활성.
 
 섹션 내용이 **계약**. /ha-verify 가 `\`\`\`filesystem` 선언 ↔ 실재 FS 일치 검증, 플레이스홀더 (`<pkg>`, `<cmd_a>`) 미치환 잔존 차단.
 
@@ -184,7 +183,7 @@ mobile.{navigation,build_config,lifecycle}
 | 범위 | 프로젝트 전체 | 파일/함수 단위 | 대화 기반 | diff 기반 |
 | 규칙 강제 | **프로파일 + 게이트 9개** | .cursorrules (선언만) | CLAUDE.md (선언만) | 커밋 스타일만 |
 | 실수 축적 | **LESSON 21** (자동 감지 + 리뷰어 참조) | ❌ | ❌ | ❌ |
-| 스택 자동감지 | **9개 기본 + 확장 가능 (web · CLI · lib · 4 mobile)** | ❌ | ❌ | ❌ |
+| 스택 자동감지 | **12개 기본 + 확장 가능 (web · desktop · CLI · lib · 4 mobile)** | ❌ | ❌ | ❌ |
 | 병렬 구현 | **/ha-build --parallel** | ❌ | ❌ | ❌ |
 | 설계-구현 계약 | **skeleton.md + integrity 게이트** | ❌ | ❌ | ❌ |
 
@@ -267,9 +266,10 @@ mobile.{navigation,build_config,lifecycle}
 
 **Phase 6 — v0.6.0 (완료, 2026-05-07)**: **모바일 확장**. 4개 신규 프로파일 (`react-native-expo` · `flutter` · `android-kotlin` · `ios-swift`) + 4개 mobile_coder 에이전트 (Pydantic + 시스템 프롬프트 + dispatch 라우팅) + 3개 mobile.* fragment (`navigation` / `build_config` / `lifecycle`) + harness-global guidelines 외부 사용자 자동 로딩 + `HARNESS_AI_HOME` fallback. iOS native 는 Windows 호스트 친화적 (SwiftLint + `swift build` dry-run; 전체 `xcodebuild` 는 macOS CI 에서).
 
-**Phase 7 (계획)**:
+**Phase 7 — v0.7.0 (진행 중)**: **웹 + 데스크톱 프로파일** — `nextjs` (App Router · Server Actions · better-auth · Drizzle) · `nestjs` (TypeORM · class-validator · Passport JWT · GlobalExceptionFilter) · `electron` (Context Isolation · preload IPC · electron-updater · 코드 서명). 신규 skeleton fragment 3개 (`environments` / `error_ux` / `rate_limiting`). 상태 머신 버그 수정 (`ha-review` / `ha-verify`). 크로스 플랫폼 toolchain 게이트 테스트.
+
+**Phase 8 (계획)**:
 - Live LESSONS 자동 학습 (ha-review 반복 패턴 → 후보 등록)
-- 추가 프로파일 (next.js, electron)
 - multi-provider (Gemini/OpenAI backend)
 - macOS GitHub Actions CI (iOS native `xcodebuild` test/build)
 - 비용 추적 (에이전트별 토큰/달러 누적)
@@ -284,7 +284,7 @@ mobile.{navigation,build_config,lifecycle}
 - **패키지**: uv
 - **에이전트 실행**: Claude CLI subprocess (Gemini/로컬 LLM 교체 가능)
 - **상태**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (DB 없음)
-- **테스트**: pytest **496개** backend + **12개** install 스냅샷 (회귀 0건)
+- **테스트**: pytest **551개** backend + **12개** install 스냅샷 (회귀 0건)
 - **타입 체크**: pyright **0 errors** (`src/` 전수)
 - **게이트 커버리지 (자기 검증)**: 9개 게이트 중 정규식/AST 기반 7개를 35 fixtures (positive/negative) 로 측정 → **precision 100% / recall 100% / accuracy 100%**. 나머지 2개 (test-distribution, skeleton-integrity) 는 filesystem fixture 로 별도 회귀 테스트. 상세 한계/방법: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **성능** (30 iter, LLM 제외): profile 감지 **~5 ms**, skeleton 조립 **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. [docs/benchmarks/](docs/benchmarks/)
@@ -319,7 +319,7 @@ docs/
 ```bash
 cd backend
 uv sync
-uv run pytest tests/ --rootdir=.      # 496 tests
+uv run pytest tests/ --rootdir=.      # 551 tests
 uv run ruff check src/                 # 0 errors
 uv run pyright src/                    # 0 errors (타입 체크)
 uv run python -m src.main              # dashboard 서버 (포트 3002)
@@ -332,7 +332,7 @@ install 스크립트 회귀 테스트:
 
 harness 스키마 검증:
 ```bash
-python harness/bin/harness validate           # 44 files, 0 errors
+python harness/bin/harness validate           # 50 files, 0 errors
 python harness/bin/harness integrity --project .   # skeleton ↔ FS 정합성
 ```
 
@@ -364,4 +364,4 @@ MIT
 
 ---
 
-**포트폴리오 목표**: 현업 시니어 수준의 코드 품질 기준으로 포트폴리오의 정점을 찍기. Phase 1–6 완료 (v0.6.0 모바일 확장), pytest 496 / ruff clean / pyright 0 / harness validate 44 files.
+**포트폴리오 목표**: 현업 시니어 수준의 코드 품질 기준으로 포트폴리오의 정점을 찍기. Phase 1–6 완료 (v0.6.0 모바일 확장), pytest 551 / ruff clean / pyright 0 / harness validate 50 files.

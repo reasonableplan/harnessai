@@ -4,16 +4,52 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
-## [Unreleased]
+## [Unreleased — v0.7.0] — "web + desktop profiles"
+
+Final verification snapshot (in progress):
+**pytest 551 pass / ruff clean / pyright 0 / harness validate 50 files 0 errors**.
+
+핵심 사용자 가치: Next.js / NestJS / Electron 3개 프로파일 추가로 HarnessAI 커버리지를 풀스택 웹(App Router) · Node.js 백엔드 · 데스크톱까지 확장. 신규 skeleton fragment 3개 (environments / error_ux / rate_limiting) 로 HTTP/UI/CLI 프로젝트 계약서 품질 향상. 상태 머신 버그 2건 + 크로스 플랫폼 테스트 버그 수정.
 
 ### Added
-- (항목 추가되는대로)
+
+- **3 web/desktop profiles** (`harness/profiles/`):
+  - `nextjs.md` — Next.js App Router (Server Components 기본 · Server Actions 뮤테이션 · better-auth/NextAuth · Drizzle ORM · Zustand 클라이언트 UI 상태만)
+  - `nestjs.md` — NestJS 백엔드 (TypeORM · class-validator · ValidationPipe · Passport JWT 2-strategy · GlobalExceptionFilter → `{ error, code, details }`)
+  - `electron.md` — Electron 데스크톱 (Context Isolation 필수 · preload contextBridge IPC · 채널명 상수화 · electron-updater 자동 업데이트 · 코드 서명)
+
+- **3 new skeleton fragments** (`harness/templates/skeleton/`):
+  - `environments.md` — 환경별 config (dev/staging/prod) + 시크릿 관리 (`required_when: has.http_server or has.ui or has.navigation or has.cli_entrypoint`)
+  - `error_ux.md` — 사용자 에러 경험 설계 (에러 메시지 계층 · fallback UI · 재시도 UX, `required_when: has.ui`)
+  - `rate_limiting.md` — API rate limit 설계 (전략 · 임계값 · 응답 형식 · 클라이언트 가이드, `required_when: has.http_server`)
+
+- **`_registry.yaml`** detection rules 3개 추가 (nextjs · nestjs · electron)
+
+- **lessons_applied** per new profile:
+  - nextjs: LESSON-006, 022, 023, 027, STYLE-001
+  - nestjs: LESSON-002, 003, 004, 007, 018, 022, 023, 024, 027
+  - electron: LESSON-006, 022, 023, 027, STYLE-001
 
 ### Changed
-- (항목 추가되는대로)
+
+- **`slo.md`** `required_when`: `user_scale in [medium, large] or availability in [standard, high]` → `scale.medium_or_larger or availability == high`. Solo/S 프로젝트에서 `availability=standard` 만으로 SLO 섹션이 활성화되던 과잉 포함 방지.
+- **`observability.md`** `required_when`: `has.production_concerns` → `has.production_concerns and scale.medium_or_larger`. S 규모 프로젝트에서 observability 섹션 과부하 방지.
+- **`ha-design/SKILL.md`** auth gate: 프론트엔드/모바일 프로파일이 포함된 경우에만 silent refresh / 탭 동기화 항목 확인하도록 조건 추가.
+- **테스트 +55** (496 → 551, 회귀 0): 신규 ha-redesign 스킬 + consistency_checker 테스트, toolchain gate 크로스 플랫폼 수정 포함.
 
 ### Fixed
-- (항목 추가되는대로)
+
+- **ha-review state machine**: `assert_state(["verified", "building"])` → `assert_state(["verified"])` — `building` 상태에서 review 가 실행되던 버그.
+- **ha-verify state machine**: `assert_state(["built", "building"])` → `assert_state(["built"])` — `building` 상태에서 verify 가 실행되던 버그.
+- **`error_ux.md` required_when**: `has.frontend` → `has.ui` — `has.frontend` 가 `_SECTION_TO_HAS_KEY` 에 없어 항상 False 로 평가되던 버그.
+- **toolchain gate 테스트**: `true`/`false` Unix 명령 → `subprocess.run` monkeypatch — Windows 에서 5개 테스트 전부 실패하던 크로스 플랫폼 버그.
+- **paired-profile section ordering**: 2차 프로파일(mobile.*) 섹션이 tasks/notes 뒤에 추가되던 버그. 모든 프로파일 `order` 배열 병합 후 tasks/notes 마지막 배치로 수정.
+
+### Migration
+
+기존 v0.6.0 사용자:
+- `./install.ps1 -Force` 또는 `./install.sh --force` 재실행 — 신규 프로파일 3개 + fragment 3개 글로벌 install 동기화 필수
+- 기존 프로젝트는 영향 없음 (새 프로파일은 감지 규칙에 매칭될 때만 활성)
 
 ---
 

@@ -72,11 +72,14 @@ skeleton_sections:
     - auth
     - persistence
     - interface.http
+    - error_ux
+    - environments
   order:
     - overview
     - requirements
     - stack
     - configuration
+    - environments
     - errors
     - auth
     - mobile.build_config
@@ -88,6 +91,7 @@ skeleton_sections:
     - view.components
     - state.flow
     - core.logic
+    - error_ux
     - tasks
     - notes
 

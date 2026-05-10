@@ -326,6 +326,181 @@ for i, cat in enumerate(categories, 1):
 
 ---
 
+## LESSON-022: JWT access/refresh 토큰 반드시 구분 — type + ver claim 필수
+
+**문제**: access token과 refresh token이 동일한 payload 구조(sub + exp)를 가지면,
+refresh token을 Authorization 헤더에 Bearer로 넣어도 인증이 통과됨. 보안 결함.
+
+**규칙**: 두 토큰에 반드시 `type` claim과 `ver` claim 포함.
+- `get_current_user`: `type == "access"` AND `ver == user.token_version` 두 가지 모두 검증
+- `decode_refresh_token`: `type == "refresh"` 검증
+
+```python
+# ✅ access token
+payload = {"sub": str(user_id), "exp": expire, "type": "access", "ver": user.token_version}
+
+# ✅ refresh token
+payload = {"sub": str(user_id), "exp": expire, "type": "refresh", "ver": user.token_version}
+
+# ✅ get_current_user 검증
+if payload.get("type") != "access":
+    raise TokenInvalidError
+if payload.get("ver") != user.token_version:
+    raise TokenInvalidError
+```
+
+---
+
+## LESSON-023: logout은 서버에서 토큰 무효화 필수 — no-op 금지
+
+**문제**: `async def logout(self) -> None: pass` 는 쿠키만 삭제. 탈취된 refresh/access
+token은 만료 전까지 영원히 유효. 로그아웃이 실질적으로 동작하지 않음.
+
+**규칙**: logout 시 `User.token_version`을 +1 증가시켜 커밋. 기존 발급 토큰 전체 즉시 무효화.
+별도 revocation table 없이 stateless하게 구현 가능.
+
+```python
+# ✅ token_version 기반 무효화
+async def logout(self, *, db: AsyncSession, user: User) -> None:
+    user.token_version = (user.token_version or 0) + 1
+    db.add(user)
+    await db.commit()
+
+# ❌ no-op 절대 금지
+async def logout(self) -> None:
+    pass
+```
+
+**User 모델**: `token_version: int = Field(default=0, nullable=False)` 컬럼 필수.
+
+---
+
+## LESSON-024: refresh 엔드포인트는 httponly 쿠키만 허용 — body fallback 금지
+
+**문제**: `/api/auth/refresh`가 body의 `refresh_token`도 수락하면, httponly 쿠키의 보안
+의미가 사라짐. XSS로 탈취한 refresh token을 body로 전송해 갱신 가능.
+
+**규칙**: refresh endpoint는 Cookie만 허용. body fallback 코드 완전 제거.
+프론트엔드는 `withCredentials: true`로 쿠키 자동 전송.
+
+```python
+# ✅ 쿠키만 허용
+@router.post("/refresh")
+async def refresh(
+    refresh_token_cookie: Annotated[str | None, Cookie(alias="refresh_token")] = None,
+) -> dict:
+    if not refresh_token_cookie:
+        raise TokenInvalidError
+    ...
+
+# ❌ body fallback 절대 금지
+token = refresh_token_cookie or (body.refresh_token if body else None)
+```
+
+---
+
+## LESSON-025: MAX()+1 시퀀스는 unique constraint + IntegrityError retry 필수
+
+**문제**: `SELECT MAX(scene_number) + 1`로 번호를 배정하면, 동시 요청 2개가 같은 번호를
+읽고 INSERT → duplicate key 에러 또는 데이터 손상. PostgreSQL에서 재현됨.
+
+**규칙**: DB에 unique constraint를 반드시 걸고, IntegrityError 발생 시 최대 3회 재시도.
+
+```python
+# ✅ unique constraint + retry 패턴
+from sqlalchemy.exc import IntegrityError
+
+for attempt in range(3):
+    max_result = await db.execute(select(func.max(Scene.scene_number)).where(...))
+    scene_number = (max_result.scalar_one_or_none() or 0) + 1
+    scene = Scene(scene_number=scene_number, ...)
+    db.add(scene)
+    try:
+        await db.commit()
+        break
+    except IntegrityError:
+        await db.rollback()
+        if attempt == 2:
+            raise ResourceConflictError("번호 충돌. 다시 시도해 주세요.")
+
+# Migration에 반드시 포함
+sa.UniqueConstraint("chapter_id", "scene_number", name="uq_scene_chapter_number")
+```
+
+---
+
+## LESSON-026: SSE async generator는 try/finally로 cleanup 필수
+
+**문제**: SSE 스트리밍 중 클라이언트가 연결을 끊으면 FastAPI가 `.aclose()`를 호출해
+generator를 종료함. finally 블록이 없으면 generator 종료 후의 DB 저장 코드가 실행되지 않아
+사용자 메시지는 커밋됐지만 assistant 응답이 영영 저장 안 되는 고아 메시지 발생.
+
+**규칙**: async generator 내 DB 저장은 반드시 `finally` 블록에서 처리.
+
+```python
+# ✅ try/finally로 disconnect 대응
+async def _generate() -> AsyncIterator[str]:
+    try:
+        async for chunk in await llm.stream(messages, ...):
+            collected.append(chunk)
+            yield f"data: {chunk}\n\n"
+    except LLMError as exc:
+        yield f"data: {json.dumps({'error': exc.message})}\n\n"
+    except Exception as exc:
+        logger.error("stream error: %s", exc)
+    finally:
+        full_content = "".join(collected)
+        if full_content:
+            db.add(AiConversation(role="assistant", content=full_content, ...))
+            try:
+                await db.commit()
+            except Exception:
+                logger.error("Failed to persist assistant message", exc_info=True)
+                await db.rollback()
+```
+
+---
+
+## LESSON-027: access token은 메모리만 — localStorage/sessionStorage 저장 금지
+
+**문제**: Zustand persist나 localStorage.setItem으로 token을 저장하면 XSS 공격 시
+스크립트 한 줄로 탈취 가능. `refreshToken`을 localStorage에 저장하면 httponly 쿠키
+보안이 완전히 무력화됨.
+
+**규칙**:
+- `accessToken`: JS 모듈 변수(메모리)에만 보관. 새로고침 후 `/api/auth/refresh`로 복원.
+- `refreshToken`: httponly 쿠키만. JS 접근 불가.
+- Zustand `persist`의 `partialize`에서 token 계열 필드 전부 제외.
+
+```typescript
+// ✅ 메모리 변수로만 보관
+let _accessToken: string | null = null
+export function setAccessToken(token: string | null) { _accessToken = token }
+
+// ✅ persist partialize — user 정보만 저장
+partialize: (state) => ({ user: state.user })  // accessToken 제외
+
+// ❌ 절대 금지
+localStorage.setItem('accessToken', token)
+localStorage.setItem('refreshToken', token)
+```
+
+---
+
+## LESSON-028: in-memory rate limiter = 싱글워커 전제 — 멀티워커 시 무력화
+
+**문제**: module-level dict로 구현된 rate limiter는 프로세스 메모리에만 존재.
+Gunicorn 멀티워커 배포 시 워커마다 별도 dict → 실제 limit이 `워커 수 × 설정값`으로 증가.
+
+**규칙**: 싱글워커 배포면 코드 주석으로 전제 명시. 멀티워커 필요 시 Redis 기반으로 교체.
+
+```python
+# 싱글워커(uvicorn 단일 프로세스) 전제 — Gunicorn 멀티워커 시 Redis로 교체 필요
+_rate_limit_store: dict[int, list[float]] = defaultdict(list)
+```
+
+---
+
 ## LESSON-021: 태스크 `done` = toolchain 전체 통과 (test + lint + **type**)
 
 **문제**: ui-assistant 2차 E2E 중간 발견. backend 13개 + frontend 13개 태스크가 `done`

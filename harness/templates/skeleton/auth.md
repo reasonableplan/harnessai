@@ -14,18 +14,50 @@ description: 인증 방식, 토큰/세션 수명, 보호 리소스, 권한 모�
 ### 자격 증명 수명
 | 항목 | 수명 | 저장 위치 |
 |------|------|----------|
-| Access token | `<예: 24시간>` | `<localStorage / cookie / memory>` |
-| Refresh token | `<예: 7일>` | `<httpOnly cookie / secure storage>` |
+| Access token | `<예: 15분>` | **인메모리** (localStorage/sessionStorage/AsyncStorage 금지 — LESSON-027) |
+| Refresh token | `<예: 7일>` | httpOnly cookie (웹) / flutter_secure_storage·SecureStore·Keychain·Keystore (모바일) |
+
+### JWT Payload 구조
+```json
+{
+  "sub": "<user_id>",
+  "type": "access",
+  "ver": "<token_version>",
+  "exp": "<unix_timestamp>"
+}
+```
+- `type` claim 필수 — "access" / "refresh" 구분 (LESSON-022)
+- `ver` claim 필수 — User.token_version 과 일치 검증, logout 시 서버에서 증가 (LESSON-023)
 
 ### 인증 흐름
 핵심 시나리오별 시퀀스:
 
 ```
-로그인:        <클라이언트 → 서버 → 발급>
-토큰 갱신:      <401 → refresh → 재시도>
-로그아웃:      <토큰 폐기 / 블랙리스트>
+로그인:        <클라이언트 → 서버 → access(인메모리) + refresh(httpOnly cookie) 발급>
+토큰 갱신:      <401 → /auth/refresh (쿠키 전용, body.refresh_token 수락 금지) → 재시도>
+로그아웃:      <서버에서 token_version 증가 → 기존 토큰 전부 무효화 (no-op 금지 LESSON-023)>
 비밀번호 재설정: <있을 시 절차>
 ```
+
+### 프론트엔드 세션 관리
+
+#### Silent Refresh 전략
+- **방식**: `<예: 401 응답 시 자동 갱신 / 만료 N초 전 선제 갱신>`
+- **구현 위치**: `<예: axios interceptor / fetch wrapper>`
+- **동시 요청 처리**: `<예: refresh 중 다른 요청은 대기 (queue) / 실패 처리>`
+
+#### 페이지 새로고침 후 복원
+- **동작**: `<예: refresh token(쿠키)으로 자동 로그인 복원 / 로그아웃 유지>`
+- **복원 중 UX**: `<예: 로딩 스피너 표시 후 원래 페이지 / 로그인 페이지 redirect>`
+
+#### 세션 만료 UX
+- **만료 감지 시점**: `<예: API 401 수신 / 타이머 기반 사전 감지>`
+- **UX 동작**: `<예: "세션이 만료됐습니다" Modal → 로그인 후 원래 페이지 복원 / 즉시 redirect>`
+- **작업 중 데이터 보존**: `<예: localStorage에 폼 임시 저장 / 버림>`
+
+#### 탭 간 동기화
+- **로그아웃 전파**: `<예: BroadcastChannel / localStorage event → 다른 탭 자동 로그아웃 / 미지원>`
+- **토큰 갱신 전파**: `<예: 한 탭에서 갱신 시 다른 탭에도 반영 / 미지원>`
 
 ### 보호 라우트 / 리소스
 - 인증 필요: `<리스트>`

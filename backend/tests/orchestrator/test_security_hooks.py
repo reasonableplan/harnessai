@@ -5,6 +5,7 @@ from __future__ import annotations
 from src.orchestrator.security_hooks import (
     SecurityHooks,
     Severity,
+    check_auth_guard,
     check_code_quality,
     check_command_guard,
     check_contract_validator,
@@ -405,3 +406,112 @@ class TestIsMobileFlag:
         result = hooks.run_all("print('x')\n")
         # 기본은 backend 모드. ValueError 안 나야 함.
         assert isinstance(result.findings, list)
+
+
+# ---------------------------------------------------------------------------
+# auth-guard (LESSON-022~027)
+# ---------------------------------------------------------------------------
+
+
+class TestAuthGuard:
+    def test_frontend_localstorage_access_token_blocked(self) -> None:
+        """localStorage에 accessToken 저장 시도 → BLOCK (LESSON-027)."""
+        code = "localStorage.setItem('accessToken', token);"
+        findings = check_auth_guard(code, is_frontend=True)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+        assert any("localStorage" in f.message for f in findings)
+
+    def test_frontend_localstorage_refreshtoken_blocked(self) -> None:
+        """localStorage에 refreshToken 저장도 BLOCK."""
+        code = 'localStorage.setItem("refreshToken", data.refresh);'
+        findings = check_auth_guard(code, is_frontend=True)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    def test_frontend_localstorage_getitem_token_blocked(self) -> None:
+        """localStorage.getItem with token keyword → BLOCK."""
+        code = "const t = localStorage.getItem('accessToken');"
+        findings = check_auth_guard(code, is_frontend=True)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    def test_frontend_clean_code_passes(self) -> None:
+        """localStorage 없는 프론트엔드 코드 → 통과."""
+        code = "const [token, setToken] = useState<string | null>(null);"
+        findings = check_auth_guard(code, is_frontend=True)
+        assert findings == []
+
+    def test_backend_refresh_body_fallback_blocked(self) -> None:
+        """refresh_token body fallback → BLOCK (LESSON-024)."""
+        code = "token = refresh_token_cookie or (body.refresh_token if body else None)"
+        findings = check_auth_guard(code, is_frontend=False)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+        assert any("body" in f.message.lower() or "cookie" in f.message.lower() for f in findings)
+
+    def test_backend_refresh_request_schema_blocked(self) -> None:
+        """RefreshRequest body 스키마에 refresh_token 필드 → BLOCK."""
+        code = "class RefreshRequest(BaseModel):\n    refresh_token: str\n"
+        findings = check_auth_guard(code, is_frontend=False)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    def test_backend_logout_noop_blocked(self) -> None:
+        """logout() 본문이 pass 뿐인 no-op → BLOCK (LESSON-023)."""
+        code = "async def logout(self, *, db: AsyncSession, user: User) -> None:\n    pass\n"
+        findings = check_auth_guard(code, is_frontend=False)
+        assert any(f.severity == Severity.BLOCK and "logout" in f.message.lower() for f in findings)
+
+    def test_backend_logout_with_implementation_passes(self) -> None:
+        """token_version 증가 있는 logout → 통과."""
+        code = (
+            "async def logout(self, *, db: AsyncSession, user: User) -> None:\n"
+            "    user.token_version = (user.token_version or 0) + 1\n"
+            "    db.add(user)\n"
+            "    await db.commit()\n"
+        )
+        findings = check_auth_guard(code, is_frontend=False)
+        block_findings = [f for f in findings if f.severity == Severity.BLOCK and "logout" in f.message.lower()]
+        assert block_findings == []
+
+    def test_backend_max_plus_one_without_integrity_error_warns(self) -> None:
+        """func.max() 사용하면서 IntegrityError 처리 없음 → WARN (LESSON-025)."""
+        code = (
+            "max_result = await db.execute(select(func.max(Scene.scene_number)))\n"
+            "scene_number = (max_result.scalar_one_or_none() or 0) + 1\n"
+        )
+        findings = check_auth_guard(code, is_frontend=False)
+        assert any(f.severity == Severity.WARN and "IntegrityError" in f.message for f in findings)
+
+    def test_backend_max_plus_one_with_integrity_error_passes(self) -> None:
+        """func.max() + IntegrityError retry 패턴 → 통과."""
+        code = (
+            "from sqlalchemy.exc import IntegrityError\n"
+            "max_result = await db.execute(select(func.max(Scene.scene_number)))\n"
+            "seq = (max_result.scalar_one_or_none() or 0) + 1\n"
+            "except IntegrityError:\n"
+            "    await db.rollback()\n"
+        )
+        findings = check_auth_guard(code, is_frontend=False)
+        warn_findings = [f for f in findings if f.severity == Severity.WARN and "IntegrityError" in f.message]
+        assert warn_findings == []
+
+    def test_backend_clean_code_passes(self) -> None:
+        """인증 패턴 없는 일반 백엔드 코드 → 통과."""
+        code = (
+            "async def get_user(db: AsyncSession, user_id: int) -> User | None:\n"
+            "    result = await db.execute(select(User).where(User.id == user_id))\n"
+            "    return result.scalar_one_or_none()\n"
+        )
+        findings = check_auth_guard(code, is_frontend=False)
+        assert findings == []
+
+    def test_hook_name_is_auth_guard(self) -> None:
+        """finding.hook 이름이 'auth-guard'인지 확인."""
+        code = "localStorage.setItem('accessToken', t);"
+        findings = check_auth_guard(code, is_frontend=True)
+        assert all(f.hook == "auth-guard" for f in findings)
+
+    def test_run_all_includes_auth_guard(self) -> None:
+        """SecurityHooks.run_all()이 auth-guard를 포함하는지 통합 확인."""
+        hooks = SecurityHooks()
+        code = "localStorage.setItem('accessToken', token);"
+        result = hooks.run_all(code, is_frontend=True)
+        auth_findings = [f for f in result.findings if f.hook == "auth-guard"]
+        assert len(auth_findings) > 0

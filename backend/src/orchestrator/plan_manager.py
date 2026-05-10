@@ -43,6 +43,13 @@ ALLOWED_AVAILABILITY = {"casual", "standard", "high"}
 ALLOWED_MONETIZATION = {"none", "ads", "subscription", "payment"}
 ALLOWED_LIFECYCLE = {"poc", "mvp", "ga"}
 
+# Redesign lifecycle — see /ha-redesign skill (mutation propagation feature).
+#   proposed: ha-redesign prepare identified the affected scope, awaiting approval.
+#   approved: user accepted the proposed re-derivation; skeleton/tasks edits pending.
+#   applied:  skeleton.md and (when relevant) tasks.md have been updated.
+#   rejected: user declined the proposal — kept for audit trail.
+ALLOWED_REDESIGN_STATUS = {"proposed", "approved", "applied", "rejected"}
+
 
 # Data models
 
@@ -67,6 +74,31 @@ class VerifyRecord:
 
 
 @dataclass(frozen=True)
+class RedesignEntry:
+    """A single mutation-propagation event recorded by /ha-redesign.
+
+    Captures a decision change (e.g. CEO pivot, eng review correction) along with
+    the sections/tasks it affects so that re-derivation is auditable and reversible.
+    The skill itself drives the lifecycle (proposed → approved → applied or rejected);
+    this record is the source of truth for what changed and why.
+    """
+
+    at: str  # ISO 8601 UTC
+    decision: str  # short human-readable label (e.g. "CEO pivot: PTT only")
+    rationale: str  # source/reason (e.g. "/plan-ceo-review 결과 — D7 retention 우선")
+    affected_sections: tuple[str, ...]  # skeleton section identifiers (e.g. "§13")
+    affected_tasks: tuple[str, ...]  # task IDs whose status/spec changed (e.g. "T-200")
+    status: str  # one of ALLOWED_REDESIGN_STATUS
+
+    def __post_init__(self) -> None:
+        if self.status not in ALLOWED_REDESIGN_STATUS:
+            raise PlanSchemaError(
+                f"redesign status must be one of {sorted(ALLOWED_REDESIGN_STATUS)}, "
+                f"got '{self.status}'"
+            )
+
+
+@dataclass(frozen=True)
 class SkeletonSpec:
     """Skeleton section decisions from harness-plan."""
 
@@ -84,6 +116,20 @@ class Pipeline:
     completed_steps: tuple[str, ...]  # step names that actually ran
     skipped_steps: tuple[str, ...] = ()
     gstack_mode: str = "manual"
+
+    def __post_init__(self) -> None:
+        # Validate at construction so a hand-edited frontmatter with bogus values
+        # surfaces as PlanSchemaError instead of a confusing ValueError later
+        # from STATE_ORDER.index() during transition().
+        if self.current_step not in STATE_ORDER:
+            raise PlanSchemaError(
+                f"pipeline.current_step must be one of {STATE_ORDER}, got '{self.current_step}'"
+            )
+        if self.gstack_mode not in ALLOWED_GSTACK_MODES:
+            raise PlanSchemaError(
+                f"pipeline.gstack_mode must be one of {sorted(ALLOWED_GSTACK_MODES)}, "
+                f"got '{self.gstack_mode}'"
+            )
 
 
 @dataclass(frozen=True)
@@ -131,6 +177,7 @@ class HarnessPlan:
     pipeline: Pipeline
     scale_axes: ScaleAxes = field(default_factory=ScaleAxes)
     verify_history: list[VerifyRecord] = field(default_factory=list)
+    redesign_history: list[RedesignEntry] = field(default_factory=list)
     backups: list[dict[str, Any]] = field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
@@ -186,7 +233,15 @@ class PlanManager:
         return _dict_to_plan(data, body)
 
     def save(self, plan: HarnessPlan, path: Path) -> None:
-        """Serialize HarnessPlan to file (frontmatter + body)."""
+        """Serialize HarnessPlan to file (frontmatter + body).
+
+        Mutates ``plan.updated_at`` / ``plan.last_activity`` only after the write
+        succeeds — a failed disk write must not leave the in-memory plan with a
+        phantom timestamp that disagrees with the file. Per CLAUDE.md rule 5,
+        OSError is caught, logged, and re-raised so callers see a real failure.
+        """
+        prev_updated = plan.updated_at
+        prev_activity = plan.last_activity
         plan.updated_at = _now_iso()
         plan.last_activity = plan.updated_at
         data = _plan_to_dict(plan)
@@ -196,8 +251,15 @@ class PlanManager:
             + "---\n\n"
             + plan.body
         )
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        except OSError:
+            # Roll back the timestamp so the in-memory plan stays consistent
+            # with whatever is still on disk.
+            plan.updated_at = prev_updated
+            plan.last_activity = prev_activity
+            raise
 
     def create(
         self,
@@ -294,6 +356,37 @@ class PlanManager:
         plan.last_activity = _now_iso()
         return plan
 
+    def regress(self, plan: HarnessPlan, target_state: str) -> HarnessPlan:
+        """Regress current_step backward to target_state (explicit rollback).
+
+        Unlike transition(), regress() is the sanctioned backward-movement path
+        used by verify/review failure gates. Any backward jump to a known state
+        is allowed — the caller is explicitly choosing the recovery point.
+
+        Raises:
+            InvalidStateTransitionError: target is unknown or not behind current.
+        """
+        if target_state not in STATE_ORDER:
+            raise InvalidStateTransitionError(
+                f"unknown state '{target_state}'. allowed: {STATE_ORDER}"
+            )
+        current_idx = STATE_ORDER.index(plan.pipeline.current_step)
+        target_idx = STATE_ORDER.index(target_state)
+        if target_idx >= current_idx:
+            raise InvalidStateTransitionError(
+                f"regress() requires a backward target: "
+                f"'{plan.pipeline.current_step}' -> '{target_state}' is not backward."
+            )
+        plan.pipeline = Pipeline(
+            steps=plan.pipeline.steps,
+            current_step=target_state,
+            completed_steps=plan.pipeline.completed_steps,
+            skipped_steps=plan.pipeline.skipped_steps,
+            gstack_mode=plan.pipeline.gstack_mode,
+        )
+        plan.last_activity = _now_iso()
+        return plan
+
     def record_verify(
         self,
         plan: HarnessPlan,
@@ -305,6 +398,38 @@ class PlanManager:
         """Append a verification result to verify_history."""
         plan.verify_history.append(
             VerifyRecord(step=step, at=_now_iso(), passed=passed, summary=summary)
+        )
+        plan.last_activity = _now_iso()
+        return plan
+
+    def record_redesign(
+        self,
+        plan: HarnessPlan,
+        *,
+        decision: str,
+        rationale: str,
+        affected_sections: tuple[str, ...] | list[str] = (),
+        affected_tasks: tuple[str, ...] | list[str] = (),
+        status: str = "proposed",
+    ) -> HarnessPlan:
+        """Append a redesign entry — used by /ha-redesign across its lifecycle.
+
+        Typical flow:
+            record_redesign(..., status="proposed")  # ha-redesign prepare
+            record_redesign(..., status="approved")  # user accepts the diff
+            record_redesign(..., status="applied")   # skeleton/tasks updated
+        Each call appends a new entry rather than mutating prior ones, so the
+        full audit trail is preserved (including rejected proposals).
+        """
+        plan.redesign_history.append(
+            RedesignEntry(
+                at=_now_iso(),
+                decision=decision,
+                rationale=rationale,
+                affected_sections=tuple(affected_sections),
+                affected_tasks=tuple(affected_tasks),
+                status=status,
+            )
         )
         plan.last_activity = _now_iso()
         return plan
@@ -344,6 +469,34 @@ def _now_iso() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat()
 
 
+def _parse_redesign_history(raw: list[Any]) -> list[RedesignEntry]:
+    """Parse redesign_history list. Audit trail integrity matters here so
+    malformed entries raise PlanSchemaError instead of being silently dropped —
+    a vanished proposal would defeat the whole purpose of the lifecycle log.
+    """
+    out: list[RedesignEntry] = []
+    for i, r in enumerate(raw):
+        if not isinstance(r, dict):
+            raise PlanSchemaError(
+                f"redesign_history[{i}] must be a mapping, got {type(r).__name__}"
+            )
+        if "decision" not in r:
+            raise PlanSchemaError(
+                f"redesign_history[{i}] missing required field 'decision'"
+            )
+        out.append(
+            RedesignEntry(
+                at=r.get("at", ""),
+                decision=r["decision"],
+                rationale=r.get("rationale", ""),
+                affected_sections=tuple(r.get("affected_sections") or []),
+                affected_tasks=tuple(r.get("affected_tasks") or []),
+                status=r.get("status", "proposed"),
+            )
+        )
+    return out
+
+
 def _dict_to_plan(data: dict[str, Any], body: str) -> HarnessPlan:
     """Convert frontmatter dict to HarnessPlan."""
     try:
@@ -351,6 +504,7 @@ def _dict_to_plan(data: dict[str, Any], body: str) -> HarnessPlan:
         skeleton_raw = data.get("skeleton_sections") or {}
         profiles_raw = data.get("profiles") or []
         verify_raw = data.get("verify_history") or []
+        redesign_raw = data.get("redesign_history") or []
         scale_axes_raw = data.get("scale_axes") or {}
 
         return HarnessPlan(
@@ -397,6 +551,7 @@ def _dict_to_plan(data: dict[str, Any], body: str) -> HarnessPlan:
                 for v in verify_raw
                 if isinstance(v, dict) and "step" in v
             ],
+            redesign_history=_parse_redesign_history(redesign_raw),
             backups=list(data.get("backups") or []),
             created_at=data.get("created_at", ""),
             updated_at=data.get("updated_at", ""),
@@ -444,6 +599,17 @@ def _plan_to_dict(plan: HarnessPlan) -> dict[str, Any]:
         "verify_history": [
             {"step": v.step, "at": v.at, "passed": v.passed, "summary": v.summary}
             for v in plan.verify_history
+        ],
+        "redesign_history": [
+            {
+                "at": r.at,
+                "decision": r.decision,
+                "rationale": r.rationale,
+                "affected_sections": list(r.affected_sections),
+                "affected_tasks": list(r.affected_tasks),
+                "status": r.status,
+            }
+            for r in plan.redesign_history
         ],
         "backups": plan.backups,
         "last_activity": plan.last_activity,

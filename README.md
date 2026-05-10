@@ -2,7 +2,7 @@
 
 🌐 **English** · [한국어](README.ko.md)
 
-![tests](https://img.shields.io/badge/tests-496%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-551%20passing-brightgreen)
 ![pyright](https://img.shields.io/badge/pyright-0%20errors-brightgreen)
 ![ruff](https://img.shields.io/badge/ruff-clean-brightgreen)
 ![gate coverage](https://img.shields.io/badge/gate%20coverage-100%25-brightgreen)
@@ -15,7 +15,7 @@ Claude / Cursor / Copilot will write working code, but they don't write it **you
 
 HarnessAI closes that loop:
 
-1. **A contract** (`skeleton.md` with 33 standard section IDs, **auto-selected by 6-axis project answers**) declares what will be built before any code exists.
+1. **A contract** (`skeleton.md` with 36 standard section IDs, **auto-selected by 6-axis project answers**) declares what will be built before any code exists.
 2. **Eleven agents** (Architect · Designer · Orchestrator · Backend Coder · Frontend Coder · 4× mobile_coder (RN/Flutter/Android/iOS) · Reviewer · QA) implement the declaration — Orchestrator routes each task to the matching coder by stack profile.
 3. **Nine quality gates** automatically block contract violations — 6 security hooks + ai-slop detection + test distribution + skeleton-integrity.
 
@@ -57,15 +57,15 @@ This is the kind of error LLMs reliably introduce and humans miss in review. Acr
 
 Same `python-cli` profile, two interview answers — different skeleton.
 
-**Baseline — `data_sensitivity=none / lifecycle=poc / availability=casual` → 13 sections**
+**Baseline — `data_sensitivity=none / lifecycle=poc / availability=casual` → 14 sections**
 
 ```
 overview · stack · errors · interface.cli · core.logic ·
-configuration · persistence · data_model · external_deps ·
+configuration · environments · persistence · data_model · external_deps ·
 integrations · requirements · tasks · notes
 ```
 
-**Bumped — `data_sensitivity=pii / lifecycle=mvp / availability=standard` → 18 sections** (baseline 13 **+** these 5):
+**Bumped — `data_sensitivity=pii / lifecycle=mvp / availability=standard` → 18 sections** (baseline 14 **+** these 4):
 
 | + Section        | `required_when` rule                                                | Why this answer triggered it                  |
 |------------------|---------------------------------------------------------------------|------------------------------------------------|
@@ -73,7 +73,6 @@ integrations · requirements · tasks · notes
 | `threat_model`   | `data_sensitivity in [pii, payment] or availability == high`         | sensitive data → STRIDE/OWASP                  |
 | `ci_cd`          | `lifecycle in [mvp, ga]`                                             | mvp+ → pipeline / rollback                     |
 | `test_strategy`  | `lifecycle in [mvp, ga]`                                             | mvp+ → test pyramid / contract test            |
-| `slo`            | `user_scale in [medium, large] or availability in [standard, high]`  | even "standard" availability → p50/p95/p99 budgets |
 
 The 6 axes (`user_scale` / `data_sensitivity` / `team_size` / `availability` / `monetization` / `lifecycle`) are captured by `/ha-init`. Each fragment's expression is parsed by [`scale_expression.py`](backend/src/orchestrator/scale_expression.py), evaluated against the axes, and `ProfileLoader.compute_active_sections` returns the section list. The rules live in `harness/templates/skeleton/*.md` frontmatter — full transparency, change them and the loader picks it up.
 
@@ -82,8 +81,8 @@ The 6 axes (`user_scale` / `data_sensitivity` / `team_size` / `availability` / `
 ```bash
 cd backend && uv run python ../scripts/show_adapt_diff.py
 # A  pii + mvp + standard  ->  18 sections
-# B  none + poc + casual   ->  13 sections
-# diff (A only)            ->  ['audit_log', 'ci_cd', 'slo', 'test_strategy', 'threat_model']
+# B  none + poc + casual   ->  14 sections
+# diff (A only)            ->  ['audit_log', 'ci_cd', 'test_strategy', 'threat_model']
 ```
 
 ---
@@ -151,23 +150,23 @@ A single file under `~/.claude/harness/profiles/<stack>.md` holds every rule for
 - **whitelist** (allowed dependencies)
 - **lessons_applied** (which LESSONs enforce here)
 
-Nine profiles ship by default: `fastapi`, `react-vite`, `python-cli`, `python-lib`, `claude-skill`, `react-native-expo`, `flutter`, `android-kotlin`, `ios-swift`. Adding a new stack is one file.
+Twelve profiles ship by default: `fastapi` · `nestjs` · `nextjs` · `react-vite` · `electron` · `python-cli` · `python-lib` · `claude-skill` · `react-native-expo` · `flutter` · `android-kotlin` · `ios-swift`. Adding a new stack is one file.
 
 ### 2. Skeleton — the project contract
 
-Thirty-three standard section IDs; profiles pick which ones apply, and **6-axis user answers** further narrow to project-fit sections (mobile profiles activate `mobile.navigation` / `mobile.build_config` / `mobile.lifecycle` via `has.*` atoms):
+Thirty-six standard section IDs; profiles pick which ones apply, and **6-axis user answers** further narrow to project-fit sections (mobile profiles activate `mobile.navigation` / `mobile.build_config` / `mobile.lifecycle` via `has.*` atoms):
 
 ```
-overview · requirements · stack · configuration · errors · auth ·
+overview · requirements · stack · configuration · environments · errors · auth ·
 persistence · integrations · interface.{http,cli,ipc,sdk} ·
 view.{screens,components} · state.flow · core.logic ·
-observability · deployment · tasks · notes ·
+observability · deployment · error_ux · tasks · notes ·
 data_model · threat_model · audit_log · slo · runbook ·
 test_strategy · user_journey · authorization_matrix · ci_cd · external_deps ·
-mobile.{navigation,build_config,lifecycle}
+rate_limiting · mobile.{navigation,build_config,lifecycle}
 ```
 
-The last 10 (data_model … external_deps) are activated by `required_when` expressions evaluated against the 6 axes — see [What it actually adapts](#-what-it-actually-adapts) below. The 3 `mobile.*` sections are activated by mobile profile declarations (`has.navigation` / `has.build_config` / `has.lifecycle` atoms).
+The last 13 (data_model … rate_limiting) are activated by `required_when` expressions evaluated against the 6 axes — see [What it actually adapts](#-what-it-actually-adapts) below. The 3 `mobile.*` sections are activated by mobile profile declarations (`has.navigation` / `has.build_config` / `has.lifecycle` atoms).
 
 The section content **is the contract**. `/ha-verify` checks that declared filesystem paths actually exist, and that placeholders (`<pkg>`, `<cmd_a>`) were replaced.
 
@@ -192,7 +191,7 @@ LESSONs are enforced in three ways: text reference (Reviewer agent reads them), 
 | Scope | Whole project | File / function | Conversation-based | Diff-based |
 | Rule enforcement | **Profiles + 9 gates** | `.cursorrules` (advisory) | `CLAUDE.md` (advisory) | Commit style only |
 | Mistake accumulation | **21 LESSONs** (auto-detect + reviewer context) | ❌ | ❌ | ❌ |
-| Stack auto-detection | **9 built-in + extensible (web · CLI · lib · 4 mobile)** | ❌ | ❌ | ❌ |
+| Stack auto-detection | **12 built-in + extensible (web · desktop · CLI · lib · 4 mobile)** | ❌ | ❌ | ❌ |
 | Parallel implementation | **`/ha-build --parallel`** | ❌ | ❌ | ❌ |
 | Design-implementation contract | **`skeleton.md` + integrity gate** | ❌ | ❌ | ❌ |
 
@@ -275,9 +274,10 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 
 **Phase 6 — v0.6.0 (completed, 2026-05-07)**: **mobile expansion**. 4 new profiles (`react-native-expo` · `flutter` · `android-kotlin` · `ios-swift`) + 4 new mobile_coder agents (Pydantic + system prompts + dispatch routing) + 3 new mobile.* fragments (`navigation` / `build_config` / `lifecycle`) + harness-global guidelines auto-loaded for external users (no `<project>/docs/guidelines/` copy needed) + `HARNESS_AI_HOME` fallback for `prompt_path` resolution. iOS native is Windows-host friendly (SwiftLint + `swift build` dry-run; full `xcodebuild` deferred to macOS CI).
 
-**Phase 7 (planned)**:
+**Phase 7 — v0.7.0 (in progress)**: **web + desktop profiles** — `nextjs` (App Router · Server Actions · better-auth · Drizzle) · `nestjs` (TypeORM · class-validator · Passport JWT · GlobalExceptionFilter) · `electron` (Context Isolation · preload IPC · electron-updater · code signing). 3 new skeleton fragments (`environments` / `error_ux` / `rate_limiting`). State machine bug fixes (`ha-review` / `ha-verify` state guards). Cross-platform toolchain gate tests.
+
+**Phase 8 (planned)**:
 - Live LESSONS auto-learning (ha-review repeated pattern → LESSON candidate)
-- Additional profiles (next.js, electron)
 - Multi-provider (Gemini / OpenAI backend) — `providers/gemini_*.py` foundation in place, full validation pending
 - macOS GitHub Actions CI for iOS native (`xcodebuild` test/build)
 - Cost tracking (per-agent token / USD accumulation)
@@ -292,7 +292,7 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 - **Package manager**: uv
 - **Agent execution**: Claude CLI subprocess (swappable — Gemini / local LLM)
 - **State**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (no DB)
-- **Tests**: **496** backend pytest + **12** install-snapshot assertions (0 regressions)
+- **Tests**: **551** backend pytest + **12** install-snapshot assertions (0 regressions)
 - **Type check**: pyright **0 errors** on `src/`
 - **Gate coverage** (self-test): 7 of the 9 gates measured on 35 fixtures (positive / negative) → **precision 100% / recall 100% / accuracy 100%**. The other 2 (test-distribution, skeleton-integrity) are covered by filesystem-level pytest fixtures. Details: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **Latency** (30-iter median, no LLM calls): profile detect **~5 ms**, skeleton assemble **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. Details: [benchmarks/](docs/benchmarks/)
@@ -329,7 +329,7 @@ docs/
 ```bash
 cd backend
 uv sync
-uv run pytest tests/ --rootdir=.      # 496 tests
+uv run pytest tests/ --rootdir=.      # 551 tests
 uv run ruff check src/                 # 0 errors
 uv run pyright src/                    # 0 errors
 uv run python -m src.main              # dashboard server (port 3002)
@@ -342,7 +342,7 @@ Install-script regression test:
 
 Harness schema validation:
 ```bash
-python harness/bin/harness validate                 # 44 files, 0 errors
+python harness/bin/harness validate                 # 50 files, 0 errors
 python harness/bin/harness integrity --project .    # skeleton ↔ FS integrity
 ```
 

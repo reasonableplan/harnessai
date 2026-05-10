@@ -446,6 +446,96 @@ def check_code_quality(text: str) -> list[Finding]:
 
 
 # ---------------------------------------------------------------------------
+# 7. auth-guard
+# ---------------------------------------------------------------------------
+
+_AUTH_FRONTEND_PATTERNS: list[tuple[re.Pattern[str], str, Severity]] = [
+    (
+        re.compile(r"localStorage\.setItem\s*\(\s*['\"][^'\"]*[Tt]oken"),
+        "토큰 localStorage 저장 — XSS 노출 위험. 메모리 변수 또는 httponly 쿠키 사용 필수 (LESSON-027)",
+        Severity.BLOCK,
+    ),
+    (
+        re.compile(r"localStorage\.getItem\s*\(\s*['\"][^'\"]*[Tt]oken"),
+        "localStorage에서 토큰 읽기 — 토큰을 localStorage에 저장하지 말 것 (LESSON-027)",
+        Severity.BLOCK,
+    ),
+]
+
+_AUTH_BACKEND_PATTERNS: list[tuple[re.Pattern[str], str, Severity]] = [
+    (
+        re.compile(r"\bbody\.refresh_token\b"),
+        "refresh_token body fallback — httponly 쿠키만 허용, body 수락 제거 필수 (LESSON-024)",
+        Severity.BLOCK,
+    ),
+]
+
+_REFRESH_BODY_SCHEMA_PATTERN = re.compile(
+    r"class\s+\w*[Rr]efresh\w*\s*\([^)]*(?:Base)?[Mm]odel[^)]*\)[^:]*:\s*\n(?:\s+[^\n]+\n)*\s+refresh_token\s*:\s*str",
+    re.MULTILINE,
+)
+
+
+def check_auth_guard(text: str, *, is_frontend: bool = False) -> list[Finding]:
+    """Detect auth security anti-patterns: token storage, refresh fallback, logout no-op, race condition."""
+    findings: list[Finding] = []
+    lines = text.splitlines()
+
+    patterns = _AUTH_FRONTEND_PATTERNS if is_frontend else _AUTH_BACKEND_PATTERNS
+    for i, line in enumerate(lines, start=1):
+        for pattern, message, severity in patterns:
+            if pattern.search(line):
+                findings.append(
+                    Finding(
+                        hook="auth-guard",
+                        severity=severity,
+                        message=message,
+                        line=i,
+                        snippet=line.strip()[:120],
+                    )
+                )
+
+    if not is_frontend:
+        # File-level: RefreshRequest body schema with refresh_token field
+        if _REFRESH_BODY_SCHEMA_PATTERN.search(text):
+            findings.append(
+                Finding(
+                    hook="auth-guard",
+                    severity=Severity.BLOCK,
+                    message="RefreshRequest body schema에 refresh_token 포함 — httponly 쿠키 전용으로 변경 (LESSON-024)",
+                    snippet="class Refresh*(Model): refresh_token: str",
+                )
+            )
+
+        # File-level: logout no-op — async def logout(...): \n    pass
+        if re.search(
+            r"async def logout\s*\([^)]*\)\s*(?:->\s*\w+\s*)?:\s*\n\s+pass\s*$",
+            text,
+            re.MULTILINE,
+        ):
+            findings.append(
+                Finding(
+                    hook="auth-guard",
+                    severity=Severity.BLOCK,
+                    message="logout() no-op (pass) — 서버에서 token_version 증가 또는 revocation table로 무효화 필수 (LESSON-023)",
+                    snippet="async def logout(...): pass",
+                )
+            )
+
+        # File-level: MAX()+1 without IntegrityError handling
+        if re.search(r"func\.max\s*\(", text) and not re.search(r"\bIntegrityError\b", text):
+            findings.append(
+                Finding(
+                    hook="auth-guard",
+                    severity=Severity.WARN,
+                    message="MAX()+1 시퀀스 패턴 — IntegrityError 재시도 없음. unique constraint + retry 필수 (LESSON-025)",
+                )
+            )
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
 # 6. contract-validator
 # ---------------------------------------------------------------------------
 
@@ -497,7 +587,7 @@ def check_contract_validator(
 
 
 class SecurityHooks:
-    """Run all six security hooks in order.
+    """Run all seven security hooks in order.
 
     Harness v2: pass profile-derived whitelists at construction. Without
     arguments the module defaults are used (legacy compat).
@@ -572,4 +662,5 @@ class SecurityHooks:
         )
         findings.extend(check_code_quality(text))
         findings.extend(check_contract_validator(text, allowed_endpoints))
+        findings.extend(check_auth_guard(text, is_frontend=is_frontend or is_mobile))
         return SecurityResult(findings=findings)

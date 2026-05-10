@@ -70,6 +70,12 @@ grep -rn ': Any' app/
 
 # 3. bare raise 없이 except Exception: pass
 grep -rn 'except Exception' app/
+
+# 4. 공유 헬퍼 중복 — 같은 이름의 변환 함수가 여러 service 파일에 존재하면 reject
+grep -rn 'def _.*_to_dict\|def _.*_to_response\|def _.*_to_schema\|def _.*_serialize' app/services/ src/
+
+# 5. 라우터에서 직접 DB 쿼리 — 비즈니스 로직이 services 계층 밖에 있으면 reject
+grep -rn 'await db\.execute\|await db\.get\|db\.add\|await db\.commit' app/routers/ app/api/ src/routers/ src/api/
 ```
 
 ## 추가 검증 항목
@@ -80,6 +86,8 @@ grep -rn 'except Exception' app/
 - DB 쿼리에 적절한 인덱스가 있는가?
 - 빈 except 블록이 없는가?
 - `main.py`에 uvicorn 실행 블록 있는가? (LESSON-012)
+- 비즈니스 로직이 services 계층에만 있는가? (라우터에 `await db.execute` 있으면 reject)
+- 같은 헬퍼 함수가 여러 서비스 파일에 중복 정의되어 있지 않은가? (grep #4 확인)
 
 ### 프론트엔드 코드
 - 서버 데이터를 Zustand store action에서 API 호출로 가져오는가? (컴포넌트 직접 fetch 금지)

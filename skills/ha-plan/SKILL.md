@@ -46,7 +46,9 @@ JSON 출력: profile components, skeleton 섹션 채워짐 여부, orchestrator 
 4. view.* (해당 시)
 5. integrations (해당 시)
 
-**태스크 단위**: 1 PR = 1 태스크. 너무 크면 분리, 너무 작으면 병합.
+**태스크 단위**: 1 PR = 1 태스크.
+- **분리 기준**: 변경 파일 6개 초과 / 구현 예상 시간 4시간 초과 / 여러 skeleton 섹션 동시 구현
+- **병합 기준**: 변경 파일 1개 이하 + 단순 필드 추가 수준 (예: 컬럼 1개 추가 → 관련 태스크에 합치기)
 
 **테스트 태스크 동반** (필수 — `/ha-review` 의 분포 체크가 BLOCK/WARN 발동):
 - **구현 태스크 1개 = 대응 테스트 태스크 최소 1개** (또는 같은 태스크 안에 테스트 포함)
@@ -90,7 +92,10 @@ JSON 출력: profile components, skeleton 섹션 채워짐 여부, orchestrator 
 ```
 
 - 스펙 블록은 모든 Phase 테이블 **아래에 연속 배치**
-- skeleton 에 필요한 정보가 없으면 태스크 분해 중단 → Architect/Designer 에게 에스컬레이션 (skeleton 보완 후 재개)
+- skeleton 에 필요한 정보가 없으면 태스크 분해 중단. 에스컬레이션 절차:
+  1. 부족한 내용 구체 명시 (예: "persistence.orders — 컬럼 타입/제약 미정의")
+  2. 사용자에게 `/ha-design` 재실행 또는 `skeleton.md` 직접 편집 요청
+  3. skeleton 보완 확인 후 `/ha-plan` 재실행
 - 스펙 블록 없는 태스크는 미완성 산출물로 간주
 
 ### 4. tasks.md 작성 + skeleton 의 tasks 섹션 갱신
@@ -117,21 +122,13 @@ run.py 가:
   /ha-build --parallel T-XXX,T-YYY  — 병렬 (의존성 없을 때)
 ```
 
-### 출력의 guideline_paths 도 읽으세요
+### 출력의 guideline_paths 읽기 (필수)
 
-`prepare` 출력 JSON 의 `profiles[].guideline_paths` 에
-프로파일별 컨벤션 문서 경로가 포함됩니다. **반드시 작업 시작 전 모두 읽으세요**:
-
-- `react-native-expo`: navigation/state/storage/style 4 파일 — Expo Router + Zustand + SecureStore 컨벤션
-- `flutter`: navigation/state/storage/style 4 파일 — go_router + Riverpod + drift + ThemeData
-- `android-kotlin`: architecture/compose/network/storage 4 파일 — MVVM + Compose + Retrofit + Room
-- `ios-swift`: architecture/swiftui/network/storage 4 파일 — MV pattern + SwiftUI + URLSession + Keychain
-- `fastapi`: api/services/structure 3 파일 — Clean Arch + DI + 패키지 구조
-
-**모바일 사용자**: 위 가이드라인을 안 읽으면 LESSON-STYLE-001 / 보안 위반 / 컨벤션 drift 가능성. 시스템 프롬프트만으로는 부족합니다.
+출력 JSON 의 `profiles[].guideline_paths` 에 포함된 경로를 **작업 시작 전 모두 Read 로 읽으세요.**
+프로파일별 파일 목록 → `<HARNESS_AI_HOME>/skills/_ha_shared/GUIDELINES_NOTE.md` 참조.
 
 ## 가드레일
-- 태스크에 reviewer/qa 직접 배정 금지 (Phase 리뷰는 자동 처리)
+- 태스크에 reviewer/qa 직접 배정 금지 (`/ha-verify` 와 `/ha-review` 가 모든 코드를 자동 커버하므로 별도 태스크 불필요. 배정하면 파이프라인에서 "에이전트 없음" 에러 발생)
 - skeleton 에 정의된 모든 컴포넌트가 태스크로 커버되는지 확인
 - 의존성 순환 금지
 - skeleton 의 다른 섹션은 절대 수정 X (tasks 만)

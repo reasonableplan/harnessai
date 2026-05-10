@@ -11,6 +11,29 @@ description: 저장소 타입, 스키마 정의, 인덱스, 마이그레이션
 <프로젝트에서 사용하는 영속 저장 수단>
 - 예: PostgreSQL + 마이그레이션 도구 / SQLite + expo-sqlite / JSON 파일 / Redis / 파일 시스템
 
+### ER 다이어그램
+
+```mermaid
+erDiagram
+    TABLE_A {
+        int id PK
+        string field_1 UK
+        string field_2
+        int table_b_id FK
+        datetime created_at
+        datetime updated_at
+    }
+    TABLE_B {
+        int id PK
+        string field_1
+        datetime created_at
+        datetime updated_at
+    }
+    TABLE_A }o--|| TABLE_B : "belongs to"
+```
+
+> 관계 표기: `||--||` 1:1 / `||--o{` 1:N / `}o--o{` N:M
+
 ### 스키마 정의
 각 테이블/컬렉션/파일 스키마:
 

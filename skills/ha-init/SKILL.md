@@ -117,6 +117,11 @@ ha-init → ha-design → ha-plan → ha-build (반복) → ha-verify → ha-rev
 
 규모가 작으면 일부 gstack 게이트 생략 권장 (예: tiny CLI 는 `/qa` 생략).
 
+**gstack_mode 선택 가이드**:
+- `manual` (기본): gstack 스킬 (/office-hours, /qa 등) 을 사용자가 필요할 때 직접 실행. 개인 프로젝트 권장.
+- `auto`: 파이프라인 게이트 진입 시 자동 실행. CI/CD 환경 또는 팀 프로젝트 권장.
+- `prompt`: 각 게이트 진입 전 실행 여부를 사용자에게 확인 후 실행. 처음 사용 시 권장.
+
 ### 5. 사용자에게 제안 출력 + 승인
 
 다음 형식으로 출력:
@@ -176,6 +181,11 @@ python ~/.claude/skills/ha-init/run.py write \
   --gstack-mode manual
 ```
 
+**멀티 프로파일 (풀스택) 시 path 배정**:
+- `--profiles "fastapi,react-vite"` 처럼 콤마로 전달
+- 각 프로파일 경로는 `detect` 출력 `matches[].path` 에서 자동 감지 (예: pyproject.toml 위치 → `backend/`)
+- 자동 감지 실패 시: detect 의 `matches[].path` 확인 후 수동으로 `harness-plan.md` 의 `profiles[].path` 지정
+
 **Phase 2-b-4 부터 `--included` 는 optional**. 미지정 시 6축 + profile.skeleton_sections 로부터 `ProfileLoader.compute_active_sections` 가 활성 섹션을 자동 결정 (예: PII + mvp → audit_log/threat_model/test_strategy/ci_cd 등 자동 포함). 명시 시 (`--included "overview,stack,..."`) 그대로 사용 (override).
 
 `--scale` 도 omit 가능 (`--user-scale` 값으로 자동 동기화). 6축 default: none/solo/standard/none/mvp. 명시적 6축 전달 권장 — 보수적 default 라 활성 섹션 부족 가능.
@@ -202,18 +212,10 @@ python ~/.claude/skills/ha-init/run.py write \
   - harness-plan.md 의 pipeline.skipped_steps 에 생략하고 싶은 단계 추가 가능
 ```
 
-### 출력의 guideline_paths 도 읽으세요
+### 출력의 guideline_paths 읽기 (필수)
 
-`detect` 및 `write` 출력 JSON 의 `matches[].guideline_paths` / `profiles[].guideline_paths` 에
-프로파일별 컨벤션 문서 경로가 포함됩니다. **반드시 작업 시작 전 모두 읽으세요**:
-
-- `react-native-expo`: navigation/state/storage/style 4 파일 — Expo Router + Zustand + SecureStore 컨벤션
-- `flutter`: navigation/state/storage/style 4 파일 — go_router + Riverpod + drift + ThemeData
-- `android-kotlin`: architecture/compose/network/storage 4 파일 — MVVM + Compose + Retrofit + Room
-- `ios-swift`: architecture/swiftui/network/storage 4 파일 — MV pattern + SwiftUI + URLSession + Keychain
-- `fastapi`: api/services/structure 3 파일 — Clean Arch + DI + 패키지 구조
-
-**모바일 사용자**: 위 가이드라인을 안 읽으면 LESSON-STYLE-001 / 보안 위반 / 컨벤션 drift 가능성. 시스템 프롬프트만으로는 부족합니다.
+출력 JSON 의 `profiles[].guideline_paths` 에 포함된 경로를 **작업 시작 전 모두 Read 로 읽으세요.**
+프로파일별 파일 목록 → `<HARNESS_AI_HOME>/skills/_ha_shared/GUIDELINES_NOTE.md` 참조.
 
 ## 가드레일 — 절대 하지 마라
 

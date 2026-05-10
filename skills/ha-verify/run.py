@@ -12,20 +12,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "_ha_shared"))
 from utils import (  # noqa: E402
+    MOBILE_PROFILE_IDS as _MOBILE_PROFILE_IDS,
     assert_state,
     get_active_profiles,
     info,
     load_plan,
     record_verify,
+    regress,
     resolve_guideline_paths,
     save_plan,
     transition,
-)
-
-# ── mobile 프로파일 ID 집합 ────────────────────────────────────────────
-
-_MOBILE_PROFILE_IDS: frozenset[str] = frozenset(
-    {"react-native-expo", "flutter", "android-kotlin", "ios-swift"}
 )
 
 # toolchain 핵심 명령 → 사전 점검할 실행파일
@@ -138,15 +134,7 @@ def cmd_record(args: argparse.Namespace) -> int:
         # 이미 verified 면 verify_history 에만 추가하고 상태 유지
     else:
         if plan.pipeline.current_step == "built":
-            # 한 단계 뒤로 (built → building)
-            from src.orchestrator.plan_manager import Pipeline
-            plan.pipeline = Pipeline(
-                steps=plan.pipeline.steps,
-                current_step="building",
-                completed_steps=plan.pipeline.completed_steps,
-                skipped_steps=plan.pipeline.skipped_steps,
-                gstack_mode=plan.pipeline.gstack_mode,
-            )
+            regress(plan, "building")
 
     save_plan(plan, plan_path)
 

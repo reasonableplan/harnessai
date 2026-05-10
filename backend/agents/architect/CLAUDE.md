@@ -73,6 +73,32 @@ SERVER_001: 내부 서버 에러
 - 외래 키에 적절한 CASCADE/SET NULL 정의
 - 인덱스가 필요한 컬럼 명시
 
+**ER 다이어그램 (필수)**: `persistence` 섹션 작성 시 테이블 정의 **앞에** Mermaid ER 다이어그램을 먼저 작성한다.
+- 모든 테이블/컬럼/관계를 erDiagram 블록에 반영
+- 관계선: `||--||` (1:1) / `||--o{` (1:N) / `}o--o{` (N:M)
+- 사용자가 GitHub/VS Code 에서 바로 렌더링하여 스키마를 시각적으로 검증할 수 있게 함
+
+```mermaid
+erDiagram
+    USERS {
+        int id PK
+        string email UK
+        string password_hash
+        int token_version
+        datetime created_at
+        datetime updated_at
+    }
+    POSTS {
+        int id PK
+        int user_id FK
+        string title
+        text content
+        datetime created_at
+        datetime updated_at
+    }
+    USERS ||--o{ POSTS : "writes"
+```
+
 **테이블별 세부 완비 체크 — 모든 테이블마다 이 수준까지 skeleton 에 기록**:
 
 *컬럼 단위*
@@ -162,11 +188,13 @@ Designer가 `<design_conflicts>` 블록으로 API 추가 요청을 보내면:
 
 ## 체크리스트 — 출력 전 확인
 - [ ] 모든 API 엔드포인트에 Request/Response 타입이 정의되어 있는가?
+- [ ] `persistence` 섹션에 Mermaid ER 다이어그램이 포함되어 있는가? (테이블 정의 앞)
 - [ ] DB 테이블 간 관계가 명확한가? (1:N, N:M 등)
 - [ ] 상태 전이 규칙이 모든 경우를 커버하는가?
 - [ ] 에러 코드가 모든 실패 케이스를 커버하는가?
 - [ ] camelCase/snake_case 규칙이 일관적인가?
 - [ ] 인증 흐름 (JWT access/refresh)이 정의되어 있는가?
+- [ ] **`auth` 섹션: silent refresh 전략 + 세션 만료 UX + 탭 동기화 여부 명시되었는가?**
 - [ ] **각 테이블의 모든 컬럼 (타입/NULL/UNIQUE/기본값/인덱스) 이 완비되었는가?**
 - [ ] **Enum 컬럼의 전체 값 리스트가 명시되었는가?**
 - [ ] **모든 FK 에 ondelete 정책이 명시되었는가?**
@@ -174,3 +202,7 @@ Designer가 `<design_conflicts>` 블록으로 API 추가 요청을 보내면:
 - [ ] **"알아서", "적절히" 같은 모호한 표현이 없는가?**
 - [ ] **(fastapi 프로파일) 백엔드 레이아웃 (src/ vs flat) 결정 후 skeleton 에 명시되었는가?**
 - [ ] **(fastapi 프로파일) 주요 파일 경로 예시 (models/, api/endpoints/, services/ 등) 가 skeleton 에 기록되었는가?**
+- [ ] **(rate_limiting 섹션 있을 시) RATE_LIMIT_001 에러 코드가 errors 섹션에 추가되었는가?**
+- [ ] **(error_ux 섹션 있을 시) 백엔드 에러 코드 전체가 UI 동작과 1:1 매핑되었는가?**
+- [ ] **(environments 섹션 있을 시) prod CORS 에 와일드카드(`*`) 없는가?**
+- [ ] **각 gate 섹션 완료 후 사용자 확인 AskUserQuestion 을 실행했는가?**

@@ -110,6 +110,129 @@ class ErrorResponse(BaseModel):
     details: dict | None = None
 ```
 
+## Auth 구현 원칙 (LESSON-022~024)
+
+skeleton의 auth 섹션이 불완전하거나 구식 패턴을 담고 있어도, 다음 원칙이 우선한다.
+
+### JWT 토큰 구조
+```python
+# access token — type + ver 두 claim 필수
+{"sub": str(user_id), "exp": expire, "type": "access", "ver": user.token_version}
+
+# refresh token
+{"sub": str(user_id), "exp": expire, "type": "refresh", "ver": user.token_version}
+```
+
+### get_current_user 검증 순서
+```python
+if payload.get("type") != "access":
+    raise TokenInvalidError
+if payload.get("ver") != user.token_version:   # logout 무효화 확인
+    raise TokenInvalidError
+```
+
+### User 모델 필수 필드
+```python
+token_version: int = Field(default=0, nullable=False)
+```
+
+### logout — no-op 절대 금지
+```python
+# ✅ 필수
+async def logout(self, *, db: AsyncSession, user: User) -> None:
+    user.token_version = (user.token_version or 0) + 1
+    db.add(user)
+    await db.commit()
+
+# ❌ 금지 — 탈취 토큰이 만료 전까지 영원히 유효해짐
+async def logout(self) -> None:
+    pass
+```
+
+### refresh endpoint — httponly 쿠키만
+```python
+# ✅ Cookie만 허용
+refresh_token_cookie: Annotated[str | None, Cookie(alias="refresh_token")] = None
+
+# ❌ body fallback 금지
+token = refresh_token_cookie or (body.refresh_token if body else None)
+```
+
+---
+
+## 동시성 패턴 (LESSON-025)
+
+### MAX()+1 시퀀스 배정 — unique constraint + IntegrityError retry 필수
+MAX()+1만으로는 동시 요청 시 duplicate key 발생. DB constraint 없이는 작성 금지.
+
+```python
+from sqlalchemy.exc import IntegrityError
+
+# Migration에 반드시 포함
+sa.UniqueConstraint("chapter_id", "scene_number", name="uq_scene_chapter_number")
+
+# 서비스 코드 표준 패턴
+for attempt in range(3):
+    max_result = await db.execute(select(func.max(Model.seq_col)).where(...))
+    seq = (max_result.scalar_one_or_none() or 0) + 1
+    obj = Model(seq_col=seq, ...)
+    db.add(obj)
+    try:
+        await db.commit()
+        break
+    except IntegrityError:
+        await db.rollback()
+        if attempt == 2:
+            raise ResourceConflictError("번호 충돌. 다시 시도해 주세요.")
+await db.refresh(obj)
+```
+
+---
+
+## SSE/스트리밍 원칙 (LESSON-026)
+
+### async generator — try/finally로 disconnect 대응 필수
+클라이언트 disconnect 시 FastAPI가 `.aclose()` 호출 → generator 종료.
+`finally` 없으면 마지막 DB commit이 실행되지 않아 assistant 응답이 유실됨.
+
+```python
+async def _generate() -> AsyncIterator[str]:
+    collected: list[str] = []
+    try:
+        async for chunk in await llm.stream(messages, ...):
+            collected.append(chunk)
+            yield f"data: {chunk}\n\n"
+    except LLMError as exc:
+        yield f"data: {json.dumps({'error': exc.message, 'code': exc.code})}\n\n"
+    except Exception as exc:
+        logger.error("stream error: %s", exc)
+    finally:
+        full_content = "".join(collected)
+        if full_content:
+            db.add(AssistantMessage(content=full_content, ...))
+            try:
+                await db.commit()
+            except Exception:
+                logger.error("Failed to persist assistant message", exc_info=True)
+                await db.rollback()
+```
+
+---
+
+## 계층 분리 + 공유 코드 원칙
+
+### 서비스 계층 의무
+- 비즈니스 로직은 반드시 `services/` 계층에 — 라우터에 직접 구현 금지
+- 라우터는 request 파싱 + response 직렬화 + service 호출만 담당
+- DB 세션 직접 쿼리 (`await db.execute(...)`) 를 라우터 함수 안에 작성하지 마라
+
+### 공유 헬퍼 중복 금지
+- 여러 서비스 파일에 같은 변환 함수 중복 작성 금지
+  - ❌ `scenes.py` 와 `chapters.py` 각각에 `_item_to_dict()` 정의
+  - ✅ `utils.py` 또는 Pydantic `model_validator` / `model_dump()` 1곳만
+- 새 헬퍼 작성 전: 기존 `utils.py`, `models.py`, `schemas.py` 검색 필수 (grep으로 확인)
+- 2개 이상 서비스 파일에 같은 로직이 필요하면 → `shared/utils.py` 또는 모델 메서드로 분리
+
 ## 가드레일 — 절대 하지 마라
 - skeleton에 없는 API 엔드포인트 추가
 - 허용 라이브러리 화이트리스트에 없는 패키지 설치
@@ -119,6 +242,8 @@ class ErrorResponse(BaseModel):
 - API 응답에 snake_case 직접 노출
 - 하드코딩 시크릿
 - raw SQL 쿼리 (SQLModel ORM 사용)
+- 라우터 함수 안에서 직접 DB 쿼리 (services 계층 우회)
+- 같은 헬퍼 함수를 서비스 파일마다 복붙 (중복 정의 즉시 reject 대상)
 
 ## 허용 라이브러리
 ```

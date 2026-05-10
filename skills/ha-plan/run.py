@@ -18,7 +18,14 @@ from utils import (  # noqa: E402
     resolve_guideline_paths,
     save_plan,
     transition,
+    validate_task_id,
 )
+
+
+# Lenient pattern that extracts every "T-..." candidate from tasks.md rows so that
+# malformed IDs surface as explicit validation errors instead of silently failing
+# downstream. The strict check lives in validate_task_id.
+_TASK_ID_CANDIDATE_RE = re.compile(r"\|\s*(T-[\w-]+)\s*\|", re.MULTILINE)
 
 
 def cmd_prepare(args: argparse.Namespace) -> int:
@@ -71,6 +78,25 @@ def cmd_commit(args: argparse.Namespace) -> int:
     if not args.tasks_content:
         info("[FAIL] --tasks-content 비어 있음")
         return 2
+
+    # Enforce the task-ID contract shared with ha-build: extract every candidate
+    # from the rows and run validate_task_id for a strict check.
+    candidates = _TASK_ID_CANDIDATE_RE.findall(args.tasks_content)
+    invalid: list[str] = []
+    for cid in candidates:
+        try:
+            validate_task_id(cid)
+        except ValueError:
+            invalid.append(cid)
+    if invalid:
+        info("[FAIL] tasks.md 에 형식 위반 ID 가 있어 commit 거부:")
+        for cid in invalid:
+            info(f"  · '{cid}'")
+        try:
+            validate_task_id(invalid[0])  # raise → except 로 메시지 출력
+        except ValueError as e:
+            info(str(e))
+        return 1
 
     tasks_path = plan_path.parent / "tasks.md"
     skel_path = plan_path.parent / "skeleton.md"

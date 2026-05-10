@@ -40,8 +40,8 @@ components:
 
 skeleton_sections:
   required: [overview, stack, errors, interface.http, core.logic, tasks, notes]
-  optional: [requirements, configuration, auth, persistence, integrations, state.flow, observability, deployment]
-  order: [overview, requirements, stack, configuration, errors, auth, persistence, integrations, interface.http, state.flow, core.logic, observability, deployment, tasks, notes]
+  optional: [requirements, configuration, auth, persistence, integrations, state.flow, observability, deployment, test_strategy, ci_cd, rate_limiting, environments]
+  order: [overview, requirements, stack, configuration, environments, errors, auth, persistence, integrations, interface.http, rate_limiting, state.flow, core.logic, observability, deployment, test_strategy, ci_cd, tasks, notes]
 
 toolchain:
   install: "uv sync"
@@ -159,10 +159,18 @@ lessons_applied:
 
 ## components.auth
 
-- JWT HS256 + Access 24h / Refresh 7d (기본, 프로젝트별 조정)
+- JWT HS256 + Access 15m / Refresh 7d (기본, 프로젝트별 조정)
 - 비밀번호 해시: bcrypt cost ≥ 12
 - 시크릿은 `SECRET_KEY` 환경변수 (configuration 섹션)
-- 토큰 payload: `{ user_id, email, role? }` — 최소 정보
+- 토큰 payload (LESSON-022, LESSON-023):
+  ```json
+  { "sub": "<user_id>", "type": "access", "ver": "<token_version>", "exp": "<unix_ts>" }
+  ```
+  - `type`: "access" / "refresh" — 혼용 방지 필수 (LESSON-022)
+  - `ver`: User.token_version 과 일치 검증 — logout 시 token_version 증가로 무효화 (LESSON-023)
+  - `role` 필요 시 추가 가능 (최소 payload 원칙)
+- User 모델에 `token_version: int = 0` 필드 필수 (LESSON-023)
+- refresh endpoint: httpOnly 쿠키 전용 — body.refresh_token 수락 금지 (LESSON-024)
 
 ## components.core.logic
 

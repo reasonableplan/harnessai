@@ -26,6 +26,14 @@ rules:
       contains:
         pyproject.toml: ["fastapi"]
 
+  # ── Node.js backends ───────────────────────────────────────────────────
+  - profile: nestjs
+    paths: [".", "backend/", "apps/backend/", "apps/api/", "services/api/"]
+    detect:
+      files: [package.json, nest-cli.json]
+      contains:
+        package.json: ['"@nestjs/core"']
+
   - profile: python-cli
     paths: [".", "backend/", "cli/", "packages/cli/", "apps/cli/"]
     detect:
@@ -48,9 +56,15 @@ rules:
           - "console_scripts"
 
   # ── JavaScript frontends ───────────────────────────────────────────────
-  # Note: nextjs detection rule removed (R1) — `harness/profiles/nextjs.md` 미구현.
-  # Next.js 사용자는 react-vite 프로파일 채택 + frontend_coder 시스템 프롬프트만 수정 (SETUP.md 예시 2 참조).
-  # Next.js 정식 지원은 외부 사용자 요청 시 별도 phase.
+  - profile: nextjs
+    paths: [".", "frontend/", "web/", "apps/web/", "apps/frontend/"]
+    detect:
+      files: [package.json]
+      contains:
+        package.json: ['"next"']
+      not_contains:
+        package.json: ['"react-native"', '"expo"', '"electron"']
+
   - profile: react-vite
     paths: [".", "frontend/", "apps/web/", "apps/frontend/"]
     detect:

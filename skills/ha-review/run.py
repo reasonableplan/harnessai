@@ -16,11 +16,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "_ha_shared"))
 from utils import (  # noqa: E402, I001
     HARNESS_HOME,
+    MOBILE_PROFILE_IDS as _MOBILE_PROFILE_IDS,
     assert_state,
     get_active_profiles,
     info,
     load_plan,
     record_verify,
+    regress,
     resolve_guideline_paths,
     save_plan,
     transition,
@@ -325,10 +327,6 @@ def _check_test_distribution(
 #
 # 활성 profile 이 mobile 인 경우에만 적용. non-mobile profile_id → 빈 리스트.
 
-_MOBILE_PROFILE_IDS: frozenset[str] = frozenset(
-    {"react-native-expo", "flutter", "android-kotlin", "ios-swift"}
-)
-
 # mobile secret storage 위반 패턴 (BLOCK)
 _MOBILE_SECRET_STORAGE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (
@@ -527,14 +525,7 @@ def cmd_record(args: argparse.Namespace) -> int:
     else:
         # reject — building 으로 회귀
         if plan.pipeline.current_step != "building":
-            from src.orchestrator.plan_manager import Pipeline
-            plan.pipeline = Pipeline(
-                steps=plan.pipeline.steps,
-                current_step="building",
-                completed_steps=plan.pipeline.completed_steps,
-                skipped_steps=plan.pipeline.skipped_steps,
-                gstack_mode=plan.pipeline.gstack_mode,
-            )
+            regress(plan, "building")
 
     save_plan(plan, plan_path)
 

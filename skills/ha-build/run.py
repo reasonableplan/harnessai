@@ -11,7 +11,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "_ha_shared"))
 from utils import (  # noqa: E402, I001
+    BACKEND_PROFILE_IDS,
+    FRONTEND_PROFILE_IDS,
     HARNESS_HOME,
+    MOBILE_PROFILE_IDS,
+    TASK_ROW_RE,
     assert_state,
     get_active_profiles,
     info,
@@ -19,6 +23,7 @@ from utils import (  # noqa: E402, I001
     resolve_guideline_paths,
     save_plan,
     transition,
+    validate_task_id,
 )
 
 
@@ -28,9 +33,6 @@ _AGENT_TO_PROFILE: dict[str, str] = {
     "mobile_coder_android": "android-kotlin",
     "mobile_coder_ios": "ios-swift",
 }
-
-_BACKEND_PROFILES = ("fastapi", "python-cli", "python-lib")
-_FRONTEND_PROFILES = ("react-vite",)
 
 
 def _agent_to_guideline_paths(agent: str, plan) -> list[str]:
@@ -49,13 +51,13 @@ def _agent_to_guideline_paths(agent: str, plan) -> list[str]:
 
     if agent == "backend_coder":
         for pid in profile_ids:
-            if pid in _BACKEND_PROFILES:
+            if pid in BACKEND_PROFILE_IDS:
                 return [str(g) for g in resolve_guideline_paths(pid)]
         return []
 
     if agent == "frontend_coder":
         for pid in profile_ids:
-            if pid in _FRONTEND_PROFILES:
+            if pid in FRONTEND_PROFILE_IDS:
                 return [str(g) for g in resolve_guideline_paths(pid)]
         return []
 
@@ -73,16 +75,16 @@ def _agent_to_guideline_paths(agent: str, plan) -> list[str]:
     return []
 
 
-_TASK_ROW_RE = re.compile(
-    r"^\|\s*(T-\d+)\s*\|\s*(\w+)\s*\|\s*([^|]*)\|\s*([^|]*)\|\s*([^|]+)\|\s*$",
-    re.MULTILINE,
-)
-
-
 def _parse_tasks(tasks_text: str) -> dict[str, dict[str, str]]:
-    """tasks.md 에서 태스크 dict 파싱: {T-001: {agent, depends_on, description, status}}"""
+    """tasks.md 에서 태스크 dict 파싱: {T-001: {agent, depends_on, description, status}}.
+
+    TASK_ROW_RE is shared with ha-redesign and consistency_checker so all three
+    enforce the same strict ID contract — malformed IDs simply fail to match the
+    row and fall through to the "task not found" branch. User-supplied --task
+    arguments are gated upstream by validate_task_id in cmd_prepare.
+    """
     out: dict[str, dict[str, str]] = {}
-    for m in _TASK_ROW_RE.finditer(tasks_text):
+    for m in TASK_ROW_RE.finditer(tasks_text):
         tid = m.group(1)
         agent = m.group(2).strip()
         deps_raw = m.group(3).strip()
@@ -114,6 +116,15 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     if not target_ids:
         info("[FAIL] --task <T-ID> 또는 --task T-001,T-002 필요")
         return 2
+
+    # Validate ID format up front so a malformed --task arg surfaces as a
+    # specific format error instead of the generic "task not found" message.
+    for tid in target_ids:
+        try:
+            validate_task_id(tid)
+        except ValueError as e:
+            info(f"[FAIL] {e}")
+            return 2
 
     # depends_on 만족 검사
     issues: list[str] = []
@@ -171,6 +182,61 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_security_gate(project: Path, plan) -> list[str]:
+    """Security hooks gate on git diff — BLOCK findings → done 거부.
+
+    git diff HEAD (uncommitted changes) 또는 --cached (staged) 에서 diff 추출.
+    security_hooks.SecurityHooks 로 BLOCK 패턴 검사.
+    ImportError 시 조용히 skip (CI 환경 등).
+    """
+    diff_text = ""
+    for git_args in (["git", "diff", "HEAD"], ["git", "diff", "--cached"]):
+        try:
+            r = subprocess.run(
+                git_args, cwd=str(project),
+                capture_output=True, text=True, timeout=30,
+            )
+            diff_text = r.stdout
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return []
+        if diff_text.strip():
+            break
+
+    if not diff_text.strip():
+        return []
+
+    security_src = HARNESS_HOME / "backend" / "src"
+    if str(security_src) not in sys.path:
+        sys.path.insert(0, str(security_src))
+    try:
+        from orchestrator.security_hooks import SecurityHooks, Severity  # noqa: PLC0415
+    except ImportError:
+        return []
+
+    failures: list[str] = []
+    seen_modes: set[str] = set()
+    for p in get_active_profiles(plan, project):
+        if p.id in MOBILE_PROFILE_IDS:
+            mode = "mobile"
+        elif p.id in FRONTEND_PROFILE_IDS:
+            mode = "frontend"
+        else:
+            mode = "backend"
+        if mode in seen_modes:
+            continue
+        seen_modes.add(mode)
+        result = SecurityHooks().run_all(
+            diff_text,
+            is_frontend=(mode == "frontend"),
+            is_mobile=(mode == "mobile"),
+        )
+        for f in result.findings:
+            if f.severity == Severity.BLOCK:
+                loc = f" (line {f.line})" if f.line else ""
+                failures.append(f"[security:{f.hook}]{loc} {f.message}")
+    return failures
+
+
 def _run_toolchain_gate(project: Path, plan) -> list[str]:
     """LESSON-021: done 마킹 전 프로파일의 toolchain.test + .lint + .type 전부 실행.
 
@@ -214,6 +280,12 @@ def cmd_complete(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
     assert_state(plan, ["planned", "building"], "/ha-build")
 
+    try:
+        validate_task_id(args.task)
+    except ValueError as e:
+        info(f"[FAIL] {e}")
+        return 2
+
     if args.status not in ("done", "blocked", "in-progress"):
         info(f"[FAIL] --status: done|blocked|in-progress, 현재 '{args.status}'")
         return 2
@@ -229,7 +301,17 @@ def cmd_complete(args: argparse.Namespace) -> int:
                 info(f"  · {f}")
             info("수정 후 재시도하거나, 의도적 skip 이면 --skip-toolchain 명시.")
             return 1
-        info("[gate] toolchain 전부 통과 — done 마킹 진행")
+        info("[gate] toolchain 전부 통과")
+
+        info("[gate] security_hooks: BLOCK 패턴 검사 중 …")
+        sec_failures = _run_security_gate(project, plan)
+        if sec_failures:
+            info(f"[BLOCK] security_hooks {len(sec_failures)}건 — done 마킹 거부:")
+            for f in sec_failures:
+                info(f"  · {f}")
+            info("위반 수정 후 재시도. 의도적 skip 이면 --skip-toolchain 명시.")
+            return 1
+        info("[gate] security_hooks 통과 — done 마킹 진행")
 
     tasks_path = plan_path.parent / "tasks.md"
     text = tasks_path.read_text(encoding="utf-8")

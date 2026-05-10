@@ -5,6 +5,7 @@
     from utils import (
         load_plan, save_plan, transition,
         get_active_profiles, get_docs_dir, project_root,
+        TASK_ID_RE, TASK_ROW_RE, SKELETON_HEADING_RE, validate_task_id,
     )
 """
 from __future__ import annotations
@@ -52,6 +53,12 @@ from src.orchestrator.plan_manager import (  # noqa: E402
     PlanNotFoundError,
 )
 from src.orchestrator.profile_loader import Profile, ProfileLoader  # noqa: E402
+from src.orchestrator.task_id import (  # noqa: E402, F401
+    SKELETON_HEADING_RE,
+    TASK_ID_RE,
+    TASK_ROW_RE,
+    validate_task_id,
+)
 
 
 def project_root() -> Path:
@@ -124,6 +131,11 @@ def transition(
     return PlanManager().transition(plan, target_state, completed_step=completed_step)
 
 
+def regress(plan: HarnessPlan, target_state: str) -> HarnessPlan:
+    """상태 역행 — verify/review 실패 시 building 회귀 등."""
+    return PlanManager().regress(plan, target_state)
+
+
 def record_verify(
     plan: HarnessPlan,
     *,
@@ -156,6 +168,13 @@ def assert_state(plan: HarnessPlan, allowed: list[str], skill_name: str) -> None
             file=sys.stderr,
         )
         sys.exit(2)
+
+
+MOBILE_PROFILE_IDS: frozenset[str] = frozenset(
+    {"react-native-expo", "flutter", "android-kotlin", "ios-swift"}
+)
+FRONTEND_PROFILE_IDS: frozenset[str] = frozenset({"react-vite"})
+BACKEND_PROFILE_IDS: frozenset[str] = frozenset({"fastapi", "python-cli", "python-lib"})
 
 
 def resolve_guideline_paths(profile_id: str) -> list[Path]:
