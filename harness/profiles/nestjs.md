@@ -136,6 +136,11 @@ file_structure: |
       app.e2e-spec.ts
       jest-e2e.json
 
+provides_capabilities:
+  - http_server
+  - env_config
+  - production_concerns
+
 gstack_mode: manual
 gstack_recommended:
   before_design: [office-hours]

@@ -87,6 +87,10 @@ file_structure: |
       test_core/
       test_io/
 
+provides_capabilities:
+  - cli_entrypoint
+  - env_config
+
 gstack_mode: manual
 gstack_recommended:
   after_design: [plan-eng-review]

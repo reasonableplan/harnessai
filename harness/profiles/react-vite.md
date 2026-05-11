@@ -106,6 +106,11 @@ file_structure: |
         formatters/
     __tests__/
 
+provides_capabilities:
+  - ui
+  - complex_state
+  - env_config
+
 gstack_mode: manual
 gstack_recommended:
   before_design: [office-hours]

@@ -11,6 +11,7 @@ import pytest
 
 from src.orchestrator.plan_manager import (
     STATE_ORDER,
+    EngReviewEntry,
     HarnessPlan,
     InvalidStateTransitionError,
     PlanManager,
@@ -842,3 +843,453 @@ def test_regress_updates_last_activity() -> None:
     before = plan.last_activity
     pm.regress(plan, "building")
     assert plan.last_activity >= before
+
+
+# ── 결함 #2 회귀 테스트: activation_trace ────────────────────────────────
+
+
+def test_plan_activation_trace_round_trip(tmp_path: Path) -> None:
+    """activation_trace 가 save → load 후 정확히 복원 (frontmatter 직렬화 회귀 방지)."""
+    pm = PlanManager()
+    plan = _sample_plan()
+    trace = {
+        "overview": "always",
+        "rate_limiting": "has.http_server",
+        "audit_log": "data_sensitivity in [pii, payment]",
+    }
+    plan.activation_trace = dict(trace)
+
+    path = tmp_path / "harness-plan.md"
+    pm.save(plan, path)
+    loaded = pm.load(path)
+
+    assert loaded.activation_trace == trace, (
+        f"activation_trace 가 round-trip 후 보존되어야 함: {loaded.activation_trace!r}"
+    )
+
+
+def test_plan_activation_trace_sorted_in_frontmatter(tmp_path: Path) -> None:
+    """activation_trace 가 frontmatter 에 key 정렬 순으로 저장되는지 (회귀 테스트 안정성)."""
+    pm = PlanManager()
+    plan = _sample_plan()
+    # Insert in reverse-alphabetical order
+    plan.activation_trace = {"zzz": "always", "aaa": "always", "mmm": "has.storage"}
+
+    path = tmp_path / "harness-plan.md"
+    pm.save(plan, path)
+
+    raw = path.read_text(encoding="utf-8")
+    idx_aaa = raw.index("aaa")
+    idx_mmm = raw.index("mmm")
+    idx_zzz = raw.index("zzz")
+    assert idx_aaa < idx_mmm < idx_zzz, "activation_trace keys 가 정렬 순으로 저장되어야 함"
+
+
+def test_plan_legacy_missing_activation_trace(tmp_path: Path) -> None:
+    """activation_trace 없는 기존 frontmatter 로드 시 에러 없이 빈 dict 로 처리.
+
+    구버전 plan 호환성 — 키 자체가 없는 경우.
+    """
+    path = tmp_path / "harness-plan.md"
+    path.write_text(
+        "---\n"
+        "harness_version: 2\n"
+        "schema_version: 1\n"
+        "project_name: Legacy\n"
+        "project_type: cli\n"
+        "scale: small\n"
+        "profiles: []\n"
+        "skeleton_sections:\n"
+        "  required: []\n"
+        "  optional: []\n"
+        "  included: []\n"
+        "pipeline:\n"
+        "  steps: []\n"
+        "  current_step: init\n"
+        "  completed_steps: []\n"
+        "  skipped_steps: []\n"
+        "  gstack_mode: manual\n"
+        "---\n"
+        "body\n",
+        encoding="utf-8",
+    )
+    pm = PlanManager()
+    loaded = pm.load(path)
+
+    assert loaded.activation_trace == {}, (
+        "activation_trace 없는 기존 plan 은 빈 dict 로 로드되어야 함"
+    )
+
+
+def test_plan_empty_activation_trace_omitted_from_frontmatter(tmp_path: Path) -> None:
+    """activation_trace 가 비어있으면 frontmatter 에서 생략 (구버전 plan 오염 방지)."""
+    pm = PlanManager()
+    plan = _sample_plan()
+    plan.activation_trace = {}  # empty — must not appear in output
+
+    path = tmp_path / "harness-plan.md"
+    pm.save(plan, path)
+
+    raw = path.read_text(encoding="utf-8")
+    assert "activation_trace" not in raw, (
+        "빈 activation_trace 는 frontmatter 에 쓰이지 않아야 함 (구버전 plan 호환)"
+    )
+
+
+# ── mark_for_rebuild — redesign applied stale guard ──────────────────
+
+
+def _make_tasks_md(tmp_path: Path, rows: list[tuple[str, str]]) -> Path:
+    """tasks.md 픽스처 생성. rows: [(task_id, status), ...]."""
+    lines = [
+        "# Tasks\n",
+        "\n",
+        "| ID    | Agent          | Depends | Description       | Status     |\n",
+        "|-------|----------------|---------|-------------------|------------|\n",
+    ]
+    for tid, status in rows:
+        lines.append(f"| {tid:<5} | backend_coder  |         | some work         | {status:<10} |\n")
+    path = tmp_path / "tasks.md"
+    path.write_text("".join(lines), encoding="utf-8")
+    return path
+
+
+def test_mark_for_rebuild_transitions_done_tasks(tmp_path: Path) -> None:
+    """done 태스크만 needs_rebuild 로 전이 — pending/blocked 는 그대로."""
+    tasks_path = _make_tasks_md(
+        tmp_path,
+        [("T-001", "done"), ("T-002", "pending"), ("T-003", "done")],
+    )
+    pm = PlanManager()
+    transitioned = pm.mark_for_rebuild(tasks_path, ["T-001", "T-002", "T-003"])
+
+    assert sorted(transitioned) == ["T-001", "T-003"]
+
+    text = tasks_path.read_text(encoding="utf-8")
+    assert "needs_rebuild" in text
+    # T-001, T-003 → needs_rebuild; T-002 → pending 유지
+    import re
+    rows = {m.group(1): m.group(5).strip() for m in
+            __import__("re").finditer(
+                r"^\|\s*(T-\d+)\s*\|\s*(\w+)\s*\|\s*([^|]*)\|\s*([^|]*)\|\s*([^|]+)\|\s*$",
+                text, re.MULTILINE)}
+    assert rows["T-001"] == "needs_rebuild"
+    assert rows["T-002"] == "pending"
+    assert rows["T-003"] == "needs_rebuild"
+
+
+def test_mark_for_rebuild_no_done_tasks_returns_empty(tmp_path: Path) -> None:
+    """affected_tasks 가 모두 pending — 전이 없음, rebuild_required_tasks 비어있음."""
+    tasks_path = _make_tasks_md(
+        tmp_path,
+        [("T-001", "pending"), ("T-002", "in-progress")],
+    )
+    pm = PlanManager()
+    transitioned = pm.mark_for_rebuild(tasks_path, ["T-001", "T-002"])
+
+    assert transitioned == []
+    # 파일 내용 unchanged (needs_rebuild 없음)
+    text = tasks_path.read_text(encoding="utf-8")
+    assert "needs_rebuild" not in text
+
+
+def test_mark_for_rebuild_unknown_task_id_skipped(tmp_path: Path) -> None:
+    """tasks.md 에 없는 ID 는 silently skip — 차단은 run.py 의 사전 검증 담당."""
+    tasks_path = _make_tasks_md(tmp_path, [("T-001", "done")])
+    pm = PlanManager()
+    transitioned = pm.mark_for_rebuild(tasks_path, ["T-001", "T-999"])
+
+    # T-001 전이, T-999 skip
+    assert transitioned == ["T-001"]
+
+
+def test_mark_for_rebuild_idempotent(tmp_path: Path) -> None:
+    """이미 needs_rebuild 상태인 태스크는 재전이 안 됨 — 중복 호출 안전."""
+    tasks_path = _make_tasks_md(tmp_path, [("T-001", "done")])
+    pm = PlanManager()
+
+    # First call: done → needs_rebuild
+    first = pm.mark_for_rebuild(tasks_path, ["T-001"])
+    assert first == ["T-001"]
+
+    # Second call: needs_rebuild is not "done" — no transition
+    second = pm.mark_for_rebuild(tasks_path, ["T-001"])
+    assert second == []
+
+
+def test_mark_for_rebuild_done_aliases(tmp_path: Path) -> None:
+    """'완료' / 'completed' 등 done 별칭도 needs_rebuild 로 전이."""
+    tasks_path = _make_tasks_md(
+        tmp_path,
+        [("T-001", "완료"), ("T-002", "completed")],
+    )
+    pm = PlanManager()
+    transitioned = pm.mark_for_rebuild(tasks_path, ["T-001", "T-002"])
+
+    assert sorted(transitioned) == ["T-001", "T-002"]
+
+
+# ── Group 2 Step 3: skeleton_hash field ────────────────────────────────
+
+
+def test_plan_skeleton_hash_field_round_trip(tmp_path: Path) -> None:
+    """skeleton_hash 가 save → load 후 정확히 복원 (frontmatter 직렬화 회귀 방지)."""
+    pm = PlanManager()
+    plan = _sample_plan()
+    plan.skeleton_hash = "a" * 64  # 64-char hex (SHA-256 형식)
+
+    path = tmp_path / "harness-plan.md"
+    pm.save(plan, path)
+    loaded = pm.load(path)
+
+    assert loaded.skeleton_hash == plan.skeleton_hash, (
+        f"skeleton_hash 가 round-trip 후 보존돼야 함: {loaded.skeleton_hash!r}"
+    )
+
+
+def test_plan_skeleton_hash_omitted_when_empty(tmp_path: Path) -> None:
+    """skeleton_hash 가 빈 문자열이면 frontmatter 에서 키 자체 생략 (legacy plan 호환)."""
+    pm = PlanManager()
+    plan = _sample_plan()
+    assert plan.skeleton_hash == ""
+
+    path = tmp_path / "harness-plan.md"
+    pm.save(plan, path)
+    text = path.read_text(encoding="utf-8")
+
+    assert "skeleton_hash" not in text, (
+        "빈 skeleton_hash 는 frontmatter 에서 생략돼야 함 (legacy plan 호환)"
+    )
+
+    loaded = pm.load(path)
+    assert loaded.skeleton_hash == ""
+
+
+# ── Group 4 Step 2: eng_review_history field ─────────────────────────
+
+
+def test_eng_review_entry_validates_scope() -> None:
+    """잘못된 scope 는 PlanSchemaError, 허용된 3개 값은 정상 생성."""
+    with pytest.raises(PlanSchemaError, match="eng_review scope"):
+        EngReviewEntry(
+            at="2026-05-11T03:45:00+00:00",
+            reviewer="plan-eng-review",
+            scope="both-and-more",  # invalid
+            summary="test",
+            affected_sections=(),
+            affected_tasks=(),
+        )
+
+    # allowed scopes — each must construct without error
+    for scope in ("tasks", "skeleton", "both"):
+        entry = EngReviewEntry(
+            at="2026-05-11T03:45:00+00:00",
+            reviewer="plan-eng-review",
+            scope=scope,
+            summary="ok",
+            affected_sections=(),
+            affected_tasks=(),
+        )
+        assert entry.scope == scope
+
+
+def test_plan_eng_review_history_field_round_trip(tmp_path: Path) -> None:
+    """eng_review_history 가 save → load 후 순서/모든 필드 보존."""
+    pm = PlanManager()
+    plan = _sample_plan()
+
+    pm.record_eng_review(
+        plan,
+        reviewer="plan-eng-review",
+        scope="tasks",
+        summary="T-024.5 분할 + Universal Links 우선순위 조정",
+        affected_sections=("§11", "§16"),
+        affected_tasks=("T-024", "T-024.5"),
+    )
+    pm.record_eng_review(
+        plan,
+        reviewer="manual",
+        scope="skeleton",
+        summary="§6 JWT 만료 정책 수정",
+        affected_sections=("§6",),
+        affected_tasks=(),
+    )
+
+    path = tmp_path / "harness-plan.md"
+    pm.save(plan, path)
+    loaded = pm.load(path)
+
+    assert len(loaded.eng_review_history) == 2
+
+    e0 = loaded.eng_review_history[0]
+    assert e0.reviewer == "plan-eng-review"
+    assert e0.scope == "tasks"
+    assert e0.summary == "T-024.5 분할 + Universal Links 우선순위 조정"
+    assert e0.affected_sections == ("§11", "§16")
+    assert e0.affected_tasks == ("T-024", "T-024.5")
+    assert e0.at  # ISO timestamp 채워짐
+
+    e1 = loaded.eng_review_history[1]
+    assert e1.reviewer == "manual"
+    assert e1.scope == "skeleton"
+    assert e1.affected_sections == ("§6",)
+    assert e1.affected_tasks == ()
+
+
+def test_plan_eng_review_history_omitted_when_empty(tmp_path: Path) -> None:
+    """eng_review_history 가 빈 리스트면 frontmatter 에서 키 자체 생략 (legacy 호환)."""
+    pm = PlanManager()
+    plan = _sample_plan()
+    assert plan.eng_review_history == []
+
+    path = tmp_path / "harness-plan.md"
+    pm.save(plan, path)
+    raw = path.read_text(encoding="utf-8")
+
+    assert "eng_review_history" not in raw, (
+        "빈 eng_review_history 는 frontmatter 에서 생략돼야 함 (legacy plan 호환)"
+    )
+
+
+def test_plan_legacy_missing_eng_review_history(tmp_path: Path) -> None:
+    """frontmatter 에 eng_review_history 키 없는 기존 plan 로드 시 빈 리스트로 복원."""
+    path = tmp_path / "harness-plan.md"
+    path.write_text(
+        "---\n"
+        "harness_version: 2\n"
+        "schema_version: 1\n"
+        "project_name: Legacy\n"
+        "project_type: cli\n"
+        "scale: small\n"
+        "profiles: []\n"
+        "skeleton_sections:\n"
+        "  required: []\n"
+        "  optional: []\n"
+        "  included: []\n"
+        "pipeline:\n"
+        "  steps: []\n"
+        "  current_step: init\n"
+        "  completed_steps: []\n"
+        "  skipped_steps: []\n"
+        "  gstack_mode: manual\n"
+        "---\n"
+        "body\n",
+        encoding="utf-8",
+    )
+    pm = PlanManager()
+    loaded = pm.load(path)
+
+    assert loaded.eng_review_history == [], (
+        "eng_review_history 없는 기존 plan 은 빈 리스트로 로드돼야 함"
+    )
+
+
+def test_eng_review_entry_affected_sections_tuple() -> None:
+    """affected_sections / affected_tasks 가 tuple 로 보존 — frozen dataclass 안전성."""
+    entry = EngReviewEntry(
+        at="2026-05-11T03:45:00+00:00",
+        reviewer="plan-eng-review",
+        scope="both",
+        summary="multi-section review",
+        affected_sections=("§1", "§2", "§3"),
+        affected_tasks=("T-001", "T-002"),
+    )
+    assert isinstance(entry.affected_sections, tuple)
+    assert isinstance(entry.affected_tasks, tuple)
+    assert entry.affected_sections == ("§1", "§2", "§3")
+    assert entry.affected_tasks == ("T-001", "T-002")
+
+
+def test_eng_review_history_appended_entries_preserved(tmp_path: Path) -> None:
+    """기존 entry 1개 있는 plan 로드 → 새 entry 추가 → save → load → 2개 모두 존재."""
+    pm = PlanManager()
+    plan = _sample_plan()
+
+    # First entry
+    pm.record_eng_review(
+        plan,
+        reviewer="plan-eng-review",
+        scope="tasks",
+        summary="first review",
+        affected_sections=("§11",),
+        affected_tasks=("T-001",),
+    )
+
+    path = tmp_path / "harness-plan.md"
+    pm.save(plan, path)
+
+    # Reload and append second entry
+    reloaded = pm.load(path)
+    assert len(reloaded.eng_review_history) == 1
+
+    pm.record_eng_review(
+        reloaded,
+        reviewer="manual",
+        scope="skeleton",
+        summary="second review",
+        affected_sections=("§6",),
+        affected_tasks=(),
+    )
+
+    pm.save(reloaded, path)
+    final = pm.load(path)
+
+    assert len(final.eng_review_history) == 2
+    assert final.eng_review_history[0].summary == "first review"
+    assert final.eng_review_history[1].summary == "second review"
+
+
+# ── external_capabilities (Group 1-D) ────────────────────────────────
+
+
+def test_plan_external_capabilities_round_trip(tmp_path: Path) -> None:
+    """external_capabilities 값이 save/load 후 보존되어야."""
+    pm = PlanManager()
+    plan = pm.create(
+        project_name="BaaSApp",
+        project_type="mobile",
+        scale="small",
+        user_description_original="Firebase 백엔드 사용",
+        profiles=[ProfileRef(id="react-native-expo", path=".")],
+        skeleton_sections=SkeletonSpec((), (), ()),
+        pipeline_steps=[],
+        external_capabilities=["http_server", "users"],
+    )
+    path = tmp_path / "harness-plan.md"
+    pm.save(plan, path)
+    loaded = pm.load(path)
+    assert sorted(loaded.external_capabilities) == ["http_server", "users"]
+
+
+def test_plan_external_capabilities_omitted_when_empty(tmp_path: Path) -> None:
+    """external_capabilities 가 빈 리스트면 frontmatter 에 키 생략 (legacy 호환)."""
+    pm = PlanManager()
+    plan = _sample_plan()
+    assert plan.external_capabilities == []
+    path = tmp_path / "harness-plan.md"
+    pm.save(plan, path)
+    text = path.read_text(encoding="utf-8")
+    assert "external_capabilities" not in text
+
+
+def test_plan_external_capabilities_sorted_in_frontmatter(tmp_path: Path) -> None:
+    """입력 순서 무관 — frontmatter 에 sorted 순서로 저장."""
+    pm = PlanManager()
+    plan = pm.create(
+        project_name="SortedApp",
+        project_type="mobile",
+        scale="small",
+        user_description_original="",
+        profiles=[],
+        skeleton_sections=SkeletonSpec((), (), ()),
+        pipeline_steps=[],
+        external_capabilities=["users", "storage", "http_server"],
+    )
+    path = tmp_path / "harness-plan.md"
+    pm.save(plan, path)
+    text = path.read_text(encoding="utf-8")
+    # sorted order: http_server < storage < users
+    http_pos = text.index("http_server")
+    storage_pos = text.index("storage")
+    users_pos = text.index("users")
+    assert http_pos < storage_pos < users_pos

@@ -3,6 +3,7 @@ id: _base
 name: Base Profile
 description: 모든 프로파일이 상속하는 공통 원칙. 스택과 무관하게 항상 적용.
 extends: null
+provides_capabilities: []
 ---
 
 # Base Profile — 공통 원칙

@@ -189,6 +189,13 @@ file_structure: |
       unit/
       e2e/                       # Playwright
 
+provides_capabilities:
+  - ui
+  - http_server
+  - complex_state
+  - env_config
+  - production_concerns
+
 gstack_mode: manual
 gstack_recommended:
   before_design: [office-hours]

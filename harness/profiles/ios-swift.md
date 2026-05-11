@@ -144,6 +144,14 @@ file_structure: |
       <App>Tests/            # XCTest (단위)
       <App>UITests/          # XCUITest (UI E2E — macOS only)
 
+provides_capabilities:
+  - ui
+  - navigation
+  - lifecycle
+  - build_config
+  - storage
+  - complex_state
+
 gstack_mode: manual
 gstack_recommended:
   before_design: [office-hours]

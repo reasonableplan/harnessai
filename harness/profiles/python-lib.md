@@ -76,6 +76,9 @@ file_structure: |
       test_types.py
     docs/                       # mkdocs (선택)
 
+provides_capabilities:
+  - sdk_surface
+
 gstack_mode: manual
 gstack_recommended:
   before_design: [office-hours]

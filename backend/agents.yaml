@@ -13,6 +13,8 @@ architect:
   on_timeout: retry
   max_retries_on_timeout: 1
   max_tokens: 8192
+  requires_capabilities: []
+  requires_profile_ids: []
 
 designer:
   provider: claude-cli
@@ -22,6 +24,8 @@ designer:
   on_timeout: retry
   max_retries_on_timeout: 1
   max_tokens: 8192
+  requires_capabilities: []
+  requires_profile_ids: []
 
 orchestrator:
   provider: claude-cli
@@ -31,6 +35,8 @@ orchestrator:
   on_timeout: retry
   max_retries_on_timeout: 2
   max_tokens: 8192
+  requires_capabilities: []
+  requires_profile_ids: []
 
 backend_coder:
   provider: claude-cli
@@ -40,6 +46,8 @@ backend_coder:
   on_timeout: retry
   max_retries_on_timeout: 1
   max_tokens: 16384
+  requires_capabilities: [http_server, cli_entrypoint, sdk_surface]
+  requires_profile_ids: []
 
 frontend_coder:
   provider: claude-cli
@@ -49,6 +57,8 @@ frontend_coder:
   on_timeout: retry
   max_retries_on_timeout: 1
   max_tokens: 16384
+  requires_capabilities: [ui]
+  requires_profile_ids: []
 
 # M0 first gate — React Native + Expo mobile coder (M1 에서 본 작업)
 mobile_coder_rn:
@@ -59,6 +69,8 @@ mobile_coder_rn:
   on_timeout: retry
   max_retries_on_timeout: 1
   max_tokens: 16384
+  requires_capabilities: [ui, navigation]
+  requires_profile_ids: [react-native-expo]
 
 # M0-B — Flutter mobile coder (M2 에서 본 작업, Dart 비주류라 sonnet)
 mobile_coder_flutter:
@@ -69,6 +81,8 @@ mobile_coder_flutter:
   on_timeout: retry
   max_retries_on_timeout: 1
   max_tokens: 16384
+  requires_capabilities: [ui, navigation]
+  requires_profile_ids: [flutter]
 
 # M0-B — Android Kotlin native (M3 에서 본 작업, Gradle 빌드 시간 고려 900s)
 mobile_coder_android:
@@ -79,6 +93,8 @@ mobile_coder_android:
   on_timeout: retry
   max_retries_on_timeout: 1
   max_tokens: 16384
+  requires_capabilities: [ui, navigation]
+  requires_profile_ids: [android-kotlin]
 
 # M0-B — iOS Swift native (M3, Windows 호스트는 SwiftLint + swift build 만)
 mobile_coder_ios:
@@ -89,6 +105,8 @@ mobile_coder_ios:
   on_timeout: retry
   max_retries_on_timeout: 1
   max_tokens: 16384
+  requires_capabilities: [ui, navigation]
+  requires_profile_ids: [ios-swift]
 
 reviewer:
   provider: claude-cli
@@ -98,6 +116,8 @@ reviewer:
   on_timeout: escalate
   max_retries_on_timeout: 1
   max_tokens: 8192
+  requires_capabilities: []
+  requires_profile_ids: []
 
 qa:
   provider: claude-cli
@@ -107,3 +127,5 @@ qa:
   on_timeout: retry
   max_retries_on_timeout: 1
   max_tokens: 8192
+  requires_capabilities: []
+  requires_profile_ids: []

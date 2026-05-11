@@ -174,6 +174,14 @@ file_structure: |
         test/                 # unit (junit + mockk + turbine)
         androidTest/          # instrumented (espresso + compose-ui-test)
 
+provides_capabilities:
+  - ui
+  - navigation
+  - lifecycle
+  - build_config
+  - storage
+  - complex_state
+
 gstack_mode: manual
 gstack_recommended:
   before_design: [office-hours]

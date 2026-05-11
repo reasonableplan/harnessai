@@ -3,6 +3,11 @@
 Phase 2-b-3 added: compute_active_sections() — 6축 답변 + profile components →
 fragment.required_when 평가 → 활성 섹션 ID 결정 (skeleton 자동 맞춤).
 
+Group 5 Step 1: SRP split — derive_axes_capabilities → capabilities.py,
+ConsistencyViolation/find_consistency_violations → consistency.py,
+UnknownLessonReference/extract_known_lessons/find_unknown_lesson_references → lessons.py.
+Re-exports below preserve backward compatibility for all existing callers.
+
 See design doc §3 (profile system spec) and §11 (migration plan).
 """
 
@@ -15,6 +20,7 @@ from typing import Any
 
 import yaml
 
+from src.orchestrator.capabilities import derive_axes_capabilities
 from src.orchestrator.plan_manager import ScaleAxes
 from src.orchestrator.scale_expression import (
     EvalContext,
@@ -27,42 +33,6 @@ from src.orchestrator.scale_expression import (
 DEFAULT_HARNESS_DIR = Path.home() / ".claude" / "harness"
 
 _FRONTMATTER_RE = re.compile(r"^---\r?\n(.*?)\r?\n---", re.DOTALL)
-
-
-# 섹션 ID → has 키 매핑. profile.skeleton_sections.{required, optional} 에
-# declared 된 섹션이 있으면 그 섹션의 has 키가 활성. fragment 의 required_when
-# 표현식이 has.<key> atom 으로 참조.
-#
-# KEEP IN SYNC with harness/templates/skeleton/<id>.md frontmatter 의
-# required_when. 새 섹션 추가 시 이 매핑도 갱신 — 그렇지 않으면 활성 결정에서
-# 빠짐 (silent miss).
-_SECTION_TO_HAS_KEY: dict[str, str] = {
-    "auth": "users",
-    "authorization_matrix": "users",
-    "user_journey": "users",
-    "persistence": "storage",
-    "data_model": "storage",
-    "configuration": "env_config",
-    "external_deps": "external_deps",
-    "integrations": "external_deps",
-    "interface.http": "http_server",
-    "interface.cli": "cli_entrypoint",
-    "interface.ipc": "ipc",
-    "interface.sdk": "sdk_surface",
-    "view.screens": "ui",
-    "view.components": "ui",
-    "state.flow": "complex_state",
-    "observability": "production_concerns",
-    "deployment": "production_concerns",
-    "ci_cd": "production_concerns",
-    "runbook": "production_concerns",
-    # Mobile — profile 이 mobile.* 를 declared sections 에 포함하면
-    # has.navigation / has.build_config / has.lifecycle atom 활성.
-    # Web/CLI/Lib 프로파일은 이 섹션을 선언 안 하므로 자동 비활성 (호환성 유지).
-    "mobile.navigation": "navigation",
-    "mobile.build_config": "build_config",
-    "mobile.lifecycle": "lifecycle",
-}
 
 # user_scale → scale.X 토큰 (cumulative — small 은 small_or_larger 까지만,
 # medium 은 small + medium, large 는 셋 다).
@@ -137,6 +107,11 @@ class Profile:
     lessons_applied: tuple[str, ...]
     body: str  # markdown body (frontmatter stripped)
     raw: dict[str, Any] = field(default_factory=dict)
+    # Capabilities the profile directly provides. Used by compute_has_keys
+    # to drive fragment.required_when evaluation. Empty tuple means no
+    # has.* atoms contributed (strict — legacy section-based fallback
+    # was removed in Step 3). All profiles should declare this explicitly.
+    provides_capabilities: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -305,24 +280,40 @@ class ProfileLoader:
 
     # ── Phase 2-b-3: 6축 답변 → 활성 섹션 결정 ─────────────────────
 
-    def compute_has_keys(self, profiles: list[Profile]) -> frozenset[str]:
-        """Profiles 의 declared sections (required ∪ optional) 에서 has 키 추출.
+    def compute_has_keys(
+        self,
+        profiles: list[Profile],
+        axes: ScaleAxes | None = None,
+        external_capabilities: frozenset[str] | None = None,
+    ) -> frozenset[str]:
+        """Compute has.* atoms from THREE sources (union):
 
-        반환된 frozenset 은 fragment 의 required_when 표현식 평가 시 ctx.has_keys
-        로 사용. 표준 has 토큰 (users / storage / env_config / external_deps /
-        http_server / cli_entrypoint / ipc / sdk_surface / ui / complex_state /
-        production_concerns) 만 포함 — `_SECTION_TO_HAS_KEY` 매핑에 없는 섹션은
-        무시.
+        1. profile.provides_capabilities (explicit declaration)
+        2. derive_axes_capabilities(axes) (user-intent inference from 6 axes)
+        3. external_capabilities (Group 1-D: user-declared BaaS / external
+           services. e.g. Firebase provides http_server + users + storage
+           even without a backend profile in the profiles list.)
+
+        All profiles MUST declare provides_capabilities (possibly empty list).
+        Profile validation catches any profile that fails to declare it
+        explicitly — silent legacy fallback removed in Step 3.
+
+        axes is optional for backward compatibility — callers that haven't
+        migrated still work, just without axes-derived atoms.
+        external_capabilities is optional — None is treated as an empty set
+        (backward-compatible; existing callers are unaffected).
         """
         keys: set[str] = set()
+
         for profile in profiles:
-            for section_id in (
-                *profile.skeleton_sections.required,
-                *profile.skeleton_sections.optional,
-            ):
-                mapped = _SECTION_TO_HAS_KEY.get(section_id)
-                if mapped:
-                    keys.add(mapped)
+            keys.update(profile.provides_capabilities)
+
+        if axes is not None:
+            keys.update(derive_axes_capabilities(axes))
+
+        if external_capabilities:
+            keys.update(external_capabilities)
+
         return frozenset(keys)
 
     def compute_scale_tokens(self, axes: ScaleAxes) -> frozenset[str]:
@@ -364,8 +355,9 @@ class ProfileLoader:
         axes: ScaleAxes,
         profiles: list[Profile],
         fragments_dir: Path | None = None,
-    ) -> list[str]:
-        """6축 + profiles → 활성 fragment 섹션 ID 리스트 (정렬 보장).
+        external_capabilities: frozenset[str] | None = None,
+    ) -> tuple[list[str], dict[str, str]]:
+        """6축 + profiles → (활성 섹션 ID 리스트, activation trace dict).
 
         결정 흐름:
             profiles → has_keys (declared sections 매핑)
@@ -374,11 +366,19 @@ class ProfileLoader:
             scale_expression.evaluate(required_when, ctx) → bool
             True 인 fragment id 만 수집
 
-        표현식 파싱 실패 시: 보수적으로 활성화 (False positive 가 False negative
-        보다 안전 — 사용자가 만든 fragment 는 일반적으로 더 포함되는 게 안전).
+        반환값:
+            (active, trace) — active 는 정렬된 활성 섹션 ID 리스트,
+            trace 는 {section_id: required_when_expression} dict.
+            파싱 에러로 보수적 활성된 경우 trace 값은 "<parse-error: {expression}>" 형식.
+
+        표현식 파싱 실패 시: stderr 에 경고 출력 후 보수적으로 활성화 (false negative 방지).
         invalid expression 은 harness validate 가 사전에 거부.
+
+        external_capabilities: Group 1-D — user-declared BaaS / external service
+        atoms unioned into has_keys so fragment required_when evaluation includes them.
+        None is treated as an empty set (backward-compatible).
         """
-        has_keys = self.compute_has_keys(profiles)
+        has_keys = self.compute_has_keys(profiles, axes, external_capabilities)
         scale_tokens = self.compute_scale_tokens(axes)
         fragments = self.load_fragments_metadata(fragments_dir)
 
@@ -389,15 +389,23 @@ class ProfileLoader:
         )
 
         active: list[str] = []
+        trace: dict[str, str] = {}
         for frag_id, required_when in sorted(fragments.items()):
             try:
                 if scale_evaluate(required_when, ctx):
                     active.append(frag_id)
-            except ExpressionParseError:
-                # 보수적 활성화 — Phase 2-b-2 의 harness validate 가 사전에
-                # invalid expression 을 거부하므로 정상 경로에서는 도달 안 함.
-                active.append(frag_id)
-        return active
+                    trace[frag_id] = required_when
+            except ExpressionParseError as exc:
+                # Fail-fast: invalid required_when expression is a fragment
+                # authoring bug. Silent conservative activation hid typos from
+                # users — Group 5 Step 3 strictness. `harness validate` should
+                # catch these before they reach runtime; surfacing frag_id here
+                # gives actionable diagnostics if it slips through.
+                raise ExpressionParseError(
+                    f'fragment "{frag_id}" 의 required_when 파싱 실패 — '
+                    f"harness validate 로 검증 후 수정: {exc}"
+                ) from exc
+        return active, trace
 
     # ── 기존 ────────────────────────────────────────────────────────────
 
@@ -406,6 +414,12 @@ class ProfileLoader:
         wl = data.get("whitelist") or {}
         tc = data.get("toolchain") or {}
         comps = data.get("components") or []
+
+        # provides_capabilities: list in frontmatter → tuple; missing key → empty tuple (legacy).
+        raw_caps = data.get("provides_capabilities")
+        provides_capabilities: tuple[str, ...] = (
+            tuple(str(c) for c in raw_caps) if isinstance(raw_caps, list) else ()
+        )
 
         return Profile(
             id=data["id"],
@@ -448,6 +462,7 @@ class ProfileLoader:
             lessons_applied=tuple(data.get("lessons_applied") or []),
             body=body,
             raw=data,
+            provides_capabilities=provides_capabilities,
         )
 
 
@@ -545,3 +560,17 @@ def _merge_skeleton_sections(
         out[sub] = combined
     out["order"] = child.get("order") or base.get("order") or []
     return out
+
+
+# Re-exports for backward compatibility (Group 5 Step 1 SRP split).
+# Prefer importing from the specialized modules directly in new code.
+from src.orchestrator.consistency import (  # noqa: E402, F401, I001
+    ConsistencyViolation,
+    _HAS_KEY_PROVIDERS,
+    find_consistency_violations,
+)
+from src.orchestrator.lessons import (  # noqa: E402, F401, I001
+    UnknownLessonReference,
+    extract_known_lessons,
+    find_unknown_lesson_references,
+)

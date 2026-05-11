@@ -50,6 +50,8 @@ file_structure: |
     templates/                # 스킬이 생성/참조하는 템플릿
     scripts/                  # 스킬이 호출하는 bash 스크립트
 
+provides_capabilities: []
+
 gstack_mode: manual
 gstack_recommended:
   after_design: [plan-eng-review]

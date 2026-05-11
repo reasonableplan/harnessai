@@ -171,6 +171,12 @@ file_structure: |
       icons/                       # icon.ico (Win) / icon.icns (Mac) / icon.png (Linux)
     __tests__/
 
+provides_capabilities:
+  - ui
+  - ipc
+  - complex_state
+  - env_config
+
 gstack_mode: manual
 gstack_recommended:
   before_design: [office-hours]

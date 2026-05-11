@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Self
 
 import yaml
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class Provider(StrEnum):
@@ -35,6 +35,12 @@ class AgentConfig(BaseModel):
     max_retries_on_timeout: int = 1
     max_tokens: int = 8192
     api_base: str | None = None  # required for local provider
+    # Capability-based routing (Group 3 Step 1).
+    # Empty list = capability-agnostic (architect, reviewer, etc.).
+    # Non-empty = agent handles tasks that share at least one of these
+    # has.* atoms (any-of) AND all listed profile IDs are active.
+    requires_capabilities: list[str] = Field(default_factory=list)
+    requires_profile_ids: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_retry_with_timeout_policy(self) -> Self:

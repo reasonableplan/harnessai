@@ -50,6 +50,17 @@ ALLOWED_LIFECYCLE = {"poc", "mvp", "ga"}
 #   rejected: user declined the proposal — kept for audit trail.
 ALLOWED_REDESIGN_STATUS = {"proposed", "approved", "applied", "rejected"}
 
+# Task status produced by redesign propagation — distinct from ha-build statuses
+# (done | blocked | in-progress) so that ha-verify / ha-build --skip-done cannot
+# silently pass stale code. Only mark_for_rebuild() may set this value; general
+# task status updates go through ha-build complete.
+TASK_STATUS_NEEDS_REBUILD = "needs_rebuild"
+
+# Eng-review audit trail — captures external engineering review events (e.g. /plan-eng-review).
+# Distinct from redesign_history (purpose: mutation propagation) — eng_review_history records
+# what an external review tool examined and changed, without driving a redesign lifecycle.
+ALLOWED_ENG_REVIEW_SCOPES = {"tasks", "skeleton", "both"}
+
 
 # Data models
 
@@ -95,6 +106,31 @@ class RedesignEntry:
             raise PlanSchemaError(
                 f"redesign status must be one of {sorted(ALLOWED_REDESIGN_STATUS)}, "
                 f"got '{self.status}'"
+            )
+
+
+@dataclass(frozen=True)
+class EngReviewEntry:
+    """A single external engineering review event (e.g. /plan-eng-review).
+
+    Captures *what was reviewed* + *what changed* + *who/when* so that
+    skeleton.md / tasks.md mutations performed by external tools have an
+    audit trail in the plan frontmatter. The plan body remains the
+    source of truth for content; this entry is metadata only.
+    """
+
+    at: str  # ISO 8601 UTC
+    reviewer: str  # tool/agent label (e.g. "plan-eng-review", "manual")
+    scope: str  # one of ALLOWED_ENG_REVIEW_SCOPES
+    summary: str  # one-line human-readable summary
+    affected_sections: tuple[str, ...]  # skeleton section IDs (e.g. "§13") or fragment IDs
+    affected_tasks: tuple[str, ...]  # task IDs (e.g. "T-024")
+
+    def __post_init__(self) -> None:
+        if self.scope not in ALLOWED_ENG_REVIEW_SCOPES:
+            raise PlanSchemaError(
+                f"eng_review scope must be one of {sorted(ALLOWED_ENG_REVIEW_SCOPES)}, "
+                f"got '{self.scope}'"
             )
 
 
@@ -178,7 +214,32 @@ class HarnessPlan:
     scale_axes: ScaleAxes = field(default_factory=ScaleAxes)
     verify_history: list[VerifyRecord] = field(default_factory=list)
     redesign_history: list[RedesignEntry] = field(default_factory=list)
+    # eng_review_history: audit trail for external engineering review events (e.g. /plan-eng-review).
+    # Records what a review tool examined and changed in skeleton.md / tasks.md — distinct from
+    # redesign_history (ha-redesign mutation propagation lifecycle). Empty list = no external
+    # reviews recorded (legacy or fresh plan). Omitted from frontmatter when empty (backward-compat).
+    eng_review_history: list[EngReviewEntry] = field(default_factory=list)
     backups: list[dict[str, Any]] = field(default_factory=list)
+    # activation_trace: {section_id: required_when_expression} — why each section
+    # was activated. Empty dict when --included override was used (no auto-derivation).
+    # Omitted from frontmatter when empty (backward-compatible with legacy plans).
+    activation_trace: dict[str, str] = field(default_factory=dict)
+    # SHA-256 hash of skeleton.md as of the last ha-design commit (or
+    # ha-redesign apply). Used by downstream skills to detect external
+    # modifications (e.g., /plan-eng-review writing to skeleton.md without
+    # /ha-redesign audit). Empty string for legacy plans (no comparison).
+    # Omitted from frontmatter when empty (backward-compatible with legacy plans).
+    skeleton_hash: str = ""
+    # external_capabilities: user-declared has.* atoms provided by external services
+    # (e.g. Firebase / Supabase / managed backend) that are NOT covered by any
+    # profile in the active profile set.  compute_has_keys() unions these in so
+    # fragment required_when evaluation and find_consistency_violations() treat them
+    # as satisfied — preventing false-positive violation reports for BaaS cases.
+    # Empty list = no external services declared (default).
+    # Omitted from frontmatter when empty (legacy backward-compat).
+    # Values must be members of KNOWN_CAPABILITY_ATOMS; validated at the CLI layer
+    # (ha-init write --external-capabilities) before being written here.
+    external_capabilities: list[str] = field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
     last_activity: str = ""
@@ -273,6 +334,8 @@ class PlanManager:
         pipeline_steps: list[str],
         gstack_mode: str = "manual",
         scale_axes: ScaleAxes | None = None,
+        activation_trace: dict[str, str] | None = None,
+        external_capabilities: list[str] | None = None,
         body: str = "",
     ) -> HarnessPlan:
         """Create a new plan. Starts at current_step="init"."""
@@ -301,6 +364,8 @@ class PlanManager:
                 gstack_mode=gstack_mode,
             ),
             scale_axes=scale_axes or ScaleAxes(),
+            activation_trace=dict(activation_trace) if activation_trace else {},
+            external_capabilities=list(external_capabilities) if external_capabilities else [],
             created_at=now,
             updated_at=now,
             last_activity=now,
@@ -434,6 +499,34 @@ class PlanManager:
         plan.last_activity = _now_iso()
         return plan
 
+    def record_eng_review(
+        self,
+        plan: HarnessPlan,
+        *,
+        reviewer: str,
+        scope: str,
+        summary: str,
+        affected_sections: tuple[str, ...] | list[str] = (),
+        affected_tasks: tuple[str, ...] | list[str] = (),
+    ) -> HarnessPlan:
+        """Append an eng-review entry — used by /plan-eng-review and similar tools.
+
+        Each call appends a new entry preserving the full audit trail. Entries are
+        never mutated or removed after creation (audit trail integrity).
+        """
+        plan.eng_review_history.append(
+            EngReviewEntry(
+                at=_now_iso(),
+                reviewer=reviewer,
+                scope=scope,
+                summary=summary,
+                affected_sections=tuple(affected_sections),
+                affected_tasks=tuple(affected_tasks),
+            )
+        )
+        plan.last_activity = _now_iso()
+        return plan
+
     def mark_skipped(self, plan: HarnessPlan, step: str) -> HarnessPlan:
         """Add step to skipped_steps."""
         if step in plan.pipeline.skipped_steps:
@@ -447,6 +540,66 @@ class PlanManager:
         )
         plan.last_activity = _now_iso()
         return plan
+
+    def mark_for_rebuild(
+        self,
+        tasks_path: Path,
+        task_ids: list[str],
+    ) -> list[str]:
+        """Rewrite status of done tasks to needs_rebuild in tasks.md.
+
+        Called exclusively by ha-redesign commit --status applied when affected_tasks
+        contain tasks whose status is already "done". This prevents ha-verify /
+        ha-build --skip-done from silently validating stale code.
+
+        Only tasks with status "done" (case-insensitive, including "완료"/"completed")
+        are transitioned; tasks with any other status are left unchanged. This is an
+        intentional special path — mark_for_rebuild() is the only caller that may set
+        TASK_STATUS_NEEDS_REBUILD on a task. General status updates go through
+        ha-build complete.
+
+        Args:
+            tasks_path: Absolute path to tasks.md.
+            task_ids: Task IDs to inspect and potentially rewrite.
+
+        Returns:
+            List of task IDs that were actually transitioned (status was "done").
+
+        Raises:
+            OSError: tasks_path read or write failed.
+        """
+        text = tasks_path.read_text(encoding="utf-8")
+        transitioned: list[str] = []
+
+        for task_id in task_ids:
+            # Locate the row and extract the current status column (5th pipe segment).
+            # Pattern mirrors ha-build/run.py cmd_complete for consistency.
+            # Note: regex is compiled per iteration because task_id is interpolated
+            # into the pattern; task_ids is typically small (≤ tens) so the cost
+            # is negligible. lru_cache 도 가능하지만 함수 호출 빈도가 낮아 over-engineering.
+            row_re = re.compile(
+                rf"(\|\s*{re.escape(task_id)}\s*\|.*?\|.*?\|.*?\|\s*)([^|]+)(\|\s*$)",
+                re.MULTILINE,
+            )
+            m = row_re.search(text)
+            if m is None:
+                # Task ID not found — caller already validated existence; skip silently.
+                continue
+            current_status = m.group(2).strip().lower()
+            if current_status in ("done", "완료", "completed"):
+                text = row_re.sub(
+                    lambda match: (
+                        f"{match.group(1)}{TASK_STATUS_NEEDS_REBUILD:<10}{match.group(3)}"
+                    ),
+                    text,
+                    count=1,
+                )
+                transitioned.append(task_id)
+
+        if transitioned:
+            tasks_path.write_text(text, encoding="utf-8")
+
+        return transitioned
 
     def add_backup(
         self,
@@ -467,6 +620,34 @@ class PlanManager:
 def _now_iso() -> str:
     """Current UTC time as ISO 8601 (microseconds truncated)."""
     return datetime.now(UTC).replace(microsecond=0).isoformat()
+
+
+def _parse_eng_review_history(raw: list[Any]) -> list[EngReviewEntry]:
+    """Parse eng_review_history list. Audit trail integrity matters here so
+    malformed entries raise PlanSchemaError instead of being silently dropped —
+    a vanished review entry would defeat the purpose of the audit trail.
+    """
+    out: list[EngReviewEntry] = []
+    for i, r in enumerate(raw):
+        if not isinstance(r, dict):
+            raise PlanSchemaError(
+                f"eng_review_history[{i}] must be a mapping, got {type(r).__name__}"
+            )
+        if "summary" not in r:
+            raise PlanSchemaError(
+                f"eng_review_history[{i}] missing required field 'summary'"
+            )
+        out.append(
+            EngReviewEntry(
+                at=r.get("at", ""),
+                reviewer=r.get("reviewer", ""),
+                scope=r.get("scope", "tasks"),
+                summary=r["summary"],
+                affected_sections=tuple(r.get("affected_sections") or []),
+                affected_tasks=tuple(r.get("affected_tasks") or []),
+            )
+        )
+    return out
 
 
 def _parse_redesign_history(raw: list[Any]) -> list[RedesignEntry]:
@@ -505,7 +686,24 @@ def _dict_to_plan(data: dict[str, Any], body: str) -> HarnessPlan:
         profiles_raw = data.get("profiles") or []
         verify_raw = data.get("verify_history") or []
         redesign_raw = data.get("redesign_history") or []
+        eng_review_raw = data.get("eng_review_history") or []
         scale_axes_raw = data.get("scale_axes") or {}
+        # activation_trace: legacy plans without this key load as empty dict (backward-compat).
+        activation_trace_raw = data.get("activation_trace") or {}
+        activation_trace = (
+            {str(k): str(v) for k, v in activation_trace_raw.items()}
+            if isinstance(activation_trace_raw, dict)
+            else {}
+        )
+        # skeleton_hash: legacy plans without this key load as empty string (backward-compat).
+        skeleton_hash = str(data.get("skeleton_hash") or "")
+        # external_capabilities: legacy plans without this key load as empty list (backward-compat).
+        external_caps_raw = data.get("external_capabilities") or []
+        external_capabilities = (
+            [str(c) for c in external_caps_raw]
+            if isinstance(external_caps_raw, list)
+            else []
+        )
 
         return HarnessPlan(
             project_name=data["project_name"],
@@ -552,7 +750,11 @@ def _dict_to_plan(data: dict[str, Any], body: str) -> HarnessPlan:
                 if isinstance(v, dict) and "step" in v
             ],
             redesign_history=_parse_redesign_history(redesign_raw),
+            eng_review_history=_parse_eng_review_history(eng_review_raw),
             backups=list(data.get("backups") or []),
+            activation_trace=activation_trace,
+            skeleton_hash=skeleton_hash,
+            external_capabilities=external_capabilities,
             created_at=data.get("created_at", ""),
             updated_at=data.get("updated_at", ""),
             last_activity=data.get("last_activity", ""),
@@ -566,7 +768,7 @@ def _dict_to_plan(data: dict[str, Any], body: str) -> HarnessPlan:
 
 def _plan_to_dict(plan: HarnessPlan) -> dict[str, Any]:
     """Convert HarnessPlan to frontmatter dict (preserves key order)."""
-    return {
+    d: dict[str, Any] = {
         "harness_version": plan.harness_version,
         "schema_version": plan.schema_version,
         "project_name": plan.project_name,
@@ -614,3 +816,31 @@ def _plan_to_dict(plan: HarnessPlan) -> dict[str, Any]:
         "backups": plan.backups,
         "last_activity": plan.last_activity,
     }
+    # eng_review_history: only written when non-empty — omitting it keeps legacy plans
+    # clean and avoids a meaningless empty list in frontmatter.
+    if plan.eng_review_history:
+        d["eng_review_history"] = [
+            {
+                "at": e.at,
+                "reviewer": e.reviewer,
+                "scope": e.scope,
+                "summary": e.summary,
+                "affected_sections": list(e.affected_sections),
+                "affected_tasks": list(e.affected_tasks),
+            }
+            for e in plan.eng_review_history
+        ]
+    # activation_trace: only written when non-empty — omitting it keeps legacy plans
+    # clean and avoids a meaningless empty mapping in frontmatter.
+    # Keys are sorted for deterministic output (regression-test stability).
+    if plan.activation_trace:
+        d["activation_trace"] = dict(sorted(plan.activation_trace.items()))
+    # skeleton_hash: only written when non-empty — omitting it keeps legacy plans
+    # clean. Set by ha-design commit and ha-redesign apply; empty for fresh plans.
+    if plan.skeleton_hash:
+        d["skeleton_hash"] = plan.skeleton_hash
+    # external_capabilities: only written when non-empty — omitting it keeps legacy
+    # plans clean. Values are sorted for deterministic output (regression-test stability).
+    if plan.external_capabilities:
+        d["external_capabilities"] = sorted(plan.external_capabilities)
+    return d
