@@ -28,13 +28,18 @@ except (AttributeError, OSError):
 sys.path.insert(0, str(Path(__file__).parent.parent / "_ha_shared"))
 from utils import HARNESS_HOME, info, resolve_guideline_paths  # noqa: E402, I001
 
+from src.orchestrator.capabilities import KNOWN_CAPABILITY_ATOMS  # noqa: E402
 from src.orchestrator.plan_manager import (  # noqa: E402
     PlanManager,
     ProfileRef,
     ScaleAxes,
     SkeletonSpec,
 )
-from src.orchestrator.profile_loader import Profile, ProfileLoader  # noqa: E402
+from src.orchestrator.profile_loader import (  # noqa: E402
+    Profile,
+    ProfileLoader,
+    find_consistency_violations,
+)
 from src.orchestrator.skeleton_assembler import SkeletonAssembler  # noqa: E402
 
 
@@ -158,6 +163,21 @@ def cmd_write(args: argparse.Namespace) -> int:
     )
     primary_path = profiles_for_plan[0].path
 
+    # external_capabilities — BaaS / 외부 backend escape hatch (Group 1-D)
+    external_caps_raw = args.external_capabilities.strip()
+    external_capabilities: frozenset[str] = frozenset(
+        a.strip() for a in external_caps_raw.split(",") if a.strip()
+    )
+    if external_capabilities:
+        unknown_external = external_capabilities - KNOWN_CAPABILITY_ATOMS
+        if unknown_external:
+            print(
+                f"[FAIL] --external-capabilities 의 unknown atom: {sorted(unknown_external)}. "
+                f"허용 셋: {sorted(KNOWN_CAPABILITY_ATOMS)}",
+                file=sys.stderr,
+            )
+            return 1
+
     # 6축 — auto-determine 보다 위로 (axes 가 입력 중 하나라서)
     args.scale = args.user_scale  # legacy `scale` 강제 동기화
     axes = ScaleAxes(
@@ -180,28 +200,70 @@ def cmd_write(args: argparse.Namespace) -> int:
             candidate = HARNESS_HOME / "harness" / "templates" / "skeleton"
             if candidate.exists():
                 fragments_dir_hint = candidate
-        included = loader.compute_active_sections(axes, profile_objs, fragments_dir_hint)
+        included, activation_trace = loader.compute_active_sections(
+            axes, profile_objs, fragments_dir_hint,
+            external_capabilities=external_capabilities or None,
+        )
         if not included:
             print(
                 "[FAIL] auto-determine 결과 활성 섹션 0 — 6축 답변 또는 profile 확인 필요",
                 file=sys.stderr,
             )
             return 1
+
+        # Cross-section consistency check — deterministic, not advisory-only.
+        # violations 는 차단하지 않음 (write 진행). 차단은 SKILL.md 의 LLM 인터뷰가 담당.
+        consistency_violations = find_consistency_violations(
+            activation_trace, profile_objs,
+            external_capabilities=external_capabilities or None,
+        )
+        if consistency_violations:
+            print(
+                f"[WARN] 활성 섹션 중 {len(consistency_violations)}개가 profile 셋과 정합하지 않습니다:",
+                file=sys.stderr,
+            )
+            for v in consistency_violations:
+                providers_str = ", ".join(v.expected_providers) if v.expected_providers else "(없음)"
+                print(
+                    f"  - {v.section_id}: {v.trigger_expression}"
+                    f"  (필요: has.{v.missing_atom}, 제공 가능 프로파일: {providers_str})",
+                    file=sys.stderr,
+                )
+            print("SKILL.md 의 명시 승인 흐름을 따르세요.", file=sys.stderr)
     else:
         included = [s.strip() for s in included_raw.split(",") if s.strip()]
+        # Override path — no auto-derivation, so no trace to record.
+        activation_trace: dict[str, str] = {}
+        consistency_violations: list = []
         if not included:
             print("[FAIL] --included 빈 결과", file=sys.stderr)
             return 2
 
-    # skeleton 조립 — included 를 primary 의 order 에 따라 정렬 + 외부는 끝에 append
-    primary_order = list(primary.skeleton_sections.order)
+    # skeleton 조립 — 모든 프로파일 order 병합 (tasks/notes 는 항상 맨 끝)
+    # paired 모드에서 secondary 프로파일(mobile.* 등)이 tasks/notes 뒤로 밀리는 문제 방지
+    _TERMINAL = {"tasks", "notes"}
+    seen_order: set[str] = set()
+    merged_order: list[str] = []
+    terminal_order: list[str] = []
+    for prof in profile_objs:
+        for sid in prof.skeleton_sections.order:
+            if sid in _TERMINAL:
+                if sid not in seen_order:
+                    terminal_order.append(sid)
+                    seen_order.add(sid)
+            elif sid not in seen_order:
+                merged_order.append(sid)
+                seen_order.add(sid)
+    full_order = merged_order + terminal_order
+
+    included_set = set(included)
     seen: set[str] = set()
     ordered_included: list[str] = []
-    for sid in primary_order:
-        if sid in included and sid not in seen:
+    for sid in full_order:
+        if sid in included_set and sid not in seen:
             ordered_included.append(sid)
             seen.add(sid)
-    for sid in included:  # primary order 에 없으면 끝에 append
+    for sid in included:  # full_order 에도 없는 항목 (edge case) → 끝에 append
         if sid not in seen:
             ordered_included.append(sid)
             seen.add(sid)
@@ -256,6 +318,8 @@ def cmd_write(args: argparse.Namespace) -> int:
         ),
         gstack_mode=args.gstack_mode,
         scale_axes=axes,
+        activation_trace=activation_trace,
+        external_capabilities=sorted(external_capabilities) if external_capabilities else None,
     )
     plan.body = (
         f"# {project.name}\n\n"
@@ -293,6 +357,15 @@ def cmd_write(args: argparse.Namespace) -> int:
                 "guideline_paths": [str(g) for g in resolve_guideline_paths(p.id)],
             }
             for p in profiles_for_plan
+        ],
+        "consistency_violations": [
+            {
+                "section_id": v.section_id,
+                "trigger_expression": v.trigger_expression,
+                "missing_atom": v.missing_atom,
+                "expected_providers": list(v.expected_providers),
+            }
+            for v in consistency_violations
         ],
     }, ensure_ascii=False, indent=2))
     return 0
@@ -374,6 +447,17 @@ def main() -> int:
         "--overwrite",
         action="store_true",
         help="기존 파일 백업 없이 덮어쓰기",
+    )
+    w.add_argument(
+        "--external-capabilities",
+        default="",
+        help=(
+            "콤마 구분 has.* atom (예: 'http_server,users,storage'). "
+            "사용자가 명시한 외부 서비스 (BaaS / Firebase / Supabase 등) 가 제공하는 capability. "
+            "compute_active_sections + find_consistency_violations 가 이 atom 들을 만족된 것으로 간주 — "
+            "backend profile 없이도 BaaS 가 제공하는 섹션의 false-positive violation 방지. "
+            "KNOWN_CAPABILITY_ATOMS 안의 atom 만 허용 (typo 차단)."
+        ),
     )
 
     args = parser.parse_args()

@@ -30,8 +30,10 @@ def main() -> int:
     a = ScaleAxes(data_sensitivity="pii", lifecycle="mvp", availability="standard")
     b = ScaleAxes(data_sensitivity="none", lifecycle="poc", availability="casual")
 
-    sec_a = set(loader.compute_active_sections(a, [profile], FRAGMENTS_DIR))
-    sec_b = set(loader.compute_active_sections(b, [profile], FRAGMENTS_DIR))
+    active_a, _trace_a = loader.compute_active_sections(a, [profile], FRAGMENTS_DIR)
+    active_b, _trace_b = loader.compute_active_sections(b, [profile], FRAGMENTS_DIR)
+    sec_a = set(active_a)
+    sec_b = set(active_b)
 
     print(f"A  pii + mvp + standard  ->  {len(sec_a)} sections")
     print(f"B  none + poc + casual   ->  {len(sec_b)} sections")
