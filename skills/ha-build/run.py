@@ -296,11 +296,12 @@ def cmd_complete(args: argparse.Namespace) -> int:
         info(f"[FAIL] {e}")
         return 2
 
-    if args.status not in ("done", "blocked", "in-progress"):
-        info(f"[FAIL] --status: done|blocked|in-progress, 현재 '{args.status}'")
+    if args.status not in ("done", "blocked", "in-progress", "skipped"):
+        info(f"[FAIL] --status: done|blocked|in-progress|skipped, 현재 '{args.status}'")
         return 2
 
     # LESSON-021: done 마킹 전 toolchain 전체 강제 (test + lint + type)
+    # skipped/blocked 는 게이트 불필요 — 빌드 안 한 태스크에 검증 무의미.
     # --skip-toolchain 로 opt-out (문서/설계 태스크 등).
     if args.status == "done" and not args.skip_toolchain:
         info("[gate] LESSON-021: toolchain (test/lint/type) 검증 중 …")
@@ -313,7 +314,7 @@ def cmd_complete(args: argparse.Namespace) -> int:
             return 1
         info("[gate] toolchain 전부 통과")
 
-    if args.status == "done" and not args.skip_security:
+    if args.status == "done" and not args.skip_security:  # skipped/blocked 는 security gate 불필요
         info("[gate] security_hooks: BLOCK 패턴 검사 중 …")
         sec_failures = _run_security_gate(project, plan)
         if sec_failures:
@@ -327,26 +328,38 @@ def cmd_complete(args: argparse.Namespace) -> int:
     tasks_path = plan_path.parent / "tasks.md"
     text = tasks_path.read_text(encoding="utf-8")
 
-    # 해당 태스크 행의 상태 컬럼만 교체
+    # 해당 태스크 행의 상태 컬럼만 교체 (B1: 매칭 실패 시 즉시 종료 — plan 갱신 안 함)
     new_text = re.sub(
         rf"(\|\s*{re.escape(args.task)}\s*\|.*?\|.*?\|.*?\|\s*)([^|]+)(\|\s*$)",
         lambda m: f"{m.group(1)}{args.status:<10}{m.group(3)}",
         text, count=1, flags=re.MULTILINE,
     )
     if new_text == text:
-        info(f"[WARN] 태스크 '{args.task}' 행 못 찾음 — 변경 없음")
-    else:
-        tasks_path.write_text(new_text, encoding="utf-8")
+        info(
+            f"[FAIL] tasks.md 에서 태스크 '{args.task}' 행을 찾지 못했습니다.\n"
+            f"  · tasks.md 가 수동 편집으로 깨졌거나, T-ID 철자가 다를 수 있습니다.\n"
+            f"  · tasks.md 열어 '{args.task}' 행이 올바른 마크다운 테이블 형식인지 확인하세요.\n"
+            f"  · tasks.md 경로: {tasks_path}"
+        )
+        return 1
 
-    # 모든 태스크 done?
+    try:
+        tasks_path.write_text(new_text, encoding="utf-8")
+    except OSError as e:
+        info(f"[FAIL] tasks.md 쓰기 실패 — plan 갱신 중단: {e}")
+        return 1
+
+    # B5: done|완료|completed|skipped → all resolved (built 전이 인정)
+    # blocked|in-progress 는 미완료 → building 유지
     tasks = _parse_tasks(new_text)
     statuses = {tid: t["status"].lower() for tid, t in tasks.items()}
-    all_done = statuses and all(s in ("done", "완료", "completed") for s in statuses.values())
+    _resolved = {"done", "완료", "completed", "skipped"}
+    all_resolved = statuses and all(s in _resolved for s in statuses.values())
     any_done = any(s in ("done", "완료", "completed") for s in statuses.values())
 
     if plan.pipeline.current_step == "planned" and any_done:
         transition(plan, "building", completed_step=f"ha-build:{args.task}")
-    if plan.pipeline.current_step == "building" and all_done:
+    if plan.pipeline.current_step == "building" and all_resolved:
         transition(plan, "built", completed_step="ha-build:all-done")
     elif plan.pipeline.current_step == "building":
         # building 유지, completed_steps 만 업데이트 — transition 우회
@@ -368,9 +381,9 @@ def cmd_complete(args: argparse.Namespace) -> int:
     output = {
         "task": args.task,
         "new_status": args.status,
-        "all_tasks_done": all_done,
+        "all_tasks_resolved": all_resolved,
         "current_step": plan.pipeline.current_step,
-        "next": "/ha-verify" if all_done else "/ha-build <next T-ID>",
+        "next": "/ha-verify" if all_resolved else "/ha-build <next T-ID>",
     }
     if args.reason:
         output["reason"] = args.reason
@@ -387,7 +400,7 @@ def main() -> int:
 
     c = sub.add_parser("complete")
     c.add_argument("--task", required=True)
-    c.add_argument("--status", required=True, choices=["done", "blocked", "in-progress"])
+    c.add_argument("--status", required=True, choices=["done", "blocked", "in-progress", "skipped"])
     c.add_argument("--reason", default="")
     c.add_argument(
         "--skip-toolchain",

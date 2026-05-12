@@ -116,6 +116,7 @@ prepare 출력 (위에서 받은 JSON): <prepare 결과 그대로 첨부>
 python ~/.claude/skills/ha-build/run.py complete --task T-001 --status done
 ```
 또는 `--status blocked --reason "<이유>"`.
+또는 `--status skipped` — Phase 2+ scope 등 **의도적으로 미루는** 태스크 (toolchain/security 게이트 건너뜀). 모든 태스크가 `done|skipped` 이면 `built` 자동 전이.
 
 **LESSON-021 게이트 (done 전용)**:
 - `--status done` 시 프로파일의 **`toolchain.test + toolchain.lint + toolchain.type`
