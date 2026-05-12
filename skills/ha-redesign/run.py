@@ -32,6 +32,12 @@ from utils import (  # noqa: E402, I001
     save_plan,
 )
 
+# backend src import — utils.py 가 backend/ 를 sys.path 에 추가 보장
+from src.orchestrator.skeleton_hash import (  # noqa: E402
+    check_skeleton_hash,
+    compute_skeleton_hash,
+)
+
 # Redesign is meaningful only after the initial design exists. "init" has nothing
 # to re-derive; "shipped" is treated as immutable (a released artifact must not
 # silently mutate). Every state in between allows redesign — pivots can land at
@@ -109,6 +115,15 @@ def cmd_prepare(args: argparse.Namespace) -> int:
             return 1
         tasks = _enumerate_tasks(tasks_text)
 
+    # skeleton hash 비교 — 외부 수정 감지 (advisory only)
+    hash_check = check_skeleton_hash(plan.skeleton_hash, skel_path)
+    if not hash_check.skeleton_missing and not hash_check.is_legacy and not hash_check.is_match:
+        info(
+            "[WARN] skeleton.md 가 마지막 ha-design/ha-redesign 이후 외부에서 수정된 듯합니다 "
+            "(hash mismatch). redesign_history 에 audit trail 누락 가능 — "
+            "/ha-redesign 으로 변경 사항 추적 권장."
+        )
+
     # Phase 2 records the "proposed" entry with empty affected_* — the Agent
     # (Phase 3) fills these by reading the skeleton and decision. Keeping the
     # record here means even a manual workflow leaves an audit trail.
@@ -145,6 +160,11 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         "profiles": [
             {"id": p.id, "components": [c.id for c in p.components]} for p in profiles
         ],
+        "skeleton_hash_check": {
+            "is_match": hash_check.is_match,
+            "is_legacy": hash_check.is_legacy,
+            "skeleton_missing": hash_check.skeleton_missing,
+        },
         "next_step": (
             "Phase 2: 사용자 또는 Agent 가 affected_sections / affected_tasks 식별 후 "
             "`/ha-redesign commit --status approved` (사용자 승인) → "
@@ -251,6 +271,32 @@ def cmd_commit(args: argparse.Namespace) -> int:
                 }
             )
 
+    # skeleton hash 갱신 — applied 시 skeleton.md 가 변경되었으므로 새 hash 기록.
+    # downstream skills (ha-plan/ha-build/ha-verify/ha-review) 가 이후 외부 수정을
+    # 정확히 감지할 수 있도록 baseline 을 이 시점으로 갱신.
+    if args.status == "applied":
+        skel_path_for_hash = plan_path.parent / "skeleton.md"
+        if skel_path_for_hash.exists():
+            plan.skeleton_hash = compute_skeleton_hash(skel_path_for_hash)
+            save_plan(plan, plan_path)
+
+    # Safety guard: when applied, transition any affected done tasks to needs_rebuild
+    # so that ha-verify / ha-build --skip-done cannot silently pass stale code.
+    # Only "applied" triggers this — proposed/approved/rejected carry no code change.
+    rebuild_required_tasks: list[str] = []
+    if args.status == "applied" and affected_tasks:
+        tasks_path = plan_path.parent / "tasks.md"
+        if tasks_path.exists():
+            from src.orchestrator.plan_manager import PlanManager  # noqa: E402
+
+            try:
+                rebuild_required_tasks = PlanManager().mark_for_rebuild(
+                    tasks_path, list(affected_tasks)
+                )
+            except OSError as exc:
+                info(f"[WARN] needs_rebuild 전이 실패 (tasks.md 쓰기 오류): {exc}")
+                info("       수동으로 stale task status 를 확인하세요.")
+
     output = {
         "decision": args.decision,
         "status": args.status,
@@ -259,6 +305,7 @@ def cmd_commit(args: argparse.Namespace) -> int:
         "redesign_history_count": len(plan.redesign_history),
         "current_step": plan.pipeline.current_step,
         "consistency_findings": consistency_findings,
+        "rebuild_required_tasks": rebuild_required_tasks,
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0

@@ -41,10 +41,54 @@ python ~/.claude/skills/ha-init/run.py detect "$PROJECT_ROOT"
 출력은 JSON. 다음 정보 추출:
 - `matches[]` — 감지된 프로파일 목록 (id, name, path, required/optional sections, toolchain, whitelist, gstack_recommended)
 
-**매칭 0건 처리**:
-- 사용자에게 알리고 AskUserQuestion 으로 수동 선택 옵션 제시
-- 옵션: `~/.claude/harness/profiles/*.md` 의 confirmed status 프로파일 ID 목록
-- 사용자 선택 후 `--profiles <id>` 로 직접 지정해서 다음 단계 진행
+**수동 프로파일 선택 — 트리 fallback (매칭 0건 또는 사용자 추가 선택 시)**:
+
+AskUserQuestion 의 4-옵션 제약을 **트리 깊이로 우회**한다. 절대 confirmed 프로파일 중 일부만 임의로 추려서 보여주지 말 것.
+
+1단계 — 도메인 (sticky 4 카테고리):
+- `서버 / API` — 서버사이드 비즈니스 로직, HTTP/RPC 엔드포인트
+- `UI (사용자 대면)` — 웹/모바일/데스크톱 등 사용자 인터페이스
+- `인터랙티브 / 게임` — 게임 엔진, VR/AR
+- `도구 / 라이브러리 / 기타` — CLI, lib, 스킬, 임베디드 등
+
+2단계 — 각 도메인 안에서:
+- `서버 / API`:
+  - `fastapi` — Python FastAPI
+  - `nestjs` — Node.js NestJS
+- `UI`:
+  - 웹 브라우저 → 3단계
+  - 모바일 → 3단계
+  - 데스크톱 → 3단계
+- `인터랙티브 / 게임`:
+  - (현재 confirmed 프로파일 없음 — Unity / Unreal / Godot 추가 예정)
+- `도구 / 라이브러리 / 기타`:
+  - `python-cli` — Python CLI 도구
+  - `python-lib` — Python 라이브러리
+  - `claude-skill` — Claude Code 스킬
+
+3단계 — UI 플랫폼 분기:
+- 웹 브라우저:
+  - `nextjs` — Next.js App Router
+  - `react-vite` — React + Vite SPA
+- 모바일:
+  - `react-native-expo` — Expo (React Native)
+  - `flutter` — Flutter (Dart)
+  - `android-kotlin` — 네이티브 Android
+  - `ios-swift` — 네이티브 iOS
+- 데스크톱:
+  - `electron` — Electron
+
+**진행 흐름**:
+1. AskUserQuestion 으로 1단계 카테고리 1개 선택
+2. 선택 카테고리에 프로파일이 1개면 바로 사용. 여러 개면 2단계 (필요 시 3단계) 로 좁힘
+3. 풀스택 (백엔드 + UI 등 다계층) 케이스: 1차 선택 후 "다른 계층도 추가하시겠어요?" yes → 1단계부터 반복
+4. 최종 선택된 프로파일 ID 들을 콤마 구분해서 `--profiles` 인자에 넘김
+
+**확장 운영 규칙** — 신규 프로파일 추가 시:
+1. 1단계 4 카테고리는 **도메인 레벨** 로 sticky — 플랫폼/언어/도구 기준으로 신설 금지
+2. 한 단계 안에 옵션이 4개 차면 다음 단계로 깊이 늘리기 (예: 모바일이 5개 되면 4단계 분기)
+3. `도구 / 라이브러리 / 기타` 안에서 같은 도메인 프로파일이 3개 이상 모이면 **1단계 카테고리로 승격 검토** (예: AI/ML 프로파일 3개 → "AI/ML" 1단계 신설)
+4. 신규 프로파일 추가 PR 에 어느 카테고리/깊이에 들어가는지 명시 — 본 SKILL.md 도 동기 업데이트
 
 ### 3. 사용자 설명 수집
 
@@ -117,11 +161,6 @@ ha-init → ha-design → ha-plan → ha-build (반복) → ha-verify → ha-rev
 
 규모가 작으면 일부 gstack 게이트 생략 권장 (예: tiny CLI 는 `/qa` 생략).
 
-**gstack_mode 선택 가이드**:
-- `manual` (기본): gstack 스킬 (/office-hours, /qa 등) 을 사용자가 필요할 때 직접 실행. 개인 프로젝트 권장.
-- `auto`: 파이프라인 게이트 진입 시 자동 실행. CI/CD 환경 또는 팀 프로젝트 권장.
-- `prompt`: 각 게이트 진입 전 실행 여부를 사용자에게 확인 후 실행. 처음 사용 시 권장.
-
 ### 5. 사용자에게 제안 출력 + 승인
 
 다음 형식으로 출력:
@@ -157,10 +196,21 @@ skeleton 섹션 (총 N개, auto-determined by 6축 + profile):
   - /qa: <이유>
 ```
 
+**정합성 경고 표시** (`write` 출력의 `consistency_violations` 필드가 비어있지 않으면):
+
+```
+⚠️ 정합성 경고 N건:
+  - <section_id>: <trigger>  (필요: has.<atom>, 제공 가능 프로파일: <providers>)
+  ...
+```
+
 AskUserQuestion 으로 승인:
 - `진행` — 그대로 작성
 - `수정` — 어디를 어떻게 (사용자 텍스트 받아서 4-2~4-4 재조정 후 재제안. 최대 3회)
+- `그대로 진행 — 외부 제공자가 있는 의도적 모순` — violation 을 인지하고 진행 (예: 외부 백엔드 별도 관리)
 - `취소` — 저장 없이 종료
+
+**가드레일**: consistency_violations 가 있으면 사용자에게 반드시 명시적으로 보여줄 것 — 자동으로 무시 금지.
 
 ### 6. 파일 작성
 
@@ -180,11 +230,6 @@ python ~/.claude/skills/ha-init/run.py write \
   --lifecycle "<poc|mvp|ga>" \
   --gstack-mode manual
 ```
-
-**멀티 프로파일 (풀스택) 시 path 배정**:
-- `--profiles "fastapi,react-vite"` 처럼 콤마로 전달
-- 각 프로파일 경로는 `detect` 출력 `matches[].path` 에서 자동 감지 (예: pyproject.toml 위치 → `backend/`)
-- 자동 감지 실패 시: detect 의 `matches[].path` 확인 후 수동으로 `harness-plan.md` 의 `profiles[].path` 지정
 
 **Phase 2-b-4 부터 `--included` 는 optional**. 미지정 시 6축 + profile.skeleton_sections 로부터 `ProfileLoader.compute_active_sections` 가 활성 섹션을 자동 결정 (예: PII + mvp → audit_log/threat_model/test_strategy/ci_cd 등 자동 포함). 명시 시 (`--included "overview,stack,..."`) 그대로 사용 (override).
 
@@ -212,16 +257,25 @@ python ~/.claude/skills/ha-init/run.py write \
   - harness-plan.md 의 pipeline.skipped_steps 에 생략하고 싶은 단계 추가 가능
 ```
 
-### 출력의 guideline_paths 읽기 (필수)
+### 출력의 guideline_paths 도 읽으세요
 
-출력 JSON 의 `profiles[].guideline_paths` 에 포함된 경로를 **작업 시작 전 모두 Read 로 읽으세요.**
-프로파일별 파일 목록 → `<HARNESS_AI_HOME>/skills/_ha_shared/GUIDELINES_NOTE.md` 참조.
+`detect` 및 `write` 출력 JSON 의 `matches[].guideline_paths` / `profiles[].guideline_paths` 에
+프로파일별 컨벤션 문서 경로가 포함됩니다. **반드시 작업 시작 전 모두 읽으세요**:
+
+- `react-native-expo`: navigation/state/storage/style 4 파일 — Expo Router + Zustand + SecureStore 컨벤션
+- `flutter`: navigation/state/storage/style 4 파일 — go_router + Riverpod + drift + ThemeData
+- `android-kotlin`: architecture/compose/network/storage 4 파일 — MVVM + Compose + Retrofit + Room
+- `ios-swift`: architecture/swiftui/network/storage 4 파일 — MV pattern + SwiftUI + URLSession + Keychain
+- `fastapi`: api/services/structure 3 파일 — Clean Arch + DI + 패키지 구조
+
+**모바일 사용자**: 위 가이드라인을 안 읽으면 LESSON-STYLE-001 / 보안 위반 / 컨벤션 drift 가능성. 시스템 프롬프트만으로는 부족합니다.
 
 ## 가드레일 — 절대 하지 마라
 
 - `--overwrite` 플래그 없이 기존 파일 덮어쓰기 (run.py 가 자동 백업하지만 직접 Write 도구로 우회 금지)
 - 사용자 설명 없이 임의로 description/project-type 결정
 - 프로파일 매칭 0건인데 멋대로 진행 — 반드시 수동 선택 옵션 제시
+- 프로파일 선택 시 confirmed 프로파일 중 일부만 임의로 추려서 옵션 보여주기 — §2 의 **트리 fallback** 만 사용 (1단계 도메인 카테고리부터 시작, AskUserQuestion 4-옵션 제약은 깊이로 우회)
 - skeleton.md 의 fragment 본문 직접 편집 (그건 `/ha-design` 의 일)
 
 ## 환경변수
@@ -240,6 +294,13 @@ python ~/.claude/skills/ha-init/run.py write \
 **`detect` 가 매칭 0건**:
 - 프로젝트 루트에 `pyproject.toml` / `package.json` 등 마커 파일이 없거나, `_registry.yaml` 의 paths 에 해당 위치가 없음.
 - `python ~/.claude/harness/bin/harness validate registry` 로 규칙 확인.
+
+**기존 plan 이 새 로직과 어긋남 (legacy stale)**:
+- compute_active_sections 버그 fix 전에 생성된 plan 은 `included` 가 현재 로직과 mismatch 될 수 있음.
+- `python ~/.claude/harness/bin/harness migrate-plan <project-dir>/docs/harness-plan.md` (dry-run) 으로 diff 확인.
+- `diff.removed_sections` 에 잘못 포함된 섹션, `trace_was_missing: true` 로 legacy 여부 확인.
+- 검토 후 `--apply` 로 적용. 자동 백업 (`.backup-pre-migrate-<timestamp>.md`) 생성됨.
+- skeleton.md 의 stale 섹션 본문은 별도 `/ha-redesign` 으로 정리 (migrate-plan 은 plan 만 정정).
 
 ## 모바일 프로젝트 사용 예시 (Flutter)
 

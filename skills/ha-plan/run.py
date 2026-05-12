@@ -6,6 +6,7 @@ import argparse
 import json
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "_ha_shared"))
@@ -21,11 +22,91 @@ from utils import (  # noqa: E402
     validate_task_id,
 )
 
+# Import backend modules for agent mismatch validation (Group 3 Step 2).
+# These are available because _ha_shared/utils.py already inserts backend/ into sys.path.
+from src.orchestrator.agent_matching import match_task_to_agent  # noqa: E402
+from src.orchestrator.config import load_agents_config  # noqa: E402
+from src.orchestrator.profile_loader import ProfileLoader, find_consistency_violations  # noqa: E402
+from src.orchestrator.skeleton_hash import check_skeleton_hash  # noqa: E402
+from src.orchestrator.tasks_schema import SchemaViolation, validate_tasks_md  # noqa: E402
+
 
 # Lenient pattern that extracts every "T-..." candidate from tasks.md rows so that
 # malformed IDs surface as explicit validation errors instead of silently failing
 # downstream. The strict check lives in validate_task_id.
 _TASK_ID_CANDIDATE_RE = re.compile(r"\|\s*(T-[\w-]+)\s*\|", re.MULTILINE)
+
+# Parses full task rows to extract (task_id, agent_id) pairs.
+# Format: | T-001 | agent_id | depends | description | status |
+# Mirrors TASK_ROW_RE from src.orchestrator.task_id — kept local to avoid
+# importing that module here (utils already handles the import boundary).
+_TASK_AGENT_ROW_RE = re.compile(
+    r"^\|\s*(T-\d+)\s*\|\s*(\w+)\s*\|[^|]*\|[^|]*\|[^|]+\|\s*$",
+    re.MULTILINE,
+)
+
+
+@dataclass
+class _AgentMismatch:
+    task_id: str
+    agent_id: str
+    reason: str
+
+
+def _validate_agent_mappings(
+    tasks_content: str,
+    agents_yaml_path: Path,
+    active_profile_ids: frozenset[str],
+    active_has_keys: frozenset[str],
+) -> list[_AgentMismatch]:
+    """Validate that each task's declared agent matches the active context.
+
+    Returns a list of mismatches (empty = all OK).
+
+    Semantics (1st-pass guard — agent ↔ active context only):
+    - Capability-agnostic agents (architect, reviewer, qa, …) always pass.
+    - Specific agents: requires_profile_ids ⊆ active_profile_ids
+      AND at least one requires_capabilities atom ∈ active_has_keys.
+    - Unknown agent_id (not in agents.yaml) → mismatch with reason "unknown agent".
+    """
+    try:
+        config = load_agents_config(agents_yaml_path)
+    except (FileNotFoundError, ValueError) as exc:
+        # If agents.yaml cannot be loaded we cannot validate — surface as a
+        # single pseudo-mismatch so the caller can report it clearly.
+        return [_AgentMismatch(task_id="*", agent_id="*", reason=f"agents.yaml 로드 실패: {exc}")]
+
+    all_agents = config.all_agents()
+    mismatches: list[_AgentMismatch] = []
+
+    for m in _TASK_AGENT_ROW_RE.finditer(tasks_content):
+        task_id = m.group(1)
+        agent_id = m.group(2)
+
+        if agent_id not in all_agents:
+            mismatches.append(
+                _AgentMismatch(
+                    task_id=task_id,
+                    agent_id=agent_id,
+                    reason=f"unknown agent '{agent_id}' (agents.yaml 에 없음)",
+                )
+            )
+            continue
+
+        result = match_task_to_agent(
+            task_required_capabilities=frozenset(),
+            task_required_profile_ids=frozenset(),
+            agent_config=all_agents[agent_id],
+            active_has_keys=active_has_keys,
+            active_profile_ids=active_profile_ids,
+            agent_id=agent_id,
+        )
+        if not result.is_match:
+            mismatches.append(
+                _AgentMismatch(task_id=task_id, agent_id=agent_id, reason=result.reason)
+            )
+
+    return mismatches
 
 
 def cmd_prepare(args: argparse.Namespace) -> int:
@@ -47,6 +128,53 @@ def cmd_prepare(args: argparse.Namespace) -> int:
 
     profiles = get_active_profiles(plan, project)
 
+    # activation_trace: sorted for deterministic output.
+    # Legacy plans without this field load as empty dict (backward-compat).
+    activation_trace: dict[str, str] = dict(sorted(plan.activation_trace.items()))
+    if not activation_trace:
+        info(
+            "[INFO] 본 plan 은 activation_trace 미포함 (구버전). "
+            "cross-check 불가능 — ha-init 재실행 권장"
+        )
+
+    # Cross-section consistency check — only when trace is present.
+    # trace 가 비어있으면 (legacy plan) 검증 skip.
+    if activation_trace:
+        consistency_violations_raw = find_consistency_violations(activation_trace, profiles)
+    else:
+        consistency_violations_raw = []
+
+    consistency_violations = [
+        {
+            "section_id": v.section_id,
+            "trigger_expression": v.trigger_expression,
+            "missing_atom": v.missing_atom,
+            "expected_providers": list(v.expected_providers),
+        }
+        for v in consistency_violations_raw
+    ]
+
+    if consistency_violations:
+        info(
+            f"[WARN] plan consistency 위반 {len(consistency_violations)}개 감지 "
+            "(task 분해 전 확인 권장):"
+        )
+        for cv in consistency_violations:
+            info(
+                f"  - 섹션 '{cv['section_id']}': "
+                f"'{cv['missing_atom']}' 미충족 "
+                f"(제공 가능 프로파일: {cv['expected_providers']})"
+            )
+
+    # skeleton hash 비교 — 외부 수정 감지 (advisory only)
+    hash_check = check_skeleton_hash(plan.skeleton_hash, skel_path)
+    if not hash_check.skeleton_missing and not hash_check.is_legacy and not hash_check.is_match:
+        info(
+            "[WARN] skeleton.md 가 마지막 ha-design/ha-redesign 이후 외부에서 수정된 듯합니다 "
+            "(hash mismatch). redesign_history 에 audit trail 누락 가능 — "
+            "/ha-redesign 으로 변경 사항 추적 권장."
+        )
+
     output = {
         "project": str(project),
         "plan_path": str(plan_path),
@@ -66,6 +194,12 @@ def cmd_prepare(args: argparse.Namespace) -> int:
             for p in profiles
         ],
         "agent_prompt": str(HARNESS_HOME / "backend" / "agents" / "orchestrator" / "CLAUDE.md"),
+        "consistency_violations": consistency_violations,
+        "skeleton_hash_check": {
+            "is_match": hash_check.is_match,
+            "is_legacy": hash_check.is_legacy,
+            "skeleton_missing": hash_check.skeleton_missing,
+        },
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0
@@ -101,6 +235,86 @@ def cmd_commit(args: argparse.Namespace) -> int:
     tasks_path = plan_path.parent / "tasks.md"
     skel_path = plan_path.parent / "skeleton.md"
 
+    # ── Agent mismatch validation (Group 3 Step 2) ──────────────────────────
+    agents_yaml_path = HARNESS_HOME / "backend" / "agents.yaml"
+    try:
+        profiles = get_active_profiles(plan, plan_path.parent.parent)
+        loader = ProfileLoader(project_dir=plan_path.parent.parent)
+        active_has_keys = loader.compute_has_keys(profiles, plan.scale_axes)
+    except Exception as exc:  # noqa: BLE001
+        info(f"[WARN] agent mismatch 검증 건너뜀 — 프로파일 로드 실패: {exc}")
+        active_has_keys = frozenset()
+        profiles = []
+
+    active_profile_ids = frozenset(ref.id for ref in plan.profiles)
+
+    mismatches = _validate_agent_mappings(
+        args.tasks_content,
+        agents_yaml_path,
+        active_profile_ids,
+        active_has_keys,
+    )
+
+    if mismatches and not args.allow_agent_mismatch:
+        info(
+            f"[FAIL] tasks.md 의 {len(mismatches)}개 task 가 "
+            "활성 컨텍스트와 정합하지 않은 agent 에 배정됨:"
+        )
+        for mm in mismatches:
+            info(f"  - {mm.task_id} (agent={mm.agent_id}): {mm.reason}")
+        info(
+            "해결: tasks.md 의 agent 컬럼을 수정하거나, "
+            "plan.profiles 에 적합한 프로파일을 추가하세요.\n"
+            "의도적 mismatch 라면 --allow-agent-mismatch flag 를 사용하세요."
+        )
+        return 1
+
+    if mismatches and args.allow_agent_mismatch:
+        info(
+            f"[WARN] tasks.md 의 {len(mismatches)}개 task 가 "
+            "활성 컨텍스트와 정합하지 않은 agent 에 배정됨 (--allow-agent-mismatch 로 진행):"
+        )
+        for mm in mismatches:
+            info(f"  - {mm.task_id} (agent={mm.agent_id}): {mm.reason}")
+
+    # ── tasks.md schema 검증 (Group 4 Step 1) ───────────────────────────────
+    # _TASK_ID_CANDIDATE_RE (위) 는 추출용(느슨) — T-NNN 후보를 뽑아 validate_task_id 로
+    # 확인한다. validate_tasks_md() 는 검증용(엄격) — 전체 표 구조/컬럼/상태/의존성.
+    # 두 검증은 상호 보완: 위쪽이 fractional ID 를 이미 차단했다면 아래는 도달 못 함.
+    # 그러나 위쪽은 _TASK_ID_CANDIDATE_RE 패턴으로만 추출하므로 표 구조 위반은 못 잡음.
+    schema_violations: list[SchemaViolation] = validate_tasks_md(args.tasks_content)
+
+    if schema_violations and not args.allow_format_drift:
+        info(
+            f"[FAIL] tasks.md schema 위반 {len(schema_violations)}개 — commit 거부:"
+        )
+        for sv in schema_violations:
+            info(f"  line {sv.line_number} [{sv.kind}]: {sv.detail}")
+        info(
+            "해결: tasks.md 표 형식을 표준 schema 에 맞게 수정하세요.\n"
+            "의도적 형식 변형이라면 --allow-format-drift flag 를 사용하세요."
+        )
+        # stdout JSON 에 violations 포함 (도구가 파싱할 수 있도록)
+        print(json.dumps(
+            {
+                "schema_violations": [
+                    {"line": sv.line_number, "kind": sv.kind, "detail": sv.detail}
+                    for sv in schema_violations
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ))
+        return 1
+
+    if schema_violations and args.allow_format_drift:
+        info(
+            f"[WARN] tasks.md schema 위반 {len(schema_violations)}개 "
+            "(--allow-format-drift 로 진행):"
+        )
+        for sv in schema_violations:
+            info(f"  line {sv.line_number} [{sv.kind}]: {sv.detail}")
+
     # tasks.md 작성
     tasks_md = (
         f"# Tasks — {project.name}\n\n"
@@ -132,6 +346,14 @@ def cmd_commit(args: argparse.Namespace) -> int:
         "task_count": len(task_ids),
         "transitioned_to": plan.pipeline.current_step,
         "next": "/ha-build <T-ID>",
+        "agent_mismatches": [
+            {"task_id": mm.task_id, "agent_id": mm.agent_id, "reason": mm.reason}
+            for mm in mismatches
+        ],
+        "schema_violations": [
+            {"line": sv.line_number, "kind": sv.kind, "detail": sv.detail}
+            for sv in schema_violations
+        ],
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0
@@ -143,6 +365,18 @@ def main() -> int:
     sub.add_parser("prepare")
     c = sub.add_parser("commit")
     c.add_argument("--tasks-content", required=True)
+    c.add_argument(
+        "--allow-agent-mismatch",
+        action="store_true",
+        default=False,
+        help="agent ↔ 활성 컨텍스트 mismatch 를 경고로 처리하고 commit 진행",
+    )
+    c.add_argument(
+        "--allow-format-drift",
+        action="store_true",
+        default=False,
+        help="tasks.md schema 위반을 경고로 처리하고 commit 진행",
+    )
     args = parser.parse_args()
     if args.cmd == "prepare":
         return cmd_prepare(args)

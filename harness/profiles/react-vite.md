@@ -40,8 +40,8 @@ components:
 
 skeleton_sections:
   required: [overview, stack, view.screens, view.components, state.flow, core.logic, tasks, notes]
-  optional: [requirements, configuration, errors, auth, interface.http]
-  order: [overview, requirements, stack, configuration, errors, auth, interface.http, view.screens, view.components, state.flow, core.logic, tasks, notes]
+  optional: [requirements, configuration, errors, auth, interface.http, test_strategy, ci_cd, user_journey, error_ux, environments]
+  order: [overview, requirements, stack, configuration, environments, errors, auth, interface.http, view.screens, view.components, state.flow, core.logic, error_ux, test_strategy, ci_cd, user_journey, tasks, notes]
 
 toolchain:
   install: "pnpm install"
