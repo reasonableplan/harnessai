@@ -525,3 +525,28 @@ _rate_limit_store: dict[int, list[float]] = defaultdict(list)
 **연결**:
 - 같은 정신: LESSON-018 (dead 상수) — 선언만 되고 실행 안 되는 것 금지
 - 반대 패턴 주의: 타입 체크를 "nice to have" 로 분류하면 결국 프로젝트 끝에서 누적 폭발
+
+---
+
+## LESSON-STYLE-001: 인라인 스타일 분리 — 별도 스타일 시스템 사용
+
+**문제**: 프레임워크별 스타일 시스템이 있어도 인라인 스타일을 누적하면 동일 컴포넌트의
+변형(state/theme/variant) 추적이 어려워지고 디자인 시스템 통합이 깨진다.
+
+**규칙** — profile별 한도 초과 시 별도 추출:
+- **react-vite / nextjs / electron**: 인라인 Tailwind 2개 이상 → CVA + `index.style.ts`
+- **react-native-expo**: 인라인 NativeWind className 또는 인라인 StyleSheet 2개 이상 → 별도 StyleSheet 추출
+- **flutter**: 인라인 BoxDecoration 2개 이상 → ThemeData / `Theme.of(context)`
+- **android-kotlin**: 인라인 Modifier 체인 5개 이상 → MaterialTheme + 추출 Modifier
+- **ios-swift**: 인라인 modifier 체인 5개 이상 → ViewModifier 추출
+
+**이유**: 별도 추출 시 재사용 + 변형(variant) 관리 + 디자인 토큰 일관성 확보. 인라인이
+누적되면 동일 컴포넌트의 5가지 상태가 5개 파일에 분산되어 디자인 변경 시 누락 발생.
+
+**구현 위치**:
+- 각 profile 의 "금지 사항" 섹션에 구체 위반/권장 패턴 명시
+- ha-review 의 ai-slop + style audit 에서 인라인 누적 패턴 탐지 (휴리스틱)
+
+**연결**:
+- 같은 정신: LESSON-014 (Designer 가 디자인 시스템 소스를 직접 정의하면 품질 미보장)
+  — 시스템화된 추출 패턴이 디자인 토큰 일관성의 기반

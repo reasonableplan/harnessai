@@ -62,6 +62,7 @@ whitelist:
     - python-jose
     - passlib
     - bcrypt
+    - python-multipart
     - httpx
     - aiosqlite
     - asyncpg

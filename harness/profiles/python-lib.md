@@ -10,7 +10,7 @@ paths: [".", "packages/", "libs/"]
 detect:
   files: [pyproject.toml]
   not_contains:
-    pyproject.toml: ["fastapi", "django", "flask", "[project.scripts]", "console_scripts"]
+    pyproject.toml: ["fastapi", "django", "flask", "[project.scripts]", "console_scripts", "entry_points"]
 
 components:
   - id: interface.sdk

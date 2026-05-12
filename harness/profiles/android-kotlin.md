@@ -181,6 +181,7 @@ provides_capabilities:
   - build_config
   - storage
   - complex_state
+  - env_config
 
 gstack_mode: manual
 gstack_recommended:

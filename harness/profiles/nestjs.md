@@ -80,6 +80,8 @@ whitelist:
     - prettier
     - "@types/node"
     - "@types/jest"
+    - "@types/express"
+    - "@types/express"
     - "@types/passport-jwt"
     - "@types/bcrypt"
     - "@types/supertest"

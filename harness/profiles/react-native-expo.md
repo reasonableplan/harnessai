@@ -131,6 +131,7 @@ whitelist:
     - react-native-safe-area-context
     - react-native-screens
     - "@react-native-async-storage/async-storage"
+    - drizzle-orm
   dev:
     - typescript
     - eslint
