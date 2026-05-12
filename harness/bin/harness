@@ -1004,6 +1004,122 @@ def _load_plan_frontmatter(plan_path: Path) -> dict[str, Any] | None:
     return data
 
 
+# ── graph subcommand (v0.9.1) ────────────────────────────────────────────
+# tasks.md → mermaid flowchart TD. backend src 의 tasks_schema.extract_task_graph
+# / render_mermaid 와 동일 로직을 inline 으로 재구현 (CLI standalone 제약).
+# v0.8.0 메모리에 추가됐다 기록만 됐고 실제는 미구현이었던 케이스 — v0.9.1 보충.
+
+_GRAPH_TASK_ROW_RE = re.compile(
+    r"^\|\s*(T-\d{3,})\s*\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|\s*$"
+)
+_GRAPH_DEP_TOKEN_RE = re.compile(r"^T-\d{3,}$")
+_GRAPH_SECTION_HEADER = "## 의존성 그래프 (자동 생성)"
+_GRAPH_DEPS_NONE = {"", "-", "—", "–"}
+
+
+def _parse_tasks_for_graph(content: str) -> list[tuple[str, tuple[str, ...], str | None]]:
+    """tasks.md → [(task_id, depends_on, phase), ...]. invalid id silently skip."""
+    nodes: list[tuple[str, tuple[str, ...], str | None]] = []
+    current_phase: str | None = None
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("##") and "Phase" in stripped:
+            current_phase = stripped.lstrip("#").strip()
+            continue
+        m = _GRAPH_TASK_ROW_RE.match(line)
+        if not m:
+            continue
+        task_id = m.group(1).strip()
+        deps_raw = m.group(3).strip()
+        if deps_raw in _GRAPH_DEPS_NONE:
+            deps: tuple[str, ...] = ()
+        else:
+            deps = tuple(
+                d.strip() for d in deps_raw.split(",")
+                if d.strip() and _GRAPH_DEP_TOKEN_RE.match(d.strip())
+            )
+        nodes.append((task_id, deps, current_phase))
+    return nodes
+
+
+def _render_mermaid_inline(
+    nodes: list[tuple[str, tuple[str, ...], str | None]],
+    *,
+    group_by_phase: bool = True,
+) -> str:
+    """노드 리스트 → mermaid flowchart TD 문자열 (no trailing newline)."""
+    if not nodes:
+        return "flowchart TD\n    %% no tasks"
+    lines = ["flowchart TD"]
+    if group_by_phase:
+        # dict 삽입 순서 = encounter 순서 (Phase 1 → Phase 2+ → ...)
+        phase_nodes: dict[str | None, list[str]] = {}
+        for tid, _deps, phase in nodes:
+            phase_nodes.setdefault(phase, []).append(tid)
+        for phase, ids in phase_nodes.items():
+            if phase is not None:
+                lines.append(f'    subgraph "{phase}"')
+                for tid in ids:
+                    lines.append(f"        {tid}")
+                lines.append("    end")
+            else:
+                for tid in ids:
+                    lines.append(f"    {tid}")
+    else:
+        for tid, _deps, _phase in nodes:
+            lines.append(f"    {tid}")
+    for tid, deps, _phase in nodes:
+        for dep in deps:
+            lines.append(f"    {dep} --> {tid}")
+    return "\n".join(lines)
+
+
+def cmd_graph(tasks_path: Path, *, inject: bool, no_phases: bool) -> int:
+    """graph 서브커맨드 — tasks.md 의존성 그래프 mermaid 출력 또는 파일 주입."""
+    if not tasks_path.exists():
+        print(f"[FAIL] tasks.md 없음: {tasks_path}", file=sys.stderr)
+        return 1
+    try:
+        content = tasks_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"[FAIL] tasks.md 읽기 실패: {exc}", file=sys.stderr)
+        return 1
+
+    nodes = _parse_tasks_for_graph(content)
+    mermaid = _render_mermaid_inline(nodes, group_by_phase=not no_phases)
+
+    if not inject:
+        print(mermaid)
+        return 0
+
+    # --inject: 자동 백업 → 기존 섹션 멱등 교체 → 파일 끝에 새 섹션 append
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup_path = tasks_path.parent / f".backup-pre-graph-inject-{ts}.md"
+    try:
+        backup_path.write_text(content, encoding="utf-8")
+    except OSError as exc:
+        print(f"[FAIL] 백업 쓰기 실패 {backup_path}: {exc}", file=sys.stderr)
+        return 1
+
+    # 기존 섹션 (헤더부터 다음 동급 ## 헤더 또는 EOF 까지) 제거 — 멱등 보장
+    section_re = re.compile(
+        re.escape(_GRAPH_SECTION_HEADER) + r".*?(?=\n##\s|\Z)",
+        re.DOTALL,
+    )
+    cleaned = section_re.sub("", content).rstrip()
+    new_section = (
+        f"\n\n{_GRAPH_SECTION_HEADER}\n\n"
+        f"```mermaid\n{mermaid}\n```\n"
+    )
+    try:
+        tasks_path.write_text(cleaned + new_section, encoding="utf-8")
+    except OSError as exc:
+        print(f"[FAIL] tasks.md 쓰기 실패: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def cmd_migrate_skeleton_hash(
     plan_path: Path,
     apply: bool,
@@ -1419,6 +1535,25 @@ def main() -> int:
         help="tasks.md 경로 (기본: <cwd>/docs/tasks.md)",
     )
 
+    g = sub.add_parser(
+        "graph",
+        help="tasks.md → mermaid 의존성 그래프 (stdout 또는 --inject)",
+    )
+    g.add_argument("tasks_path", type=Path, help="tasks.md 경로")
+    g.add_argument(
+        "--inject",
+        action="store_true",
+        default=False,
+        help="섹션을 tasks.md 끝에 추가 (자동 백업 + 멱등)",
+    )
+    g.add_argument(
+        "--no-phases",
+        action="store_true",
+        default=False,
+        dest="no_phases",
+        help="Phase subgraph 그룹 생략 (평면 노드 리스트)",
+    )
+
     args = parser.parse_args()
 
     if args.cmd == "integrity":
@@ -1435,6 +1570,13 @@ def main() -> int:
             plan_path=args.plan_path.expanduser().resolve(),
             apply=args.apply,
             no_backup=args.no_backup,
+        )
+
+    if args.cmd == "graph":
+        return cmd_graph(
+            tasks_path=args.tasks_path.expanduser().resolve(),
+            inject=args.inject,
+            no_phases=args.no_phases,
         )
 
     if args.cmd != "validate":
