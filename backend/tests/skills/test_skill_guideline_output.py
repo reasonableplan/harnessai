@@ -231,6 +231,14 @@ def test_ha_review_prepare_has_guideline_paths(tmp_path: Path) -> None:
         "verified",
         ["ha-init", "ha-design", "ha-plan", "ha-build:all-done", "ha-verify"],
     )
+    # R1 gate: ha-review prepare fails fast on a non-git project so the boundary tests share a fixture
+    import os
+    git_env = {**os.environ,
+               "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+    for git_args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "initial"]):
+        subprocess.run(["git", *git_args], cwd=str(project), check=True,
+                       capture_output=True, env=git_env)
     output = _run_skill(HA_REVIEW_RUN, ["prepare"], cwd=project)
     assert "profiles" in output
     profile = output["profiles"][0]

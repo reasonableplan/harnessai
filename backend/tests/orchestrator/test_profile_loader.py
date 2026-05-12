@@ -917,7 +917,8 @@ def test_real_react_native_expo_profile_loads_with_full_schema() -> None:
     assert "mobile.lifecycle" in profile.skeleton_sections.required
     # toolchain 검증
     assert profile.toolchain.install == "bun install"
-    assert profile.toolchain.test == "bun test"
+    # bun test ≠ bun run test: bun's built-in runner vs package.json scripts.test (jest)
+    assert profile.toolchain.test == "bun run test"
 
 
 def test_real_react_native_expo_detect_matches_expo_project(tmp_path: Path) -> None:

@@ -97,7 +97,7 @@ skeleton_sections:
 
 toolchain:
   install: "bun install"
-  test: "bun test"
+  test: "bun run test"
   lint: "bun run lint"
   type: "bunx tsc --noEmit"
   format: "bun run format"
@@ -302,7 +302,7 @@ lessons_applied:
 ```bash
 cd mobile
 bun install
-bun test
+bun run test
 bun run lint
 bunx tsc --noEmit
 bunx expo-doctor   # 선택 — Expo SDK 호환성 검증

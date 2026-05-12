@@ -441,9 +441,46 @@ def _check_rn_cli(diff: str, profile_id: str) -> list[dict[str, str]]:
 # ── 명령 ───────────────────────────────────────────────────────────
 
 
+def _check_git_repo(project: Path) -> None:
+    """git 저장소 여부를 확인. git 없거나 repo 아니면 actionable 메시지와 함께 exit 2.
+
+    ha-review 는 git diff 로 변경분을 추출해 보안/슬롭 훅에 입력한다.
+    git 없으면 모든 검사가 빈 입력 → silent pass 위험이 있으므로 fail-fast 처리.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=str(project),
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        info(
+            "[FAIL] /ha-review 사전 조건 위반: git 명령 미설치.\n"
+            f"       project: {project}\n"
+            "       조치: git 을 설치한 후 재시도.\n"
+            "       이유: ha-review 가 git diff 로 변경분을 추출해 보안/슬롭 훅에 입력.\n"
+            "             git 없으면 모든 검사가 빈 입력 → silent pass 위험."
+        )
+        sys.exit(2)
+
+    if result.returncode != 0:
+        info(
+            "[FAIL] /ha-review 사전 조건 위반: git 저장소 아님.\n"
+            f"       project: {project}\n"
+            "       조치: `git init && git add -A && git commit -m \"initial\"` 후 재시도.\n"
+            "       이유: ha-review 가 git diff 로 변경분을 추출해 보안/슬롭 훅에 입력.\n"
+            "             git 없으면 모든 검사가 빈 입력 → silent pass 위험."
+        )
+        sys.exit(2)
+
+
 def cmd_prepare(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
     assert_state(plan, ["verified"], "/ha-review")
+
+    # git repo 사전 조건 — not-git 이면 silent pass 위험으로 fail-fast
+    _check_git_repo(project)
 
     profiles = get_active_profiles(plan, project)
 

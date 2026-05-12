@@ -21,12 +21,19 @@ allowed-tools:
 **출력**: 리뷰 결과 (APPROVE/REJECT) + verify_history 기록
 **다음**: APPROVE 시 reviewed 상태 (배포 가능). REJECT 시 building 으로 회귀.
 
+## 사전 조건
+
+- **git 저장소 필수**: `/ha-review` 는 `git diff` 로 변경분을 추출해 보안/슬롭 훅에 입력한다.
+  git 저장소가 아니면 모든 검사가 빈 입력으로 silent pass되는 위험이 있으므로 `prepare` 단계에서 exit 2 로 fail-fast 처리한다.
+  프로젝트가 git 저장소가 아닌 경우: `git init && git add -A && git commit -m "initial"` 후 재실행.
+
 ## 실행 순서
 
-### 1. 사전 조건 + git diff
+### 1. 사전 조건 확인 + git diff
 ```bash
 python ~/.claude/skills/ha-review/run.py prepare
 ```
+git 저장소 아니면 exit 2 + actionable 에러 메시지 출력.
 JSON 출력: 활성 프로파일들 (whitelist + lessons_applied), git diff 변경 파일 목록, 보안 훅 + ai-slop 패턴 목록.
 
 ### 2. 7개 보안 훅
