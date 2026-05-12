@@ -125,6 +125,13 @@ python ~/.claude/skills/ha-build/run.py complete --task T-001 --status done
 - security_hooks 만 의도적으로 우회할 땐 `--skip-security` (toolchain 과 독립).
 - 배경: ui-assistant 2차 E2E 에서 단위 테스트만 통과 → done 흐름으로 pyright 15 errors 누적 발견.
 
+**LESSON-021 강화 (B3 — no-tests 우회 감지)**:
+- `toolchain.test` 가 exit 0 이어도 출력에 `no tests ran` / `passWithNoTests` /
+  `0 tests` / `0 passed` 패턴 발견 시 `[WARN] LESSON-021 강화` 메시지 출력.
+- BLOCK 아님 — WARN 만. 의도적 상황(초기 세팅 등)이면 무시 가능.
+- profile 의 `toolchain.test` 명령에 `--passWithNoTests` 나 collection-only 플래그가
+  있으면 실제 테스트 디렉토리/파일이 존재하는지 먼저 확인 후 실행 권장.
+
 run.py 가:
 - `--status done` → LESSON-021 게이트 통과 → tasks.md 해당 행 상태 업데이트
 - 모든 태스크 done 이면 "building" → "built" 자동 전이

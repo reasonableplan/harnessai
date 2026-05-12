@@ -247,6 +247,29 @@ def _run_security_gate(project: Path, plan) -> list[str]:
     return failures
 
 
+_NO_TESTS_PATTERNS: list[re.Pattern[str]] = [
+    # pytest: "no tests ran", "no tests found"
+    re.compile(r"\bno tests? (found|ran)\b", re.IGNORECASE),
+    # jest/vitest: --passWithNoTests, passWithNoTests flag in output
+    re.compile(r"pass.{0,5}with.{0,5}no.{0,5}tests", re.IGNORECASE),
+    # "0 tests" standalone — but NOT "0 passed, 5 failed" (that has other counts)
+    re.compile(r"\b0 tests?\b", re.IGNORECASE),
+    # "0 passed" standalone — false-positive guard: skip if digits follow "failed"
+    re.compile(r"\b0 passed\b(?!.*\b[1-9]\d* (failed|error))", re.IGNORECASE),
+]
+
+
+def _detect_no_tests_signal(stdout: str) -> bool:
+    """stdout 에서 '실제 테스트가 실행되지 않음' 신호 패턴 탐지.
+
+    반환: True 면 no-tests 신호 발견. stdout 만 검사 (stderr 는 빌드 경고 노이즈 제외).
+    """
+    for pattern in _NO_TESTS_PATTERNS:
+        if pattern.search(stdout):
+            return True
+    return False
+
+
 def _run_toolchain_gate(project: Path, plan) -> list[str]:
     """LESSON-021: done 마킹 전 프로파일의 toolchain.test + .lint + .type 전부 실행.
 
@@ -272,11 +295,19 @@ def _run_toolchain_gate(project: Path, plan) -> list[str]:
                 # 사용자 입력이 아니므로 command injection 위험 없음.
                 r = subprocess.run(
                     cmd, shell=True, cwd=cwd,
-                    capture_output=True, timeout=300,
+                    capture_output=True, text=True, timeout=300,
                 )
                 if r.returncode != 0:
                     failures.append(
                         f"[{p.id} @ {path}] {name} 실패 (rc={r.returncode}): {cmd}"
+                    )
+                # LESSON-021 강화: test 명령에서 no-tests 신호 탐지 (exit 0 이어도 WARN)
+                elif name == "test" and _detect_no_tests_signal(
+                    r.stdout if isinstance(r.stdout, str) else (r.stdout or b"").decode("utf-8", errors="replace")
+                ):
+                    info(
+                        f"[WARN] LESSON-021 강화: '{cmd}' 출력에 'no tests found' 신호. "
+                        f"실제 테스트가 실행되지 않을 가능성 — toolchain.test 검토 필요."
                     )
             except subprocess.TimeoutExpired:
                 failures.append(f"[{p.id} @ {path}] {name} 타임아웃 (>5분): {cmd}")

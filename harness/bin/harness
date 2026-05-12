@@ -700,32 +700,140 @@ def _check_filesystem(skeleton_path: Path, text: str, project: Path, report: Rep
             )
 
 
+@dataclass
+class _IntegrityVerboseItem:
+    """verbose 출력을 위한 검사 항목 결과."""
+    label: str    # 표시할 항목 이름
+    passed: bool  # True: ✓, False: FAIL/WARN
+    detail: str   # 보조 설명
+
+
+@dataclass
+class IntegrityVerboseResult:
+    """check_integrity_verbose 의 상세 결과."""
+    project: Path
+    plan_path: Path | None
+    skeleton_path: Path | None
+    skeleton_exists: bool
+    filesystem_blocks: int          # ```filesystem 블록 수
+    filesystem_paths_declared: int  # 선언된 경로 수
+    filesystem_paths_ok: int        # 실재 확인된 경로 수
+    placeholder_count: int          # 미치환 placeholder 수
+    drift_checks: list[tuple[str, list[str], list[str]]]  # [(profile_id, extras, missing)]
+
+
 def check_integrity(project: Path, plan_override: Path | None, report: Report) -> None:
     """skeleton.md 선언 ↔ 실재 파일시스템 정합성 검사 (플레이스홀더 + 경로 존재)."""
+    check_integrity_verbose(project, plan_override, report)
+
+
+def check_integrity_verbose(
+    project: Path,
+    plan_override: Path | None,
+    report: Report,
+) -> IntegrityVerboseResult | None:
+    """skeleton.md 선언 ↔ 실재 파일시스템 정합성 검사 (verbose 정보 포함 반환).
+
+    report 에 에러/경고를 기록하고, verbose 출력용 IntegrityVerboseResult 를 반환.
+    오류로 조기 종료 시 None 반환.
+    """
     plan_path = _find_plan_file(project, plan_override)
     if plan_path is None:
         report.error("harness-plan.md", f"파일 없음 (프로젝트: {project})")
-        return
+        return None
     report.files_checked += 1  # plan.md 는 참고만 하고 실제 검증은 skeleton.md 에
 
     skeleton_path = plan_path.parent / "skeleton.md"
     if not skeleton_path.exists():
         report.warn("skeleton.md", "아직 생성 안 됨 (skip) — /ha-design 후 다시 실행")
-        return
+        return IntegrityVerboseResult(
+            project=project,
+            plan_path=plan_path,
+            skeleton_path=skeleton_path,
+            skeleton_exists=False,
+            filesystem_blocks=0,
+            filesystem_paths_declared=0,
+            filesystem_paths_ok=0,
+            placeholder_count=0,
+            drift_checks=[],
+        )
 
     report.files_checked += 1
     try:
         text = skeleton_path.read_text(encoding="utf-8")
     except OSError as exc:
         report.error(skeleton_path.name, f"읽기 실패: {exc}")
-        return
+        return None
 
+    # placeholder 검사 — 검사 전 에러 수 기록해 증분 계산
+    errors_before = report.error_count
     _check_placeholders(skeleton_path, text, report)
-    _check_filesystem(skeleton_path, text, project, report)
+    placeholder_errors = report.error_count - errors_before
+
+    # filesystem 블록 검사 — 선언/실재 경로 수 계산
+    fs_match = _FILESYSTEM_BLOCK_RE.search(text)
+    fs_blocks = 1 if fs_match else 0
+    declared_paths: list[str] = []
+    paths_ok = 0
+    if fs_match:
+        declared_paths = _parse_filesystem_tree(fs_match.group(1))
+        for rel in declared_paths:
+            if (project / rel).resolve().exists():
+                paths_ok += 1
+        if declared_paths:
+            # 실제 에러 기록은 _check_filesystem 에 위임
+            errors_before2 = report.error_count
+            _check_filesystem(skeleton_path, text, project, report)
+            _ = report.error_count - errors_before2  # 사용하지 않지만 명시적으로 delta 계산
+        else:
+            report.warn(skeleton_path.name, "```filesystem 블록이 비어있음")
+    # fs_match 없으면 _check_filesystem 은 silent pass
 
     # file_structure drift (advisory WARN)
     profiles_dir = HARNESS_ROOT / "profiles"
-    _check_file_structure_drift(project, profiles_dir, report)
+    drift_checks: list[tuple[str, list[str], list[str]]] = []
+    if profiles_dir.exists():
+        for profile_file in sorted(profiles_dir.glob("*.md")):
+            if profile_file.name in ("_base.md",):
+                continue
+            try:
+                data = parse_frontmatter(profile_file)
+            except (RuntimeError, ValueError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            profile_id = data.get("id", profile_file.stem)
+            if profile_id == "_base":
+                continue
+            file_structure = data.get("file_structure", "")
+            if not isinstance(file_structure, str) or not file_structure.strip():
+                continue
+            declared = _parse_file_structure_tree(file_structure)
+            if not declared:
+                continue
+            actual = _scan_project_dirs(project, top_n=3)
+            declared_concrete = {d for d in declared if "<" not in d}
+            extras = sorted(actual - declared_concrete)
+            missing = sorted(declared_concrete - actual)
+            drift_checks.append((str(profile_id), extras, missing))
+            if extras:
+                report.warn(
+                    f"profile:{profile_id}",
+                    f"file_structure drift: extras={extras}, missing={missing} "
+                    f"— 의도적 확장이면 profile.file_structure 에 추가하거나 무시",
+                )
+
+    return IntegrityVerboseResult(
+        project=project,
+        plan_path=plan_path,
+        skeleton_path=skeleton_path,
+        skeleton_exists=True,
+        filesystem_blocks=fs_blocks,
+        filesystem_paths_declared=len(declared_paths),
+        filesystem_paths_ok=paths_ok,
+        placeholder_count=placeholder_errors,
+        drift_checks=drift_checks,
+    )
 
 
 # ── file_structure drift audit ────────────────────────────────────────
@@ -1023,6 +1131,103 @@ def cmd_migrate_skeleton_hash(
     return 0
 
 
+# ── analyze-failure ──────────────────────────────────────────────────────────
+#
+# /ha-verify 단계 2.5 자동화: 빌드/테스트 출력에서 실패 파일 추출 + tasks.md 매핑.
+# backend/src/orchestrator/failure_analyzer.py 에 핵심 로직, 이 CLI 는 분기만 담당.
+# V1/R4 패턴과 동일: CLI 가 standalone 이라 backend import 불가 → inline 구현.
+
+_FA_PYTEST_RE = re.compile(r"^FAILED\s+([^\s:]+)", re.MULTILINE)
+_FA_PYRIGHT_RE = re.compile(r"^([^\s:][^\s]*\.py):\d+", re.MULTILINE)
+_FA_ESLINT_RE = re.compile(r"^([^\s][^\s]*\.[jt]sx?):\d+:\d+\s+(?:error|warning)", re.MULTILINE)
+_FA_JEST_FAIL_RE = re.compile(r"^FAIL\s+([^\s]+)", re.MULTILINE)
+_FA_JEST_STACK_RE = re.compile(r"\(([^)\s:][^)\s]*\.[jt]sx?):\d+:\d+\)", re.MULTILINE)
+_FA_TSC_RE = re.compile(r"^([^\s(][^\s(]*\.[jt]sx?)\(\d+,\d+\):\s+error", re.MULTILINE)
+
+_FA_TASK_ROW_RE = re.compile(r"^\|\s*(T-\d+)\s*\|", re.MULTILINE)
+
+
+def _fa_extract_files(output: str) -> list[str]:
+    found: dict[str, None] = {}
+    for pat in (_FA_PYTEST_RE, _FA_PYRIGHT_RE, _FA_ESLINT_RE, _FA_JEST_FAIL_RE, _FA_JEST_STACK_RE, _FA_TSC_RE):
+        for m in pat.finditer(output):
+            norm = m.group(1).replace("\\", "/").strip()
+            if norm and norm not in found:
+                found[norm] = None
+    return list(found.keys())
+
+
+def _fa_spec_blocks(tasks_text: str) -> dict[str, str]:
+    positions = [(m.group(1), m.start()) for m in _FA_TASK_ROW_RE.finditer(tasks_text)]
+    blocks: dict[str, str] = {}
+    for i, (tid, start) in enumerate(positions):
+        end = positions[i + 1][1] if i + 1 < len(positions) else len(tasks_text)
+        blocks[tid] = tasks_text[start:end]
+    return blocks
+
+
+def _cmd_analyze_failure(args: Any) -> int:
+    """analyze-failure 서브커맨드 구현."""
+    import argparse as _argparse
+
+    output_file: str = args.output_file
+    tasks_arg: str = args.tasks
+
+    # output 읽기
+    if output_file == "-":
+        try:
+            output_text = sys.stdin.read()
+        except OSError as exc:
+            print(f"[FAIL] stdin 읽기 실패: {exc}", file=sys.stderr)
+            return 1
+    else:
+        op = Path(output_file)
+        if not op.exists():
+            print(f"[FAIL] output 파일 없음: {op}", file=sys.stderr)
+            return 1
+        try:
+            output_text = op.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            print(f"[FAIL] output 파일 읽기 실패: {exc}", file=sys.stderr)
+            return 1
+
+    # tasks.md 읽기
+    tp = Path(tasks_arg)
+    if not tp.exists():
+        print(f"[FAIL] tasks.md 없음: {tp}", file=sys.stderr)
+        return 1
+    try:
+        tasks_text = tp.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        print(f"[FAIL] tasks.md 읽기 실패: {exc}", file=sys.stderr)
+        return 1
+
+    # 분석
+    failed_files = _fa_extract_files(output_text)
+    spec_blocks = _fa_spec_blocks(tasks_text)
+
+    matches: list[dict[str, object]] = []
+    matched: set[str] = set()
+    for tid, block in spec_blocks.items():
+        block_norm = block.replace("\\", "/")
+        task_matched = [
+            f for f in failed_files
+            if Path(f).name in block_norm or f in block_norm
+        ]
+        if task_matched:
+            for f in task_matched:
+                matched.add(f)
+            matches.append({"task_id": tid, "files": task_matched})
+
+    result: dict[str, object] = {
+        "failures": failed_files,
+        "matches": matches,
+        "unmatched_failures": [f for f in failed_files if f not in matched],
+    }
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
 # ── 러너 ───────────────────────────────────────────────────────────────
 
 def validate_all(report: Report) -> None:
@@ -1090,6 +1295,84 @@ def print_report(report: Report) -> None:
         print("\n[FAIL] Validation failed - fix errors above")
 
 
+def print_integrity_report(
+    report: Report,
+    verbose_result: IntegrityVerboseResult | None,
+    *,
+    quiet: bool = False,
+) -> None:
+    """integrity 검사 결과 출력.
+
+    quiet=False (기본): 검사 대상 + 항목별 결과 verbose 출력.
+    quiet=True: 기존 요약만 출력 (CI 친화).
+    """
+    if quiet or verbose_result is None:
+        # quiet 모드: 이슈 목록 + 요약만
+        for issue in report.issues:
+            tag = "[ERROR]" if issue.severity == "error" else "[WARN] "
+            print(f"{tag} [{issue.file}] {issue.message}")
+        print()
+        print(f"Files checked: {report.files_checked}  Errors: {report.error_count}  Warnings: {report.warn_count}")
+        if report.error_count == 0:
+            print(f"[OK] Schema validation passed{' (' + str(report.warn_count) + ' advisory WARN)' if report.warn_count else ''}")
+        else:
+            print("[FAIL] Validation failed — fix errors above")
+        return
+
+    # verbose 모드
+    vr = verbose_result
+    print(f"[integrity] project: {vr.project}")
+
+    if not vr.skeleton_exists:
+        print("[integrity] skeleton.md: 아직 생성 안 됨 (skip) — /ha-design 후 다시 실행")
+    else:
+        assert vr.skeleton_path is not None
+        print(f"[integrity] {vr.skeleton_path.name}: 검사 대상")
+
+        # filesystem 블록 검사 결과
+        if vr.filesystem_blocks == 0:
+            print("  ✓ ```filesystem 블록 없음 — 경로 검사 skip (opt-in)")
+        else:
+            fs_ok = vr.filesystem_paths_ok
+            fs_total = vr.filesystem_paths_declared
+            fs_missing = fs_total - fs_ok
+            if fs_missing == 0:
+                print(f"  ✓ filesystem 블록 선언 경로 모두 실재 ({fs_ok}/{fs_total})")
+            else:
+                print(f"  ✗ filesystem 블록: {fs_missing}개 경로 미존재 ({fs_ok}/{fs_total})")
+
+        # placeholder 검사 결과
+        if vr.placeholder_count == 0:
+            print("  ✓ 미치환 placeholder 0건")
+        else:
+            print(f"  ✗ 미치환 placeholder {vr.placeholder_count}건 — /ha-design 에서 기입 필요")
+
+    # file_structure drift 결과
+    if vr.drift_checks:
+        for profile_id, extras, missing in vr.drift_checks:
+            print(f"[integrity] profile {profile_id} file_structure drift:")
+            if not extras and not missing:
+                print("  ✓ 선언 디렉토리 일치")
+            else:
+                if extras:
+                    extras_short = ", ".join(extras[:5])
+                    more = f" … +{len(extras) - 5}개" if len(extras) > 5 else ""
+                    print(f"  [WARN] extras: {extras_short}{more} (의도 확장?)")
+                if missing:
+                    missing_short = ", ".join(missing[:5])
+                    print(f"  [WARN] missing: {missing_short}")
+    else:
+        print("[integrity] file_structure drift: 검사 대상 profile 없음 (skip)")
+
+    print("---")
+    warn_note = f" ({report.warn_count} advisory WARN)" if report.warn_count else ""
+    print(f"Files checked: {report.files_checked}  Errors: {report.error_count}  Warnings: {report.warn_count}")
+    if report.error_count == 0:
+        print(f"[OK] Schema validation passed{warn_note}")
+    else:
+        print("[FAIL] Validation failed — fix errors above")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="harness")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -1101,6 +1384,7 @@ def main() -> int:
     i = sub.add_parser("integrity", help="skeleton.md ↔ 실재 파일시스템 정합성 검사")
     i.add_argument("--project", type=Path, default=Path.cwd(), help="프로젝트 루트 (default: cwd)")
     i.add_argument("--plan", type=Path, default=None, help="harness-plan.md 경로 (자동 탐색)")
+    i.add_argument("--quiet", action="store_true", default=False, help="요약만 출력 (CI 친화)")
 
     msh = sub.add_parser(
         "migrate-skeleton-hash",
@@ -1121,13 +1405,30 @@ def main() -> int:
         help="--apply 시 백업 생성 생략 (위험)",
     )
 
+    af = sub.add_parser(
+        "analyze-failure",
+        help="빌드/테스트 출력에서 실패 파일 추출 + tasks.md 태스크 매핑 (JSON 출력)",
+    )
+    af.add_argument(
+        "output_file",
+        help="분석할 출력 파일 경로 (- 면 stdin)",
+    )
+    af.add_argument(
+        "--tasks",
+        default="docs/tasks.md",
+        help="tasks.md 경로 (기본: <cwd>/docs/tasks.md)",
+    )
+
     args = parser.parse_args()
 
     if args.cmd == "integrity":
         report = Report()
-        check_integrity(args.project.resolve(), args.plan, report)
-        print_report(report)
+        vr = check_integrity_verbose(args.project.resolve(), args.plan, report)
+        print_integrity_report(report, vr, quiet=args.quiet)
         return 0 if report.error_count == 0 else 1
+
+    if args.cmd == "analyze-failure":
+        return _cmd_analyze_failure(args)
 
     if args.cmd == "migrate-skeleton-hash":
         return cmd_migrate_skeleton_hash(

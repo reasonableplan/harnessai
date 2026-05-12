@@ -1,7 +1,8 @@
 """LESSON-021: ha-build 의 toolchain 게이트 (`_run_toolchain_gate`) 단위 테스트.
 
-대상: `skills/ha-build/run.py::_run_toolchain_gate`
+대상: `skills/ha-build/run.py::_run_toolchain_gate`, `_detect_no_tests_signal`
 전략: subprocess.run 을 monkeypatch 해 OS 의존성 없이 성공/실패 흐름 검증.
+B3: _detect_no_tests_signal 단위 + no-tests WARN 출력 검증 추가.
 """
 
 from __future__ import annotations
@@ -124,3 +125,96 @@ def test_toolchain_gate_iterates_all_profiles(ha_build, tmp_path, monkeypatch) -
     assert len(failures) == 1
     assert "react-vite" in failures[0]
     assert "lint 실패" in failures[0]
+
+
+# ── B3: _detect_no_tests_signal 단위 테스트 ──────────────────────────────────
+
+
+def test_detect_no_tests_signal_pytest_no_tests_ran(ha_build) -> None:
+    """pytest 'no tests ran' → True."""
+    stdout = "collected 0 items\n\n====== no tests ran ======"
+    assert ha_build._detect_no_tests_signal(stdout) is True
+
+
+def test_detect_no_tests_signal_pytest_no_tests_found(ha_build) -> None:
+    """pytest 'no tests found' → True."""
+    stdout = "ERROR: no tests found in /src/tests"
+    assert ha_build._detect_no_tests_signal(stdout) is True
+
+
+def test_detect_no_tests_signal_jest_pass_with_no_tests(ha_build) -> None:
+    """jest --passWithNoTests 출력 → True."""
+    stdout = "Test Suites: 0 skipped, 0 total\npassWithNoTests enabled, exiting with code 0"
+    assert ha_build._detect_no_tests_signal(stdout) is True
+
+
+def test_detect_no_tests_signal_zero_tests(ha_build) -> None:
+    """'0 tests' 단독 → True."""
+    stdout = "0 tests, 0 passing"
+    assert ha_build._detect_no_tests_signal(stdout) is True
+
+
+def test_detect_no_tests_signal_zero_passed_standalone(ha_build) -> None:
+    """'0 passed' 단독 (실패도 없음) → True."""
+    stdout = "0 passed in 0.01s"
+    assert ha_build._detect_no_tests_signal(stdout) is True
+
+
+def test_detect_no_tests_signal_normal_output_returns_false(ha_build) -> None:
+    """정상 pytest 출력 (테스트 통과) → False."""
+    stdout = "collected 42 items\n\n====== 42 passed in 1.23s ======"
+    assert ha_build._detect_no_tests_signal(stdout) is False
+
+
+def test_detect_no_tests_signal_empty_string_returns_false(ha_build) -> None:
+    """빈 stdout → False."""
+    assert ha_build._detect_no_tests_signal("") is False
+
+
+def test_detect_no_tests_signal_zero_passed_with_failures_false(ha_build) -> None:
+    """'0 passed, 5 failed' 는 false-positive 방지 → False."""
+    stdout = "0 passed, 5 failed in 2.00s"
+    assert ha_build._detect_no_tests_signal(stdout) is False
+
+
+# ── B3: _run_toolchain_gate no-tests WARN 출력 검증 ─────────────────────────
+
+
+def _make_subprocess_mock_with_output(stdout_map: dict[str, str]):
+    """명령별 stdout 을 반환하는 subprocess.run 대체 (항상 rc=0)."""
+    def _run(cmd, **kwargs):
+        stdout = stdout_map.get(cmd, "all good")
+        return CompletedProcess(args=cmd, returncode=0, stdout=stdout, stderr="")
+    return _run
+
+
+def test_toolchain_gate_warns_on_no_tests_signal(ha_build, tmp_path, monkeypatch, capsys) -> None:
+    """test 명령 exit 0 이지만 no-tests 신호 → WARN 출력, failures 비어있음."""
+    _patch_get_active_profiles(ha_build, "python-cli", "cmd-test", "cmd-lint", None, monkeypatch)
+    # cmd-test 는 'no tests ran' 신호 포함 stdout 반환
+    mock = _make_subprocess_mock_with_output({"cmd-test": "no tests ran"})
+    monkeypatch.setattr("subprocess.run", mock)
+    plan = _make_plan("python-cli", ".", "cmd-test", "cmd-lint", None)
+
+    failures = ha_build._run_toolchain_gate(tmp_path, plan)
+
+    # WARN 이지 BLOCK 아님 — failures 는 비어있어야 함
+    assert failures == []
+    # info() 가 stdout 에 WARN 메시지를 출력해야 함
+    captured = capsys.readouterr()
+    assert "LESSON-021 강화" in captured.out or "LESSON-021 강화" in captured.err
+
+
+def test_toolchain_gate_no_warn_on_normal_test_output(ha_build, tmp_path, monkeypatch, capsys) -> None:
+    """정상 test 출력 → WARN 없음, failures 비어있음."""
+    _patch_get_active_profiles(ha_build, "python-cli", "cmd-test", "cmd-lint", None, monkeypatch)
+    mock = _make_subprocess_mock_with_output({"cmd-test": "42 passed in 1.23s"})
+    monkeypatch.setattr("subprocess.run", mock)
+    plan = _make_plan("python-cli", ".", "cmd-test", "cmd-lint", None)
+
+    failures = ha_build._run_toolchain_gate(tmp_path, plan)
+
+    assert failures == []
+    captured = capsys.readouterr()
+    assert "LESSON-021 강화" not in captured.out
+    assert "LESSON-021 강화" not in captured.err

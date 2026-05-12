@@ -72,7 +72,27 @@ pytest : FAILED tests/api/test_auth.py::test_login_missing_fields
 pyright: src/services/auth.py:42 — Argument of type "str | None" ...
 ```
 
-**2. 태스크 매핑** — `tasks.md` 스펙 블록의 "생성/수정 파일" 에서 실패 파일 검색:
+**2. 태스크 매핑** — `harness analyze-failure` 로 자동 매핑 (권장):
+```bash
+# 출력을 파일로 저장 후 분석
+python ~/.claude/skills/ha-verify/run.py prepare > /tmp/verify-out.txt 2>&1
+# (위 명령 후 실제 toolchain 출력을 파일로 캡처)
+python ~/.claude/harness/bin/harness analyze-failure /tmp/toolchain-output.txt \
+  --tasks docs/tasks.md
+```
+JSON 출력:
+```json
+{
+  "failures": ["tests/api/test_auth.py", "src/services/auth.py"],
+  "matches": [
+    {"task_id": "T-003", "files": ["src/services/auth.py", "tests/api/test_auth.py"]}
+  ],
+  "unmatched_failures": []
+}
+```
+→ `matches[].task_id` 가 재작업 대상 T-ID.
+
+**수동 fallback** (analyze-failure 사용 불가 시):
 ```bash
 grep -n "test_auth\|auth\.py" docs/tasks.md
 grep -n "test_user\|user\.py" docs/tasks.md
