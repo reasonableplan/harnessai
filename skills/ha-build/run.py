@@ -182,13 +182,55 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _is_git_repo(project: Path) -> tuple[bool, bool]:
+    """git repo 여부 + git 설치 여부 확인.
+
+    반환: (is_repo, git_installed)
+    - (True, True): 정상 git repo
+    - (False, True): git 있지만 repo 아님
+    - (False, False): git 미설치
+    """
+    try:
+        r = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=str(project),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return r.returncode == 0, True
+    except FileNotFoundError:
+        return False, False
+    except subprocess.TimeoutExpired:
+        return False, True
+
+
 def _run_security_gate(project: Path, plan) -> list[str]:
     """Security hooks gate on git diff — BLOCK findings → done 거부.
 
     git diff HEAD (uncommitted changes) 또는 --cached (staged) 에서 diff 추출.
     security_hooks.SecurityHooks 로 BLOCK 패턴 검사.
+    not-git repo 는 WARN 출력 후 silent pass → visible pass 로 변경.
     ImportError 시 조용히 skip (CI 환경 등).
     """
+    # G3: not-git repo 에서 silent pass → visible WARN
+    is_repo, git_installed = _is_git_repo(project)
+    if not git_installed:
+        info(
+            "[WARN] /ha-build security_gate skipped — git 명령 미설치.\n"
+            "       보안 훅이 git diff 로 변경분을 추출하므로 git 없이는 검사 불가.\n"
+            "       권장: git 설치 후 재실행."
+        )
+        return []
+    if not is_repo:
+        info(
+            "[WARN] /ha-build security_gate skipped — git 저장소 아님.\n"
+            "       보안 훅이 git diff 로 변경분을 추출하므로 git repo 없이는 검사 불가.\n"
+            f"       project: {project}\n"
+            "       권장: git init && git add -A && git commit -m \"initial\" 후 재실행."
+        )
+        return []
+
     diff_text = ""
     for git_args in (["git", "diff", "HEAD"], ["git", "diff", "--cached"]):
         try:
@@ -264,10 +306,7 @@ def _detect_no_tests_signal(stdout: str) -> bool:
 
     반환: True 면 no-tests 신호 발견. stdout 만 검사 (stderr 는 빌드 경고 노이즈 제외).
     """
-    for pattern in _NO_TESTS_PATTERNS:
-        if pattern.search(stdout):
-            return True
-    return False
+    return any(pattern.search(stdout) for pattern in _NO_TESTS_PATTERNS)
 
 
 def _run_toolchain_gate(project: Path, plan) -> list[str]:

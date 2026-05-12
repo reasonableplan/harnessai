@@ -7,11 +7,13 @@ import json
 import os
 import platform
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "_ha_shared"))
-from utils import (  # noqa: E402
+from utils import (  # noqa: E402, I001
+    HARNESS_HOME,
     MOBILE_PROFILE_IDS as _MOBILE_PROFILE_IDS,
     assert_state,
     get_active_profiles,
@@ -86,6 +88,42 @@ def _check_platform_warnings(profile_id: str, current_platform: str) -> list[str
     return warnings
 
 
+def _run_integrity_check(project: Path) -> dict:
+    """G2: harness integrity 를 subprocess 로 실행해 advisory 결과 반환.
+
+    SKILL.md §1.5 가이드: "실패 (exit ≠ 0) 시 중단" — LLM 행동 지침 유지.
+    run.py 는 WARN + 결과 정보를 prepare 출력에 포함 (fail-fast 아닌 advisory).
+    harness 명령이 없거나 타임아웃 시 skipped=True 로 처리.
+    """
+    harness_bin = HARNESS_HOME / "harness" / "bin" / "harness"
+    if not harness_bin.exists():
+        return {"passed": None, "skipped": True, "reason": f"harness 바이너리 없음: {harness_bin}", "output": ""}
+
+    try:
+        r = subprocess.run(
+            [sys.executable, str(harness_bin), "integrity", "--project", str(project), "--quiet"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        passed = r.returncode == 0
+        # Windows + capture_output=True 에서 자식 프로세스가 stderr 를 close 하면
+        # r.stdout/r.stderr 가 None 으로 들어오는 케이스 가드 (회귀: 빈 fixture 통합 테스트)
+        output = ((r.stdout or "") + (r.stderr or "")).strip()
+        if not passed:
+            info(
+                f"[WARN] harness integrity 실패 (exit {r.returncode}) — skeleton ↔ 실재 FS 불일치 또는 placeholder 잔존.\n"
+                "       SKILL.md 가이드: /ha-design 으로 복귀해 skeleton 보완 후 재시도 권장.\n"
+                f"       출력:\n{output}"
+            )
+        return {"passed": passed, "skipped": False, "reason": "", "output": output}
+    except subprocess.TimeoutExpired:
+        info("[WARN] harness integrity 타임아웃 (>60s) — skeleton 정합성 검사 skip.")
+        return {"passed": None, "skipped": True, "reason": "timeout", "output": ""}
+    except FileNotFoundError:
+        return {"passed": None, "skipped": True, "reason": "python 실행 불가", "output": ""}
+
+
 def cmd_prepare(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
     assert_state(plan, ["built"], "/ha-verify")
@@ -103,9 +141,14 @@ def cmd_prepare(args: argparse.Namespace) -> int:
             "/ha-redesign 으로 변경 사항 추적 권장."
         )
 
+    # G2: harness integrity 게이트 — SKILL.md §1.5 가이드 강제
+    integrity_result = _run_integrity_check(project)
+
     output = {
         "project": str(project),
         "plan_path": str(plan_path),
+        "integrity_passed": integrity_result["passed"],
+        "integrity_check": integrity_result,
         "profiles": [
             {
                 "id": p.id,

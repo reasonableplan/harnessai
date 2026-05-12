@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import sys
 from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "_ha_shared"))
-from utils import info, project_root  # noqa: E402
+from utils import info, load_plan, project_root, save_plan  # noqa: E402, I001
 
 
 _EXCLUDE_DIRS = {
@@ -130,6 +131,75 @@ def cmd_scan(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_augment_plan(args: argparse.Namespace) -> int:
+    """G1: harness-plan.md 의 user_description_original 을 코드베이스 분석 요약으로 보강.
+
+    SKILL.md §5: "/ha-init 이 실행됐다면 user_description_original 을 분석 결과 요약으로 보강."
+    - 모든 pipeline 상태 허용 (assert_state 없음)
+    - 기존 내용 끝에 분석 요약 append (덮어쓰기 아님)
+    - --no-backup 없으면 .harness-plan.md.bak-<ts> 자동 생성
+    """
+    plan, plan_path, project = load_plan()
+
+    # 백업 (기본 활성화)
+    if not args.no_backup:
+        ts = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
+        backup_path = plan_path.with_name(f".{plan_path.name}.bak-{ts}")
+        try:
+            backup_path.write_text(plan_path.read_text(encoding="utf-8"), encoding="utf-8")
+            info(f"[INFO] backup: {backup_path}")
+        except OSError as e:
+            info(f"[WARN] backup 실패 (계속 진행): {e}")
+
+    # 코드베이스 스캔 — scan 결과를 직접 계산 (재사용)
+    scan_project = Path(args.project).resolve() if args.project else project
+    tree = _scan_dir(scan_project, depth=0, max_depth=2)
+    significant = _flatten_significant(tree, min_files=3)
+
+    total_files = tree.get("total_files", 0)
+    languages = tree.get("languages", {})
+    primary_lang = max(languages, key=languages.get) if languages else "unknown"  # type: ignore[arg-type]
+
+    top_dirs = [s["name"] for s in significant[:10]]
+    lang_list = ", ".join(
+        f"{lang}({cnt})" for lang, cnt in sorted(languages.items(), key=lambda x: -x[1])
+    )
+
+    ts_display = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    summary_block = (
+        f"\n\n## 자동 분석 (ha-deepinit augment — {ts_display})\n\n"
+        f"- 총 파일: {total_files}\n"
+        f"- 주 언어: {primary_lang}\n"
+        f"- 언어 분포: {lang_list or '없음'}\n"
+        f"- 주요 디렉토리: {', '.join(top_dirs) or '없음'}\n"
+    )
+
+    # AGENTS.md 가 있으면 경로 참조 추가
+    root_agents_md = scan_project / "AGENTS.md"
+    if root_agents_md.exists():
+        summary_block += f"- AGENTS.md: {root_agents_md} (ha-deepinit 생성)\n"
+
+    plan.user_description_original = plan.user_description_original + summary_block
+
+    try:
+        save_plan(plan, plan_path)
+    except OSError as e:
+        info(f"[FAIL] harness-plan.md 쓰기 실패: {e}")
+        return 1
+
+    output = {
+        "plan_path": str(plan_path),
+        "project": str(scan_project),
+        "augmented": True,
+        "total_files": total_files,
+        "primary_language": primary_lang,
+        "top_dirs": top_dirs,
+        "backup": str(backup_path) if not args.no_backup else None,
+    }
+    print(json.dumps(output, ensure_ascii=False, indent=2))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="ha-deepinit")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -140,9 +210,15 @@ def main() -> int:
     s.add_argument("--min-files", type=int, default=3, help="significant 임계값")
     s.add_argument("--include", default="", help="콤마 구분 디렉토리 키워드 필터")
 
+    a = sub.add_parser("augment-plan", help="harness-plan.md 의 user_description_original 을 코드베이스 분석 요약으로 보강")
+    a.add_argument("--project", default="", help="스캔할 프로젝트 경로 (기본: harness-plan.md 의 project)")
+    a.add_argument("--no-backup", action="store_true", help="backup 생성 skip")
+
     args = parser.parse_args()
     if args.cmd == "scan":
         return cmd_scan(args)
+    if args.cmd == "augment-plan":
+        return cmd_augment_plan(args)
     parser.print_help()
     return 2
 
