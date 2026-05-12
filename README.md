@@ -2,7 +2,7 @@
 
 🌐 **English** · [한국어](README.ko.md)
 
-![tests](https://img.shields.io/badge/tests-569%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-893%20passing-brightgreen)
 ![pyright](https://img.shields.io/badge/pyright-0%20errors-brightgreen)
 ![ruff](https://img.shields.io/badge/ruff-clean-brightgreen)
 ![gate coverage](https://img.shields.io/badge/gate%20coverage-100%25-brightgreen)
@@ -235,6 +235,7 @@ What it does:
 | **ai-slop** (8th hook) | `ha-review/run.py` | 6 regex patterns — verbose docstrings, cosmetic try/except, dead constants (LESSON-018), TODO/FIXME, unused funcs, stub `pass` |
 | **test distribution** | ` " ` | Detect skewed test coverage (BLOCK: 0 tests for a src module, WARN: 10x variance) |
 | **skeleton integrity** | `harness integrity` | Declared paths ↔ real filesystem + placeholder residue |
+| **file_structure drift** | `ha-build` (advisory) | Detects uncommitted FS drift vs skeleton-declared paths (WARN) |
 
 ---
 
@@ -275,9 +276,16 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 
 **Phase 6 — v0.6.0 (completed, 2026-05-07)**: **mobile expansion**. 4 new profiles (`react-native-expo` · `flutter` · `android-kotlin` · `ios-swift`) + 4 new mobile_coder agents (Pydantic + system prompts + dispatch routing) + 3 new mobile.* fragments (`navigation` / `build_config` / `lifecycle`) + harness-global guidelines auto-loaded for external users (no `<project>/docs/guidelines/` copy needed) + `HARNESS_AI_HOME` fallback for `prompt_path` resolution. iOS native is Windows-host friendly (SwiftLint + `swift build` dry-run; full `xcodebuild` deferred to macOS CI).
 
-**Phase 7 — v0.7.0 (in progress)**: **web + desktop profiles** — `nextjs` (App Router · Server Actions · better-auth · Drizzle) · `nestjs` (TypeORM · class-validator · Passport JWT · GlobalExceptionFilter) · `electron` (Context Isolation · preload IPC · electron-updater · code signing). 3 new skeleton fragments (`environments` / `error_ux` / `rate_limiting`). State machine bug fixes (`ha-review` / `ha-verify` state guards). Cross-platform toolchain gate tests.
+**Phase 7 — v0.7.0 (completed, 2026-05-11)**: **web + desktop profiles** — `nextjs` (App Router · Server Actions · better-auth · Drizzle) · `nestjs` (TypeORM · class-validator · Passport JWT · GlobalExceptionFilter) · `electron` (Context Isolation · preload IPC · electron-updater · code signing). 3 new skeleton fragments (`environments` / `error_ux` / `rate_limiting`). State machine bug fixes (`ha-review` / `ha-verify` state guards). Cross-platform toolchain gate tests.
 
-**Phase 8 (planned)**:
+**Phase 8 — v0.8.0 (completed, 2026-05-11)**: **design defect fixes**. 7 new infrastructure modules (`capabilities` / `consistency` / `lessons` / `agent_matching` / `tasks_schema` / `skeleton_hash` / `skeleton_stale`). 4 new `HarnessPlan` frontmatter fields. `harness migrate-plan` CLI. 220+ regression tests (541 → 761). Mobile-only false-positive / false-negative fixes. Fractional task ID guard. Discovered via챙겼니 (RN/Expo) dogfooding.
+
+**Phase 9 — v0.9.x (completed, 2026-05-12)**: **dogfood hardening + audit cleanup**.
+- v0.9.0: 11 defects from챙겼니 dogfood fixed — `harness migrate-skeleton-hash` + `harness analyze-failure` CLI, RN bun test, ha-review/ha-verify record gate, ha-build state machine + atomic writes, file_structure drift audit. +105 regression tests (761 → 866).
+- v0.9.1: `harness graph` CLI backfill — tasks.md → Mermaid dependency graph (was documented in v0.8.0 but not implemented). +4 tests (866 → 870).
+- v0.9.2: mirror sync (repo ↔ `~/.claude` 5-file drift), profile hardening (LESSON-STYLE-001, whitelist additions), spec-code gap closure (G1 ha-deepinit augment-plan · G2 ha-verify integrity auto-run · G3 ha-build git WARN). +23 tests (870 → 893).
+
+**Phase 10 (planned)**:
 - Live LESSONS auto-learning (ha-review repeated pattern → LESSON candidate)
 - Multi-provider (Gemini / OpenAI backend) — `providers/gemini_*.py` foundation in place, full validation pending
 - macOS GitHub Actions CI for iOS native (`xcodebuild` test/build)
@@ -293,7 +301,7 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 - **Package manager**: uv
 - **Agent execution**: Claude CLI subprocess (swappable — Gemini / local LLM)
 - **State**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (no DB)
-- **Tests**: **569** backend pytest + **12** install-snapshot assertions (0 regressions)
+- **Tests**: **893** backend pytest + **12** install-snapshot assertions (0 regressions)
 - **Type check**: pyright **0 errors** on `src/`
 - **Gate coverage** (self-test): 8 of the 10 gates measured on 35 fixtures (positive / negative) → **precision 100% / recall 100% / accuracy 100%**. The other 2 (test-distribution, skeleton-integrity) are covered by filesystem-level pytest fixtures. Details: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **Latency** (30-iter median, no LLM calls): profile detect **~5 ms**, skeleton assemble **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. Details: [benchmarks/](docs/benchmarks/)
@@ -314,7 +322,7 @@ backend/
   docs/shared-lessons.md      21 LESSONs
   src/orchestrator/           profile_loader / skeleton_assembler /
                               plan_manager / security_hooks / runner
-  tests/                      569 pytest + skills/ regression guards
+  tests/                      893 pytest + skills/ regression guards
 
 docs/
   ARCHITECTURE.md             System structure — read this first
@@ -330,7 +338,7 @@ docs/
 ```bash
 cd backend
 uv sync
-uv run pytest tests/ --rootdir=.      # 569 tests
+uv run pytest tests/ --rootdir=.      # 893 tests
 uv run ruff check src/                 # 0 errors
 uv run pyright src/                    # 0 errors
 uv run python -m src.main              # dashboard server (port 3002)
@@ -345,6 +353,10 @@ Harness schema validation:
 ```bash
 python harness/bin/harness validate                 # 50 files, 0 errors
 python harness/bin/harness integrity --project .    # skeleton ↔ FS integrity
+python harness/bin/harness graph docs/tasks.md      # tasks.md → Mermaid dependency graph
+python harness/bin/harness migrate-plan docs/harness-plan.md --apply  # legacy plan migration
+python harness/bin/harness migrate-skeleton-hash docs/harness-plan.md --apply  # skeleton hash migration
+python harness/bin/harness analyze-failure          # classify build failure + suggest fix
 ```
 
 Gate coverage benchmark:

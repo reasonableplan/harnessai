@@ -6,13 +6,14 @@
 
 ## Scope
 
-- **HarnessAI 자체**: 이 레포 (v1 은 HabitFlow/Personal Jira/금칙어게임 dogfooding, v2 는 code-hijack/ui-assistant dogfooding)
-- **파생 프로젝트**: 실제 빌드한 사이드 프로젝트 5개
+- **HarnessAI 자체**: 이 레포 (v1 은 HabitFlow/Personal Jira/금칙어게임 dogfooding, v2 는 code-hijack/ui-assistant/챙겼니 dogfooding)
+- **파생 프로젝트**: 실제 빌드한 사이드 프로젝트 6개
   - **Personal Jira** (v1) — 이슈 트래커 / fastapi + nextjs
   - **HabitFlow** (v1) — 습관 관리 / fastapi + nextjs
   - **금칙어게임** (v1) — 파티 게임 웹앱 / fastapi + react
   - **code-hijack** (v2 1차 E2E) — 코드베이스 분석 CLI / python-cli
   - **ui-assistant** (v2 2차 E2E) — LLM UI 디자인 어시스턴트 / fastapi + react-vite 모노레포
+  - **챙겼니** (v2 3차 E2E) — 알림/루틴 관리 모바일 앱 / react-native-expo (mobile-only)
 
 ## LESSON ↔ 원천 프로젝트 ↔ 현재 게이트 매핑
 
@@ -46,6 +47,34 @@
 - **구조적 강제**: LESSON-002/007/008/010/012/014 — skeleton 섹션 계약이 사전에 선언을 강제 → 누락 자체가 일어나지 않음
 - **텍스트 참조**: 나머지 — Reviewer 에이전트가 shared-lessons.md 를 컨텍스트로 받아 사례 기반 판단
 
+## 챙겼니 3차 E2E — v0.8.0/v0.9.0 결함 노출 (2026-05-11~12)
+
+**프로젝트**: 챙겼니 — React Native + Expo (mobile-only, no backend). `/ha-init → /ha-design → /ha-plan` 진행 중 11개 결함 노출.
+
+### 노출된 결함과 수정 (v0.8.0 / v0.9.0)
+
+| 결함 ID | 증상 | 수정 |
+|---|---|---|
+| **mobile-only false-positive** | `interface.http` / `rate_limiting` / `slo` 섹션이 mobile-only 프로젝트에 활성화 | v0.8.0: `capabilities.py` atom 단일 진실 소스 + `consistency.py` 교차 검증 |
+| **auth/persistence false-negative** | 모바일 앱에 `auth` / `persistence` 가 빠짐 | v0.8.0: `derive_axes_capabilities` 로 mobile atom 에서 users/storage 자동 유도 |
+| **mobile_coder_rn 라우팅 오류** | RN coder 가 auth API (backend 작업) 받음 | v0.8.0: `agent_matching.py` task→agent 1차 가드 |
+| **fractional task ID (T-024.5)** | Orchestrator 가 소수 task ID 생성 | v0.8.0: `tasks_schema.py` T-NNN 강제 검증 |
+| **V3: RN bun test** | `react-native-expo` 프로파일 toolchain 이 npm test 사용 | v0.9.0: bun test 로 정정 |
+| **R1: ha-review not-git** | git 저장소 아닌 디렉토리에서 조용히 실패 | v0.9.0: fail-fast WARN 출력 |
+| **B1/B5: state machine** | `building` 중복 진입 + plan/tasks 비원자 쓰기 | v0.9.0: assert_state 가드 + atomic write |
+| **R2/R5/R6/V6: record gate** | ha-review/ha-verify 기록 미저장 | v0.9.0: verify_history / review_history 저장 |
+| **B6: file_structure drift** | skeleton 선언 경로 vs 실재 FS 미점검 | v0.9.0: file_structure drift audit 추가 |
+| **V1/R4: skeleton_hash** | legacy plan 에 skeleton_hash 미저장 → 외부 수정 감지 불가 | v0.9.0: `harness migrate-skeleton-hash` CLI |
+| **B3/V2/V5: UX 누락** | 테스트 0개 WARN 없음, integrity verbose 없음, 실패 분류 없음 | v0.9.0: no-tests WARN + integrity verbose + `harness analyze-failure` |
+
+### 결과
+
+- **v0.8.0**: 5개 그룹 + 보강 수정 → 신규 모듈 7개, 회귀 +220 (761 passed)
+- **v0.9.0**: 11개 결함 전체 수정 → 회귀 +105 (866 passed)
+- **게이트화**: mobile-only false-positive/negative 가 `capabilities.py` + `consistency.py` 의 결정론적 검증으로 → 재발 구조적 차단
+
+---
+
 ## 관찰: v1 → v2 변화
 
 v1 (Personal Jira/HabitFlow) 시절 LESSON 은 **사후 학습** 뿐 — "다음엔 조심하자" 텍스트. 반복률은 낮아졌지만 재발 제로 보장 X.
@@ -55,6 +84,11 @@ v2 (code-hijack/ui-assistant) 부터 **게이트화 3건**:
 1. **LESSON-013 → test-distribution 게이트** (2026-04, commit `7dc7a3e` 근방)
 2. **LESSON-018 → ai-slop 7번째 패턴** ([ADR-004](../decisions/004-ai-slop-as-7th-hook.md))
 3. **LESSON-021 → toolchain-gate** ([commit `01ce1cb`](https://github.com/reasonableplan/harnessai/commit/01ce1cb))
+
+챙겼니 (3차 E2E, v0.8.0/v0.9.0) 부터 **인프라 게이트화 2건 추가**:
+
+4. **mobile-only false-positive/negative → `capabilities.py` + `consistency.py`** — atom 단일 소스 + 교차 검증으로 결정론적 차단 (v0.8.0)
+5. **file_structure drift → ha-build advisory WARN** — skeleton 선언 ↔ 실재 FS 편차 빌드 시 감지 (v0.9.0)
 
 — LESSON 이 단순 기록에서 **게이트 강제**로 올라가는 흐름. 이것이 v2 의 핵심 가치.
 

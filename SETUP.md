@@ -280,8 +280,48 @@ python ~/.claude/harness/bin/harness validate   # 프로파일 스키마 체크
 [ ] 프로파일 whitelist 업데이트 (라이브러리 변경 시)
 [ ] agents.yaml 모델/타임아웃 조정 (필요 시)
 [ ] harness validate — 50 files, 0 errors
-[ ] cd backend && uv run pytest tests/ — 569 pass
+[ ] cd backend && uv run pytest tests/ — 893 pass
 ```
+
+---
+
+## harness CLI 서브커맨드 레퍼런스 (v0.8.0+)
+
+`harness/bin/harness` 가 제공하는 전체 서브커맨드 목록.
+
+```bash
+# 스키마 검증
+python harness/bin/harness validate
+
+# skeleton ↔ FS 정합성 + placeholder 잔존 검사
+python harness/bin/harness integrity --project <path>
+
+# tasks.md → Mermaid 의존성 그래프 (v0.9.1+)
+python harness/bin/harness graph docs/tasks.md
+python harness/bin/harness graph docs/tasks.md --inject      # tasks.md 에 그래프 삽입
+python harness/bin/harness graph docs/tasks.md --no-phases   # Phase 구분 없이 플랫
+
+# legacy harness-plan.md 마이그레이션 (v0.8.0+)
+python harness/bin/harness migrate-plan docs/harness-plan.md              # dry-run
+python harness/bin/harness migrate-plan docs/harness-plan.md --apply      # 실제 갱신
+python harness/bin/harness migrate-plan docs/harness-plan.md --apply --mark-skeleton-stale
+
+# skeleton_hash 필드 마이그레이션 (v0.9.0+)
+python harness/bin/harness migrate-skeleton-hash docs/harness-plan.md              # dry-run
+python harness/bin/harness migrate-skeleton-hash docs/harness-plan.md --apply      # 실제 갱신
+
+# 빌드 실패 원인 분류 + 권고 (v0.9.0+)
+python harness/bin/harness analyze-failure
+```
+
+### 언제 쓰는가
+
+| 상황 | 명령 |
+|---|---|
+| v0.7.0 이하 → v0.8.0 업그레이드 후 기존 plan | `migrate-plan --apply` |
+| `skeleton_hash` 없다는 경고가 뜰 때 | `migrate-skeleton-hash --apply` |
+| `/ha-build` 가 실패했는데 원인 불명 | `analyze-failure` |
+| tasks.md 의존성을 시각적으로 확인 | `graph docs/tasks.md` |
 
 ---
 

@@ -4,6 +4,111 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.9.2] — 2026-05-12 — "audit cleanup"
+
+Final verification: **pytest 893 pass / ruff clean / pyright 0 errors**.
+
+핵심 가치: mirror sync (repo ↔ `~/.claude` 5파일 drift 회복), profile 보강 (LESSON-STYLE-001 정의 + whitelist/detect 항목 추가), 명세-코드 격차 3건 (G1 ha-deepinit augment-plan, G2 ha-verify integrity gate 자동 실행, G3 ha-build git WARN) 구현으로 설계 문서와 실제 코드가 일치하도록 정비.
+
+### Added
+
+- **`ha-deepinit augment-plan`** — G1: `ha-deepinit` 의 augment-plan 명령 구현. 기존 코드베이스 분석 결과를 harness-plan.md 에 반영 (신규 회귀 +23).
+- **LESSON-STYLE-001** — profile 공통 원칙에 코딩 스타일 컨벤션 정의 항목 신규 추가.
+
+### Changed
+
+- **mirror sync** — `c760762`: repo 내 5개 파일 (`skeleton_hash.py`, `skeleton_stale.py`, `consistency.py`, `capabilities.py`, `agent_matching.py`) 과 `~/.claude` 사본 간 drift 회복. `skeleton_hash` frontmatter 미저장 버그 수정.
+- **profile 보강** — `10a5432`: `python-lib` entry_points 추가, `drizzle-orm` / `python-multipart` / `@types/express` whitelist 추가, `android-kotlin` env_config 보강.
+- **ha-verify integrity gate 자동 실행** — G2: `harness integrity` 를 `/ha-verify` 가 자동으로 실행하도록 명세 반영.
+- **ha-build git WARN** — G3: ha-build 가 uncommitted 변경 감지 시 WARN 출력.
+
+---
+
+## [0.9.1] — 2026-05-12 — "graph CLI backfill"
+
+Final verification: **pytest 870 pass / ruff clean / pyright 0 errors**.
+
+핵심 가치: v0.8.0 CHANGELOG + 메모리에 `harness graph` CLI 가 추가됐다고 기록됐으나 실제 미구현이었던 사실을 dogfooding 중 발견 → 보충 구현. test_graph_cli.py 의 pre-existing failure 4건 해소.
+
+### Added
+
+- **`harness graph <tasks-path>`** — tasks.md → Mermaid 의존성 그래프 렌더링 CLI (142 lines). `--inject` 로 tasks.md 에 그래프 삽입, `--no-phases` 로 Phase 구분 없이 플랫 출력. 회귀 테스트 +4.
+
+### Fixed
+
+- **`test_graph_cli.py` pre-existing failure 4건** — v0.8.0 시점부터 존재하던 실패 해소.
+
+---
+
+## [0.9.0] — 2026-05-12 — "챙겼니 dogfood fixes"
+
+Final verification: **pytest 866 pass / ruff clean / pyright 0 errors**.
+
+핵심 가치: 챙겼니 (React Native/Expo) dogfooding 으로 노출된 결함 11건 (V1~V6, R1~R6, B1~B6) 전체 수정. 신규 CLI 2개 (`migrate-skeleton-hash`, `analyze-failure`), 회귀 테스트 +105.
+
+### Added
+
+- **`harness migrate-skeleton-hash`** — legacy plan 에 `skeleton_hash` 필드 없거나 잘못된 경우 마이그레이션 CLI. `--apply` 로 실제 갱신.
+- **`harness analyze-failure`** — `/ha-build` 실패 시 원인 분류 + 권고 출력 CLI (B3/V5).
+- **신규 회귀 테스트 +105** — v0.9.0 결함 fix 에 대한 regression coverage.
+
+### Fixed
+
+- **V3: RN profile bun test** — `react-native-expo` 프로파일 toolchain test 명령 `bun test` 로 정정.
+- **R1: ha-review not-git silent fail** — git 저장소 아닌 디렉토리에서 `/ha-review` 가 조용히 실패하던 버그. fail-fast WARN 출력으로 변경.
+- **B5/B1: ha-build state machine + atomic plan/tasks** — `building` 중복 진입 차단 + plan/tasks 파일 atomic 쓰기.
+- **R2/R5/R6/V6: record gate** — `/ha-review` 와 `/ha-verify` 가 실행 기록(verify_history / review_history)을 저장하지 않던 버그. security hooks + violations/rework 결과 기록.
+- **V1/R4 + B6: hash migration + file_structure drift** — legacy `skeleton_hash` 미저장 → 마이그레이션 + `file_structure` 섹션 drift audit 추가 (B6).
+- **B3/V2/V5: no-tests WARN + integrity verbose + analyze-failure** — 테스트 파일 0개 시 WARN, `harness integrity` verbose 모드, `analyze-failure` CLI.
+
+---
+
+## [0.8.0] — 2026-05-11 — "design defect fixes"
+
+Final verification: **pytest 761 pass / ruff clean / pyright 0 errors / harness validate 0 errors**.
+
+핵심 가치: 챙겼니 dogfooding reverse-engineering 으로 5개 그룹 + 보강 결함 발견 → 인프라 모듈 7개 신설, frontmatter 필드 4개 추가, CLI 1개 (`migrate-plan`). 기존 설계 문서와 실제 코드 사이 구조적 격차를 대규모 수정.
+
+### Added
+
+- **신규 인프라 모듈 7개** (`backend/src/orchestrator/`):
+  - `capabilities.py` — `KNOWN_CAPABILITY_ATOMS` (14개 atom single source of truth), `derive_axes_capabilities`, `validate_capability_set`
+  - `consistency.py` — `find_consistency_violations`, `_HAS_KEY_PROVIDERS` (atom → provider profile 셋)
+  - `lessons.py` — `extract_known_lessons`, `find_unknown_lesson_references`
+  - `agent_matching.py` — `match_task_to_agent`, `find_best_agent_for_task`, `AgentMatchResult`
+  - `tasks_schema.py` — `validate_tasks_md` (T-NNN 강제), `TaskNode/TaskGraph`, `extract_task_graph`, `render_mermaid`
+  - `skeleton_hash.py` — `compute_skeleton_hash` (CRLF/LF 정규화), `check_skeleton_hash`
+  - `skeleton_stale.py` — `preview_skeleton_stale`, `mark_skeleton_stale`
+
+- **신규 frontmatter 필드 4개** (`HarnessPlan`):
+  - `activation_trace` — 활성 섹션별 `required_when` 표현식 audit trail
+  - `skeleton_hash` — skeleton.md SHA-256, 외부 수정 감지
+  - `eng_review_history` — `/plan-eng-review` 등 외부 도구 audit trail
+  - `external_capabilities` — BaaS/Firebase 등 외부 backend escape hatch
+
+- **`harness migrate-plan <path>`** — stale plan 정정 + skeleton STALE 마킹 CLI (`--apply` / `--mark-skeleton-stale` / `--no-backup`).
+
+- **신규 escape flags** — `--allow-agent-mismatch`, `--allow-format-drift`, `--allow-unknown-lessons`, `--external-capabilities`.
+
+- **회귀 테스트 +220** (541 → 761).
+
+### Fixed
+
+- **mobile-only false-positive** — `interface.http` / `rate_limiting` / `slo` 섹션이 mobile-only 프로젝트에서 활성화되던 버그.
+- **`auth` / `persistence` false-negative** — mobile-only 프로젝트에서 필수 섹션이 빠지던 버그.
+- **`mobile_coder_rn` backend task 라우팅** — RN coder 에게 auth API 같은 backend task 가 잘못 배분되던 버그.
+- **fractional task ID** — `T-024.5` 같은 소수 ID 생성 방지 (`tasks_schema.py` T-NNN 강제).
+- **`/plan-eng-review` skeleton 직접 수정** — `skeleton_hash` 로 외부 수정 사후 감지.
+- **`adapt_diff` TypeError** — `3ea95c1` review feedback.
+
+### Migration
+
+기존 v0.7.0 사용자:
+- `./install.ps1 -Force` 또는 `./install.sh --force` 재실행 — 신규 모듈 7개 + harness bin 변경 동기화 필수.
+- `harness migrate-plan <path> --apply` — 기존 `harness-plan.md` 에 신규 frontmatter 필드 추가 (선택, 하위 호환).
+
+---
+
 ## [0.7.0] — 2026-05-11 — "web + desktop profiles"
 
 Final verification snapshot at release time:

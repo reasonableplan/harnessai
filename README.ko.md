@@ -227,6 +227,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 | **ai-slop** (8번째) | `ha-review/run.py` | 정규식 6패턴 — 장황한 docstring, 껍데기 try/except, dead 상수(LESSON-018), TODO/FIXME, unused 함수, 임시 pass |
 | **테스트 분포** | ` " ` | src 모듈 대비 테스트 편중 감지 (BLOCK: 0개, WARN: 10x 편차) |
 | **skeleton 정합성** | `harness integrity` | 선언 경로 ↔ 실재 + 플레이스홀더 검증 |
+| **file_structure drift** | `ha-build` (advisory) | uncommitted FS 변경 vs skeleton 선언 경로 편차 감지 (WARN) |
 
 ---
 
@@ -269,7 +270,14 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 
 **Phase 7 — v0.7.0 (완료, 2026-05-11)**: **웹 + 데스크톱 프로파일** — `nextjs` (App Router · Server Actions · better-auth · Drizzle) · `nestjs` (TypeORM · class-validator · Passport JWT · GlobalExceptionFilter) · `electron` (Context Isolation · preload IPC · electron-updater · 코드 서명). 신규 skeleton fragment 3개 (`environments` / `error_ux` / `rate_limiting`). 상태 머신 버그 수정 (`ha-review` / `ha-verify`). 크로스 플랫폼 toolchain 게이트 테스트.
 
-**Phase 8 (계획)**:
+**Phase 8 — v0.8.0 (완료, 2026-05-11)**: **설계 결함 대규모 수정**. 인프라 모듈 7개 신설 (`capabilities` / `consistency` / `lessons` / `agent_matching` / `tasks_schema` / `skeleton_hash` / `skeleton_stale`), `HarnessPlan` frontmatter 필드 4개 추가, `harness migrate-plan` CLI, 회귀 테스트 +220 (541 → 761). 챙겼니 (RN/Expo) dogfooding 으로 발견한 mobile-only false-positive/negative, fractional task ID, 에이전트 라우팅 오류 수정.
+
+**Phase 9 — v0.9.x (완료, 2026-05-12)**: **dogfood 강화 + audit cleanup**.
+- v0.9.0: 챙겼니 dogfood 결함 11건 수정 — `harness migrate-skeleton-hash` + `harness analyze-failure` CLI, RN bun test 수정, ha-review/ha-verify 기록 게이트, ha-build 상태 머신 + atomic 쓰기, file_structure drift audit 추가. 회귀 +105 (761 → 866).
+- v0.9.1: `harness graph` CLI 보충 구현 — tasks.md → Mermaid 의존성 그래프 (v0.8.0 에 구현됐다고 기록됐으나 실제 미구현). 회귀 +4 (866 → 870).
+- v0.9.2: mirror sync (repo ↔ `~/.claude` 5파일 drift 회복), profile 보강 (LESSON-STYLE-001, whitelist 항목 추가), 명세-코드 격차 해소 (G1 ha-deepinit augment-plan · G2 ha-verify integrity 자동 실행 · G3 ha-build git WARN). 회귀 +23 (870 → 893).
+
+**Phase 10 (계획)**:
 - Live LESSONS 자동 학습 (ha-review 반복 패턴 → 후보 등록)
 - multi-provider (Gemini/OpenAI backend)
 - macOS GitHub Actions CI (iOS native `xcodebuild` test/build)
@@ -285,7 +293,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 - **패키지**: uv
 - **에이전트 실행**: Claude CLI subprocess (Gemini/로컬 LLM 교체 가능)
 - **상태**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (DB 없음)
-- **테스트**: pytest **569개** backend + **12개** install 스냅샷 (회귀 0건)
+- **테스트**: pytest **893개** backend + **12개** install 스냅샷 (회귀 0건)
 - **타입 체크**: pyright **0 errors** (`src/` 전수)
 - **게이트 커버리지 (자기 검증)**: 9개 게이트 중 정규식/AST 기반 7개를 35 fixtures (positive/negative) 로 측정 → **precision 100% / recall 100% / accuracy 100%**. 나머지 2개 (test-distribution, skeleton-integrity) 는 filesystem fixture 로 별도 회귀 테스트. 상세 한계/방법: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **성능** (30 iter, LLM 제외): profile 감지 **~5 ms**, skeleton 조립 **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. [docs/benchmarks/](docs/benchmarks/)
@@ -306,7 +314,7 @@ backend/
   docs/shared-lessons.md      21 LESSONs
   src/orchestrator/           profile_loader / skeleton_assembler /
                               plan_manager / security_hooks / runner
-  tests/                      569 pytest + skills/ 회귀 방지
+  tests/                      893 pytest + skills/ 회귀 방지
 
 docs/
   ARCHITECTURE.md             시스템 구조 30분 이해
@@ -320,7 +328,7 @@ docs/
 ```bash
 cd backend
 uv sync
-uv run pytest tests/ --rootdir=.      # 551 tests
+uv run pytest tests/ --rootdir=.      # 893 tests
 uv run ruff check src/                 # 0 errors
 uv run pyright src/                    # 0 errors (타입 체크)
 uv run python -m src.main              # dashboard 서버 (포트 3002)
@@ -333,8 +341,12 @@ install 스크립트 회귀 테스트:
 
 harness 스키마 검증:
 ```bash
-python harness/bin/harness validate           # 50 files, 0 errors
-python harness/bin/harness integrity --project .   # skeleton ↔ FS 정합성
+python harness/bin/harness validate                 # 50 files, 0 errors
+python harness/bin/harness integrity --project .    # skeleton ↔ FS 정합성
+python harness/bin/harness graph docs/tasks.md      # tasks.md → Mermaid 의존성 그래프
+python harness/bin/harness migrate-plan docs/harness-plan.md --apply  # legacy plan 마이그레이션
+python harness/bin/harness migrate-skeleton-hash docs/harness-plan.md --apply  # skeleton 해시 마이그레이션
+python harness/bin/harness analyze-failure          # 빌드 실패 원인 분류 + 권고
 ```
 
 ---
@@ -365,4 +377,4 @@ MIT
 
 ---
 
-**포트폴리오 목표**: 현업 시니어 수준의 코드 품질 기준으로 포트폴리오의 정점을 찍기. Phase 1–6 완료 (v0.6.0 모바일 확장), pytest 551 / ruff clean / pyright 0 / harness validate 50 files.
+**포트폴리오 목표**: 현업 시니어 수준의 코드 품질 기준으로 포트폴리오의 정점을 찍기. Phase 1–9 완료 (v0.9.2 audit cleanup), pytest 893 / ruff clean / pyright 0 / harness validate 50 files.
