@@ -50,9 +50,19 @@ cd <profile.cwd>
 
 각 명령 결과 (exit code + stdout/stderr 마지막 30~50 라인) 수집.
 
+**install 실패 처리**: `toolchain.install` 이 실패하면 이후 명령 전부 skip.
+install 실패는 T-ID 재작업 대상이 아님 — 환경 문제로 처리:
+```
+⚠️ /ha-verify BLOCKED — install 실패
+  <install 명령>: exit 1
+  원인: <오류 메시지>
+  조치: 환경 점검 후 수동 재실행 (패키지 레지스트리, 네트워크, 권한 확인)
+```
+record 는 `--passed false --summary "install 실패: <사유>"` 로 기록 후 종료.
+
 ### 2.5. 실패 분석 — 재작업 태스크 특정
 
-`passed=false` 인 경우, **어떤 T-ID를 /ha-build 로 재작업할지** 명시해야 합니다.
+`passed=false` 인 경우, **어떤 T-ID를 `/ha-build` 로 재작업할지** 명시해야 합니다.
 이 단계를 건너뛰면 사용자가 무엇을 고쳐야 할지 모릅니다.
 
 **1. 실패 항목 추출** (명령 출력에서):
@@ -82,10 +92,14 @@ grep -n "test_user\|user\.py" docs/tasks.md
 ```bash
 python ~/.claude/skills/ha-verify/run.py record \
   --passed true|false \
-  --summary "<예: pytest 327, ruff clean, pyright 0 errors>"
+  --summary "<예: pytest 327, ruff clean, pyright 0 errors>" \
+  [--rework-tasks "T-001,T-002"]  # passed=false 시 필수 (재작업 T-ID CSV)
+  [--no-rework]                   # task 재작업 아닌 환경 문제 등일 때 (--rework-tasks 대체)
 ```
-run.py 가:
+run.py 자동 검증:
 - `verify_history` 에 새 엔트리 추가 (step, at, passed, summary)
+- **`passed=false` + `--rework-tasks` 없음 + `--no-rework` 없음** → exit 1 (가드레일: 재작업 T-ID 필수)
+- `passed=false` + `--rework-tasks "T-001,T-002"` → summary 에 `[rework: T-001,T-002]` 자동 추가
 - `passed=true` 면 "built" → "verified" 전이
 - `passed=false` 면 "building" 으로 회귀 (재구현 필요)
 
@@ -119,17 +133,25 @@ run.py 가:
   모두 수정 후: /ha-verify 재실행
 ```
 
-### 출력의 guideline_paths 읽기 (필수)
+### 출력의 guideline_paths 도 읽으세요
 
-출력 JSON 의 `profiles[].guideline_paths` 에 포함된 경로를 **작업 시작 전 모두 Read 로 읽으세요.**
-프로파일별 파일 목록 → `<HARNESS_AI_HOME>/skills/_ha_shared/GUIDELINES_NOTE.md` 참조.
+`prepare` 출력 JSON 의 `profiles[].guideline_paths` 에
+프로파일별 컨벤션 문서 경로가 포함됩니다. **반드시 작업 시작 전 모두 읽으세요**:
+
+- `react-native-expo`: navigation/state/storage/style 4 파일 — Expo Router + Zustand + SecureStore 컨벤션
+- `flutter`: navigation/state/storage/style 4 파일 — go_router + Riverpod + drift + ThemeData
+- `android-kotlin`: architecture/compose/network/storage 4 파일 — MVVM + Compose + Retrofit + Room
+- `ios-swift`: architecture/swiftui/network/storage 4 파일 — MV pattern + SwiftUI + URLSession + Keychain
+- `fastapi`: api/services/structure 3 파일 — Clean Arch + DI + 패키지 구조
+
+**모바일 사용자**: 위 가이드라인을 안 읽으면 LESSON-STYLE-001 / 보안 위반 / 컨벤션 drift 가능성. 시스템 프롬프트만으로는 부족합니다.
 
 ## 가드레일
 
 - 명령 실행 전 `cwd` 확인 (모노레포에서 잘못된 디렉토리 실행 방지)
 - 테스트 결과 임의 조작 X — 실패는 실패로 기록
 - timeout 60~600초 사이 (큰 테스트 스위트는 백그라운드 실행 권장)
-- `passed=false` 시 **재작업 T-ID 없이 FAIL 보고 금지** — 단계 2.5 완료 후 record 호출
+- `passed=false` 시 **재작업 T-ID 없이 FAIL 보고 금지** — **`record --passed false` 에 `--rework-tasks` 없으면 run.py 가 exit 1 로 차단**. 환경 문제로 task 재작업 아니면 `--no-rework` 명시
 - verify_history 활용: 동일 T-ID 가 2회 이상 FAIL 하면 `/ha-redesign` 으로 설계 근본 수정 검토
 
 ## 모바일 프로젝트 사용 예시 (Flutter)

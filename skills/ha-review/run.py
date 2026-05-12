@@ -2,6 +2,7 @@
 """HarnessAI v2 — `/ha-review` 백엔드.
 
 ai-slop 휴리스틱 (7번째 훅) 도 여기에 직접 구현.
+보안 훅 (SecurityHooks.from_profile().run_all()) + mobile 룰도 prepare/record 양쪽에서 자동 실행.
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "_ha_shared"))
 from utils import (  # noqa: E402, I001
     HARNESS_HOME,
     MOBILE_PROFILE_IDS as _MOBILE_PROFILE_IDS,
+    FRONTEND_PROFILE_IDS as _FRONTEND_PROFILE_IDS,
     assert_state,
     get_active_profiles,
     info,
@@ -27,6 +29,10 @@ from utils import (  # noqa: E402, I001
     save_plan,
     transition,
 )
+
+# backend src import — utils.py 가 backend/ 를 sys.path 에 추가 보장
+from src.orchestrator.security_hooks import SecurityHooks  # noqa: E402
+from src.orchestrator.skeleton_hash import check_skeleton_hash  # noqa: E402
 
 
 # ── ai-slop 패턴 (7번째 훅) ─────────────────────────────────────────
@@ -438,6 +444,107 @@ def _check_rn_cli(diff: str, profile_id: str) -> list[dict[str, str]]:
     return findings
 
 
+# ── 공통 헬퍼 ──────────────────────────────────────────────────────
+
+
+def _extract_diff(project: Path) -> str:
+    """git diff main...HEAD 또는 HEAD fallback 으로 diff 추출."""
+    diff = ""
+    try:
+        out = subprocess.run(
+            ["git", "diff", "main...HEAD"], cwd=str(project),
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        diff = out.stdout if out.returncode == 0 else ""
+    except FileNotFoundError:
+        pass
+
+    if not diff:
+        try:
+            out = subprocess.run(
+                ["git", "diff", "HEAD"], cwd=str(project),
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+            )
+            diff = out.stdout
+        except FileNotFoundError:
+            pass
+
+    return diff
+
+
+def _collect_findings(
+    project: Path,
+    profiles: list,  # list[Profile]
+    diff: str,
+) -> dict:
+    """ai-slop, SecurityHooks, mobile 룰 모두 실행해 결과를 합산.
+
+    반환:
+        {
+            "ai_slop": [...],
+            "security": [...],        # hook/severity/message/snippet 형태
+            "block_count": N,
+            "warn_count": M,
+        }
+    """
+    ai_slop: list[dict[str, str]] = _ai_slop_scan(diff)
+
+    security: list[dict[str, str]] = []
+
+    # 이미 처리한 mode 는 중복 실행 방지
+    seen_modes: set[str] = set()
+
+    for profile in profiles:
+        pid = profile.id
+        if pid in _MOBILE_PROFILE_IDS:
+            mode = "mobile"
+        elif pid in _FRONTEND_PROFILE_IDS:
+            mode = "frontend"
+        else:
+            mode = "backend"
+
+        if mode not in seen_modes:
+            seen_modes.add(mode)
+            hooks = SecurityHooks.from_profile(profile)
+            result = hooks.run_all(
+                diff,
+                is_frontend=(mode == "frontend"),
+                is_mobile=(mode == "mobile"),
+            )
+            for f in result.findings:
+                security.append({
+                    "hook": f.hook,
+                    "severity": str(f.severity),
+                    "message": f.message,
+                    "snippet": f.snippet[:100] if f.snippet else "",
+                })
+
+        # mobile 룰 (SecurityHooks 와 별개 — diff 기반 패턴)
+        if pid in _MOBILE_PROFILE_IDS:
+            for finding in _check_mobile_secret_storage(diff, pid):
+                security.append(finding)
+            for finding in _check_mobile_permission_burst(diff, pid):
+                security.append(finding)
+            if pid == "ios-swift":
+                for finding in _check_cocoapods_new(diff, pid):
+                    security.append(finding)
+            if pid == "react-native-expo":
+                for finding in _check_rn_cli(diff, pid):
+                    security.append(finding)
+
+    block_count = sum(1 for f in security if f.get("severity") == "BLOCK")
+    block_count += sum(1 for f in ai_slop if f.get("severity") == "BLOCK")
+    warn_count = sum(1 for f in security if f.get("severity") == "WARN")
+    warn_count += sum(1 for f in ai_slop if f.get("severity") == "WARN")
+
+    return {
+        "ai_slop": ai_slop,
+        "security": security,
+        "block_count": block_count,
+        "warn_count": warn_count,
+    }
+
+
 # ── 명령 ───────────────────────────────────────────────────────────
 
 
@@ -483,28 +590,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     _check_git_repo(project)
 
     profiles = get_active_profiles(plan, project)
-
-    # git diff
-    diff = ""
-    try:
-        out = subprocess.run(
-            ["git", "diff", "main...HEAD"], cwd=str(project),
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-        )
-        diff = out.stdout if out.returncode == 0 else ""
-    except FileNotFoundError:
-        pass
-
-    if not diff:
-        # 기본: working tree diff
-        try:
-            out = subprocess.run(
-                ["git", "diff", "HEAD"], cwd=str(project),
-                capture_output=True, text=True, encoding="utf-8", errors="replace",
-            )
-            diff = out.stdout
-        except FileNotFoundError:
-            pass
+    diff = _extract_diff(project)
 
     changed_files: list[str] = []
     for line in diff.splitlines():
@@ -519,6 +605,19 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         test_distribution_findings.extend(
             _check_test_distribution(project, p.id, path, toolchain_test)
         )
+
+    # skeleton hash 비교 — 외부 수정 감지 (advisory only)
+    skel_path = plan_path.parent / "skeleton.md"
+    hash_check = check_skeleton_hash(plan.skeleton_hash, skel_path)
+    if not hash_check.skeleton_missing and not hash_check.is_legacy and not hash_check.is_match:
+        info(
+            "[WARN] skeleton.md 가 마지막 ha-design/ha-redesign 이후 외부에서 수정된 듯합니다 "
+            "(hash mismatch). redesign_history 에 audit trail 누락 가능 — "
+            "/ha-redesign 으로 변경 사항 추적 권장."
+        )
+
+    # 보안 훅 + ai-slop + mobile 룰 자동 실행 (prepare 는 advisory — exit 0 유지)
+    findings = _collect_findings(project, profiles, diff)
 
     output = {
         "project": str(project),
@@ -535,8 +634,20 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         "lessons_path": str(HARNESS_HOME / "backend" / "docs" / "shared-lessons.md"),
         "diff_size_bytes": len(diff),
         "changed_files": changed_files,
-        "ai_slop_findings_in_diff": _ai_slop_scan(diff),
+        # backward compat — ai-slop 단독 키 유지
+        "ai_slop_findings_in_diff": findings["ai_slop"],
+        # 새 통합 키
+        "security_findings": findings["security"],
+        "security_summary": {
+            "block_count": findings["block_count"],
+            "warn_count": findings["warn_count"],
+        },
         "test_distribution_findings": test_distribution_findings,
+        "skeleton_hash_check": {
+            "is_match": hash_check.is_match,
+            "is_legacy": hash_check.is_legacy,
+            "skeleton_missing": hash_check.skeleton_missing,
+        },
         "agent_prompt": str(HARNESS_HOME / "backend" / "agents" / "reviewer" / "CLAUDE.md"),
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
@@ -551,6 +662,54 @@ def cmd_record(args: argparse.Namespace) -> int:
     if verdict not in ("approve", "reject"):
         info("[FAIL] --verdict: approve|reject")
         return 2
+
+    allow_block: bool = getattr(args, "allow_block", False)
+
+    # ── R5/R6: violations 파싱 ────────────────────────────────────────
+    violations_raw = args.violations or ""
+    violations: list[str] = []
+    if violations_raw:
+        try:
+            parsed = json.loads(violations_raw)
+            if isinstance(parsed, list):
+                violations = [str(v) for v in parsed]
+            else:
+                violations = [str(parsed)]
+        except json.JSONDecodeError:
+            violations = [violations_raw]
+
+    # ── R5: reject + violations 없음 → exit 1 ────────────────────────
+    if verdict == "reject" and not violations:
+        info(
+            "[FAIL] /ha-review record reject 거부 — violations 누락.\n"
+            "       SKILL.md 가드레일: REJECT 시 재작업 T-ID 없이 보고 금지.\n"
+            '       예시: --violations \'["[auth-guard:BLOCK] src/foo.py:42 — JWT type claim 누락 → T-003"]\''
+        )
+        return 1
+
+    # ── R6: approve + BLOCK 발견 → exit 1 (--allow-block 없으면) ─────
+    if verdict == "approve" and not allow_block:
+        profiles = get_active_profiles(plan, project)
+        diff = _extract_diff(project)
+        findings = _collect_findings(project, profiles, diff)
+        block_count = findings["block_count"]
+        if block_count > 0:
+            block_items = [
+                f for f in (findings["security"] + findings["ai_slop"])
+                if f.get("severity") == "BLOCK"
+            ]
+            detail_lines = "\n".join(
+                f"       [{f['hook']}] {f['message']}"
+                + (f" — {f['snippet'][:60]}" if f.get("snippet") else "")
+                for f in block_items[:10]  # 최대 10건 출력
+            )
+            info(
+                f"[FAIL] /ha-review record approve 거부 — BLOCK 위반 {block_count}건.\n"
+                f"{detail_lines}\n"
+                "       조치: REJECT 로 변경 후 violations 명시, 또는 코드 수정 후 prepare 재실행.\n"
+                "       의도적 우회: --allow-block 명시."
+            )
+            return 1
 
     passed = verdict == "approve"
     summary = args.summary or ("APPROVE" if passed else "REJECT")
@@ -570,7 +729,7 @@ def cmd_record(args: argparse.Namespace) -> int:
         "verdict": verdict,
         "summary": summary,
         "current_step": plan.pipeline.current_step,
-        "violations": json.loads(args.violations) if args.violations else [],
+        "violations": violations,
         "next": "(다음 단계 선택) /ship | /retro" if passed else "/ha-build <T-ID>",
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
@@ -585,6 +744,12 @@ def main() -> int:
     r.add_argument("--verdict", required=True)
     r.add_argument("--summary", default="")
     r.add_argument("--violations", default="", help="JSON 배열 string")
+    r.add_argument(
+        "--allow-block",
+        action="store_true",
+        default=False,
+        help="BLOCK 위반이 있어도 approve 강제 (의도적 우회 시)",
+    )
     args = parser.parse_args()
     if args.cmd == "prepare":
         return cmd_prepare(args)

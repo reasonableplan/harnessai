@@ -24,6 +24,9 @@ from utils import (  # noqa: E402
     transition,
 )
 
+# backend src import — utils.py 가 backend/ 를 sys.path 에 추가 보장
+from src.orchestrator.skeleton_hash import check_skeleton_hash  # noqa: E402
+
 # toolchain 핵심 명령 → 사전 점검할 실행파일
 _PROFILE_REQUIRED_CMDS: dict[str, list[tuple[str, str]]] = {
     "flutter": [
@@ -90,6 +93,16 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     profiles = get_active_profiles(plan, project)
     current_platform = _detect_platform()
 
+    # skeleton hash 비교 — 외부 수정 감지 (advisory only)
+    skel_path = plan_path.parent / "skeleton.md"
+    hash_check = check_skeleton_hash(plan.skeleton_hash, skel_path)
+    if not hash_check.skeleton_missing and not hash_check.is_legacy and not hash_check.is_match:
+        info(
+            "[WARN] skeleton.md 가 마지막 ha-design/ha-redesign 이후 외부에서 수정된 듯합니다 "
+            "(hash mismatch). redesign_history 에 audit trail 누락 가능 — "
+            "/ha-redesign 으로 변경 사항 추적 권장."
+        )
+
     output = {
         "project": str(project),
         "plan_path": str(plan_path),
@@ -115,6 +128,11 @@ def cmd_prepare(args: argparse.Namespace) -> int:
             for i, p in enumerate(profiles)
             for w in _check_platform_warnings(p.id, current_platform)
         ],
+        "skeleton_hash_check": {
+            "is_match": hash_check.is_match,
+            "is_legacy": hash_check.is_legacy,
+            "skeleton_missing": hash_check.skeleton_missing,
+        },
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0
@@ -126,7 +144,31 @@ def cmd_record(args: argparse.Namespace) -> int:
 
     passed = args.passed.lower() in ("true", "1", "yes", "y")
 
-    record_verify(plan, step="ha-verify", passed=passed, summary=args.summary)
+    # ── V6: passed=false 시 재작업 T-ID 또는 --no-rework 필수 ───────────
+    if not passed:
+        rework_tasks_raw = (getattr(args, "rework_tasks", None) or "").strip()
+        no_rework: bool = getattr(args, "no_rework", False)
+        if not rework_tasks_raw and not no_rework:
+            info(
+                "[FAIL] /ha-verify record passed=false 거부 — 재작업 T-ID 누락.\n"
+                "       SKILL.md 가드레일: passed=false 시 재작업 T-ID 필수.\n"
+                '       --rework-tasks "T-001,T-002" 또는 환경 문제로 task 재작업 아니면 --no-rework'
+            )
+            return 1
+        rework_tasks: list[str] = (
+            [t.strip() for t in rework_tasks_raw.split(",") if t.strip()]
+            if rework_tasks_raw
+            else []
+        )
+    else:
+        rework_tasks = []
+
+    # summary 에 rework tasks 자동 포함
+    summary = args.summary
+    if rework_tasks:
+        summary = f"{summary} [rework: {', '.join(rework_tasks)}]"
+
+    record_verify(plan, step="ha-verify", passed=passed, summary=summary)
 
     if passed:
         if plan.pipeline.current_step in ("built",):
@@ -140,10 +182,11 @@ def cmd_record(args: argparse.Namespace) -> int:
 
     output = {
         "passed": passed,
-        "summary": args.summary,
+        "summary": summary,
         "current_step": plan.pipeline.current_step,
         "verify_history_count": len(plan.verify_history),
-        "next": "/ha-review" if passed else "/ha-build <T-ID> (실패 원인 수정 후)",
+        "rework_tasks": rework_tasks,
+        "next": "/ha-review" if passed else f"/ha-build {rework_tasks[0] if rework_tasks else '<T-ID>'} (실패 원인 수정 후)",
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0
@@ -156,6 +199,17 @@ def main() -> int:
     r = sub.add_parser("record")
     r.add_argument("--passed", required=True)
     r.add_argument("--summary", required=True)
+    r.add_argument(
+        "--rework-tasks",
+        default="",
+        help="재작업 T-ID CSV (예: T-001,T-002). passed=false 시 --no-rework 없으면 필수.",
+    )
+    r.add_argument(
+        "--no-rework",
+        action="store_true",
+        default=False,
+        help="task 재작업 아닌 환경 문제 등으로 rework-tasks 없이 passed=false 허용.",
+    )
     args = parser.parse_args()
     if args.cmd == "prepare":
         return cmd_prepare(args)
