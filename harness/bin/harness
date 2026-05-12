@@ -8,9 +8,12 @@
   python harness validate <path>           # 단일 파일
   python harness validate --plan <path>    # harness-plan.md 검증
 
+  python harness migrate-skeleton-hash <plan-path>         # dry-run: 계산할 hash 미리 보기
+  python harness migrate-skeleton-hash <plan-path> --apply # legacy plan 에 hash 백필 + 자동 백업
+
 종료 코드:
-  0: 전부 통과
-  1: 검증 실패 (하나 이상)
+  0: 전부 통과 / dry-run 정보 출력
+  1: 검증 실패 (하나 이상) / apply 중 I/O 오류
   2: 사용 오류 (잘못된 인자)
   3: 내부 오류 (파일 없음 등)
 """
@@ -37,7 +40,10 @@ except ImportError:
     sys.exit(3)
 
 
+import hashlib
+import json
 import os
+from datetime import datetime, timezone
 
 # ── 상수 ───────────────────────────────────────────────────────────────
 
@@ -717,6 +723,305 @@ def check_integrity(project: Path, plan_override: Path | None, report: Report) -
     _check_placeholders(skeleton_path, text, report)
     _check_filesystem(skeleton_path, text, project, report)
 
+    # file_structure drift (advisory WARN)
+    profiles_dir = HARNESS_ROOT / "profiles"
+    _check_file_structure_drift(project, profiles_dir, report)
+
+
+# ── file_structure drift audit ────────────────────────────────────────
+#
+# profile.file_structure (frontmatter의 들여쓰기 트리) 와
+# 실제 프로젝트 디렉토리를 비교해 drift 를 WARN (advisory) 으로 보고.
+
+_SKIP_DIRS: frozenset[str] = frozenset({
+    "node_modules", "__pycache__", ".git", ".next", ".expo",
+    "dist", "build", ".build", "out", ".cache", ".turbo",
+    ".gradle", ".idea", ".vscode", "__tests__", "tests",
+    ".pytest_cache", "coverage", ".nyc_output", "target",
+    "venv", ".venv", "env",
+})
+
+_INLINE_COMMENT_RE = re.compile(r"\s+#.*$")
+
+
+def _parse_file_structure_tree(tree_text: str) -> set[str]:
+    """들여쓰기 트리 문자열 → 디렉토리 상대 경로 set (trailing '/').
+
+    파일 항목(자식 없는 비-'/' 항목)은 제외. 인라인 주석(# ...) 제거.
+    템플릿 플레이스홀더 (<domain> 등)는 있는 그대로 보존.
+    """
+    lines_raw: list[tuple[int, str]] = []
+    for raw_line in tree_text.splitlines():
+        stripped = raw_line.rstrip()
+        if not stripped:
+            continue
+        stripped = _INLINE_COMMENT_RE.sub("", stripped).rstrip()
+        if not stripped:
+            continue
+        name = stripped.lstrip()
+        if not name or name.startswith("#"):
+            continue
+        indent = len(stripped) - len(name)
+        lines_raw.append((indent, name))
+
+    if not lines_raw:
+        return set()
+
+    dirs: set[str] = set()
+    stack: list[tuple[int, str]] = []  # (indent, full_path)
+
+    for idx, (indent, name) in enumerate(lines_raw):
+        while stack and stack[-1][0] >= indent:
+            stack.pop()
+
+        prefix = stack[-1][1] if stack else ""
+        full = prefix + name
+
+        is_dir = name.endswith("/")
+        if not is_dir and idx + 1 < len(lines_raw):
+            next_indent = lines_raw[idx + 1][0]
+            if next_indent > indent:
+                is_dir = True
+
+        if is_dir:
+            dir_path = full if full.endswith("/") else full + "/"
+            dirs.add(dir_path)
+            stack.append((indent, dir_path))
+        else:
+            stack.append((indent, full))
+
+    return dirs
+
+
+def _scan_project_dirs(scan_root: Path, top_n: int = 3) -> set[str]:
+    """scan_root 아래 실제 디렉토리를 top_n 깊이까지 수집 (set of 'rel/path/')."""
+    if not scan_root.exists() or not scan_root.is_dir():
+        return set()
+    result: set[str] = set()
+    _collect_dirs_recursive(scan_root, scan_root, 1, top_n, result)
+    return result
+
+
+def _collect_dirs_recursive(
+    scan_root: Path, current: Path, depth: int, top_n: int, out: set[str]
+) -> None:
+    if depth > top_n:
+        return
+    try:
+        entries = list(current.iterdir())
+    except PermissionError:
+        return
+    for entry in entries:
+        if not entry.is_dir():
+            continue
+        if entry.name in _SKIP_DIRS or entry.name.startswith("."):
+            continue
+        rel = entry.relative_to(scan_root).as_posix() + "/"
+        out.add(rel)
+        _collect_dirs_recursive(scan_root, entry, depth + 1, top_n, out)
+
+
+def _check_file_structure_drift(
+    project: Path,
+    profiles_dir: Path,
+    report: Report,
+) -> None:
+    """profile file_structure 와 실제 디렉토리 비교 — drift 를 WARN 으로 보고.
+
+    profiles_dir 내 *.md (비 _base, 비 _registry) 프로파일을 순회.
+    각 profile 의 file_structure 필드를 파싱해 declared 디렉토리 set 계산.
+    실제 project 디렉토리 (top 3) 와 비교, extras 있으면 WARN.
+    """
+    if not profiles_dir.exists():
+        return
+
+    for profile_file in sorted(profiles_dir.glob("*.md")):
+        if profile_file.name in ("_base.md",):
+            continue
+        try:
+            data = parse_frontmatter(profile_file)
+        except (RuntimeError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+
+        profile_id = data.get("id", profile_file.stem)
+        if profile_id == "_base":
+            continue
+
+        file_structure = data.get("file_structure", "")
+        if not isinstance(file_structure, str) or not file_structure.strip():
+            continue
+
+        declared = _parse_file_structure_tree(file_structure)
+        if not declared:
+            continue
+
+        actual = _scan_project_dirs(project, top_n=3)
+
+        # extras: dirs in actual but not in declared (after removing placeholders)
+        declared_concrete = {d for d in declared if "<" not in d}
+        extras = sorted(actual - declared_concrete)
+        missing = sorted(declared_concrete - actual)
+
+        if extras:
+            report.warn(
+                f"profile:{profile_id}",
+                f"file_structure drift: extras={extras}, missing={missing} "
+                f"— 의도적 확장이면 profile.file_structure 에 추가하거나 무시",
+            )
+
+
+# ── migrate-skeleton-hash ──────────────────────────────────────────────
+#
+# legacy plan (skeleton_hash="") 에 현재 skeleton.md 의 SHA-256 hash 를 백필.
+# --apply 없으면 dry-run (파일 변경 없음).
+
+
+def _compute_skeleton_hash_inline(skeleton_path: Path) -> str:
+    """skeleton.md SHA-256 (CRLF/LF 정규화 후). 파일 없으면 빈 문자열."""
+    if not skeleton_path.exists():
+        return ""
+    raw = skeleton_path.read_bytes()
+    normalized = raw.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(normalized).hexdigest()
+
+
+def _load_plan_frontmatter(plan_path: Path) -> dict[str, Any] | None:
+    """harness-plan.md frontmatter 로드. 파싱 실패 시 None."""
+    try:
+        data = parse_frontmatter(plan_path)
+    except (RuntimeError, ValueError):
+        return None
+    return data
+
+
+def cmd_migrate_skeleton_hash(
+    plan_path: Path,
+    apply: bool,
+    no_backup: bool,
+) -> int:
+    """migrate-skeleton-hash 서브커맨드 구현.
+
+    Args:
+        plan_path: harness-plan.md 절대 경로
+        apply: True 면 파일 변경 + 자동 백업. False 면 dry-run.
+        no_backup: True 면 apply 시 백업 생성 안 함.
+
+    Returns:
+        exit code (0: 성공/dry-run, 1: I/O 오류, 3: 내부 오류)
+    """
+    if not plan_path.exists():
+        print(f"[FAIL] plan 파일 없음: {plan_path}", file=sys.stderr)
+        return 3
+
+    # plan frontmatter 로드
+    data = _load_plan_frontmatter(plan_path)
+    if data is None:
+        print(f"[FAIL] plan frontmatter 파싱 실패: {plan_path}", file=sys.stderr)
+        return 3
+
+    existing_hash = str(data.get("skeleton_hash") or "")
+
+    # 이미 hash 가 있으면 WARN + 종료 (덮어쓰기 방지)
+    if existing_hash:
+        result = {
+            "plan_path": str(plan_path),
+            "old_hash": existing_hash,
+            "new_hash": None,
+            "applied": False,
+            "backup_path": None,
+            "warn": "skeleton_hash 가 이미 존재합니다. 손상 방지를 위해 종료합니다. "
+                    "강제 갱신이 필요하면 frontmatter 에서 skeleton_hash 를 직접 제거 후 재실행.",
+        }
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(
+            f"[WARN] {plan_path.name}: skeleton_hash 이미 존재 ({existing_hash[:12]}…). "
+            "파일 미수정.",
+            file=sys.stderr,
+        )
+        return 0
+
+    # skeleton.md 탐색 (plan 과 같은 디렉토리)
+    skeleton_path = plan_path.parent / "skeleton.md"
+    if not skeleton_path.exists():
+        print(
+            f"[FAIL] skeleton.md 를 찾을 수 없습니다: {skeleton_path}\n"
+            "       /ha-design 이 완료된 후 실행하세요.",
+            file=sys.stderr,
+        )
+        return 3
+
+    new_hash = _compute_skeleton_hash_inline(skeleton_path)
+
+    result: dict[str, Any] = {
+        "plan_path": str(plan_path),
+        "skeleton_path": str(skeleton_path),
+        "old_hash": "",
+        "new_hash": new_hash,
+        "applied": False,
+        "backup_path": None,
+    }
+
+    if not apply:
+        # dry-run: 정보만 출력, 파일 미수정
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(
+            f"[DRY-RUN] {plan_path.name}: skeleton_hash = {new_hash[:16]}…\n"
+            "           --apply 를 추가하면 plan 에 기록됩니다.",
+            file=sys.stderr,
+        )
+        return 0
+
+    # --apply: 백업 → plan 갱신 → 저장
+    backup_path_str: str | None = None
+    if not no_backup:
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        backup_name = f".harness-backup-{ts}.md"
+        backup_file = plan_path.parent / backup_name
+        try:
+            backup_file.write_text(plan_path.read_text(encoding="utf-8"), encoding="utf-8")
+            backup_path_str = str(backup_file)
+        except OSError as exc:
+            print(f"[FAIL] 백업 생성 실패 ({backup_file}): {exc}", file=sys.stderr)
+            return 1
+
+    # plan 파일 직접 수정: frontmatter 에 skeleton_hash 삽입
+    # PlanManager.save() 를 쓰면 backend import 가 필요하므로,
+    # 단순 텍스트 치환으로 frontmatter 에 한 줄 추가 (안전 — YAML 마지막 필드로 append).
+    try:
+        plan_text = plan_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"[FAIL] plan 읽기 실패: {exc}", file=sys.stderr)
+        return 1
+
+    m = FRONTMATTER_RE.match(plan_text)
+    if not m:
+        print(f"[FAIL] frontmatter 를 찾을 수 없습니다: {plan_path}", file=sys.stderr)
+        return 3
+
+    # frontmatter 내부에 skeleton_hash 행 삽입 (마지막 필드 바로 앞 --- 전)
+    fm_content = m.group(1)
+    rest = plan_text[m.end():]
+    new_fm = fm_content.rstrip("\n") + f"\nskeleton_hash: {new_hash}\n"
+    new_text = f"---\n{new_fm}\n---{rest}"
+
+    try:
+        plan_path.write_text(new_text, encoding="utf-8")
+    except OSError as exc:
+        print(f"[FAIL] plan 저장 실패: {exc}", file=sys.stderr)
+        return 1
+
+    result["applied"] = True
+    result["backup_path"] = backup_path_str
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print(
+        f"[OK] skeleton_hash 백필 완료: {new_hash[:16]}…\n"
+        + (f"     백업: {backup_path_str}" if backup_path_str else "     (백업 생략)"),
+        file=sys.stderr,
+    )
+    return 0
+
 
 # ── 러너 ───────────────────────────────────────────────────────────────
 
@@ -797,6 +1102,25 @@ def main() -> int:
     i.add_argument("--project", type=Path, default=Path.cwd(), help="프로젝트 루트 (default: cwd)")
     i.add_argument("--plan", type=Path, default=None, help="harness-plan.md 경로 (자동 탐색)")
 
+    msh = sub.add_parser(
+        "migrate-skeleton-hash",
+        help="legacy plan (skeleton_hash 없음) 에 skeleton.md SHA-256 hash 백필",
+    )
+    msh.add_argument("plan_path", type=Path, help="harness-plan.md 경로")
+    msh.add_argument(
+        "--apply",
+        action="store_true",
+        default=False,
+        help="실제 plan 파일 갱신 + 자동 백업 (기본: dry-run)",
+    )
+    msh.add_argument(
+        "--no-backup",
+        action="store_true",
+        default=False,
+        dest="no_backup",
+        help="--apply 시 백업 생성 생략 (위험)",
+    )
+
     args = parser.parse_args()
 
     if args.cmd == "integrity":
@@ -804,6 +1128,13 @@ def main() -> int:
         check_integrity(args.project.resolve(), args.plan, report)
         print_report(report)
         return 0 if report.error_count == 0 else 1
+
+    if args.cmd == "migrate-skeleton-hash":
+        return cmd_migrate_skeleton_hash(
+            plan_path=args.plan_path.expanduser().resolve(),
+            apply=args.apply,
+            no_backup=args.no_backup,
+        )
 
     if args.cmd != "validate":
         parser.print_help()
