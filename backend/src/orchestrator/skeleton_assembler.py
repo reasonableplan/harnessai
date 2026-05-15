@@ -1,5 +1,11 @@
 """Skeleton assembler — load section fragments and assemble into skeleton.md.
 
+Naming note (v0.10.0): "skeleton" is a *technique name* in harness engineering
+(contract-first project specification with frozen sections), not a document
+filename. The output file (currently `skeleton.md`) is scheduled to be renamed
+to `spec.md` in v1.0.0 to separate the technique from the artifact. This class
+name (`SkeletonAssembler`) stays — it refers to the technique.
+
 See design doc §4 (skeleton system).
 - Fragment locations: ~/.claude/harness/templates/skeleton/<section_id>.md (global)
                       or {project}/.claude/harness/templates/skeleton/<section_id>.md (local)

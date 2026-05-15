@@ -5,9 +5,25 @@ required_when: has.users and lifecycle in [mvp, ga]
 description: 페르소나 + 핵심 시나리오 + 화면 전이. view.flow 가 컴포넌트 상태라면 user_journey 는 비즈니스 가치 흐름.
 ---
 
+<!-- placeholder 컨벤션: HITL <AI> / <Primary> 등은 uppercase/Korean 으로 박음 (assembler _ANGLE_PLACEHOLDER_RE 는 lowercase snake_case 만 잡음). -->
+<!-- HUMAN-LOCKED:user_journey — 이 섹션은 사용자 인터뷰로만 채움. /ha-redesign 거쳐서만 변경 허용. -->
+
 ## {{section_number}}. 사용자 시나리오 (User Journey)
 
-### 페르소나
+### AI 제안 페르소나 후보 (사용자 선택 — /ha-design 단계)
+> AI 가 도메인 + 사용자 설명 분석 후 3-5개 *구체적* 페르소나 후보 제시.
+> 구체성 기준: "30대 직장인" 금지 → "주 2회 야근하는 30대 IT 기획자, 독서 시간 부족" 처럼.
+> 사용자가 선택/수정/추가. 미응답 시 `--ai-draft` 옵트인 필수.
+
+| # | 후보 페르소나 (한 줄 구체) | 역할 | 동기 | 좌절 | 선택 |
+|---|---------------------------|------|------|------|:---:|
+| 1 | `<AI: 구체적 한 줄 — 직업/상황/현재 행동>` | `<AI>` | `<AI>` | `<AI>` | ☐ |
+| 2 | `<AI>` | `<AI>` | `<AI>` | `<AI>` | ☐ |
+| 3 | `<AI>` | `<AI>` | `<AI>` | `<AI>` | ☐ |
+| 4 | `<AI>` | `<AI>` | `<AI>` | `<AI>` | ☐ |
+| 5 | `<AI>` | `<AI>` | `<AI>` | `<AI>` | ☐ |
+
+### 확정 페르소나 (사용자 선택 결과)
 
 | 페르소나 | 역할 | 동기 (왜 우리 서비스를 쓰는가) | 좌절 (현재 어떻게 풀고 있나) |
 |---------|------|-------------------------------|------------------------------|
@@ -15,6 +31,8 @@ description: 페르소나 + 핵심 시나리오 + 화면 전이. view.flow 가 �
 | `<Secondary>` | <역할> | <부수 가치> | <한계> |
 
 페르소나는 **구체적**으로 — "30대 직장인" 보다 "주 2회 야근하는 30대 IT 기획자, 독서 시간 부족" 처럼.
+
+> 시나리오는 *확정 페르소나* 기반. 페르소나 미확정 시 시나리오 작성 금지.
 
 ### 핵심 시나리오 (Happy Path)
 
@@ -97,9 +115,12 @@ stateDiagram-v2
 - 스크린리더로 핵심 시나리오 1 완수 가능 (ARIA labels + landmark)
 - 색상만으로 정보 전달 금지 (텍스트 + 아이콘 병행)
 
+<!-- /HUMAN-LOCKED:user_journey -->
+
 > 작성 가이드:
 > - 핵심 시나리오는 3-5개로 — 모든 기능을 시나리오화하지 말 것 (가치 흐름 중심)
 > - Mermaid sequenceDiagram 은 외부 호출 흐름 / stateDiagram 은 화면 / flowchart 는 의사결정
 > - Happy path 만 적지 말 것 — edge case 가 사용자 경험을 결정
 > - `view.screens` 가 화면별 명세라면 user_journey 는 그 화면들을 잇는 시퀀스
 > - 측정 지표 정의는 출시 전 필수 — 안 정하면 retention 도 측정 못 함
+> - **HITL 규칙**: 페르소나 / 시나리오 / 화면 전이 셋 다 LOCKED. `/ha-design` 또는 `/ha-redesign` 외 직접 편집 금지.

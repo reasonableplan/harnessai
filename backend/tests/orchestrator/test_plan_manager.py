@@ -1293,3 +1293,172 @@ def test_plan_external_capabilities_sorted_in_frontmatter(tmp_path: Path) -> Non
     storage_pos = text.index("storage")
     users_pos = text.index("users")
     assert http_pos < storage_pos < users_pos
+
+
+# ── HITL freeze 상태 (v0.10.0) ────────────────────────────────────────
+
+
+def test_new_plan_defaults_frozen_status_drafting() -> None:
+    """신규 plan create() 시 frozen_status='drafting', 나머지 빈 값."""
+    plan = _sample_plan()
+    assert plan.frozen_status == "drafting"
+    assert plan.frozen_at == ""
+    assert plan.locked_sections == []
+    assert plan.ai_drafted_sections == []
+
+
+def test_legacy_frontmatter_loads_with_defaults(tmp_path: Path) -> None:
+    """frozen_* / locked_* / ai_drafted_* 키 없는 legacy frontmatter 가 default 로 로드된다."""
+    path = tmp_path / "harness-plan.md"
+    path.write_text(
+        "---\n"
+        "harness_version: 2\n"
+        "schema_version: 1\n"
+        "project_name: Legacy\n"
+        "project_type: cli\n"
+        "scale: small\n"
+        "profiles: []\n"
+        "skeleton_sections:\n"
+        "  required: []\n"
+        "  optional: []\n"
+        "  included: []\n"
+        "pipeline:\n"
+        "  steps: []\n"
+        "  current_step: init\n"
+        "  completed_steps: []\n"
+        "  skipped_steps: []\n"
+        "  gstack_mode: manual\n"
+        "---\n"
+        "body\n",
+        encoding="utf-8",
+    )
+    pm = PlanManager()
+    loaded = pm.load(path)
+    assert loaded.frozen_status == "drafting"
+    assert loaded.frozen_at == ""
+    assert loaded.locked_sections == []
+    assert loaded.ai_drafted_sections == []
+
+
+def test_freeze_transitions_to_frozen() -> None:
+    """freeze() 호출 후 frozen_status='frozen', frozen_at 채워짐, locked_sections 반영."""
+    pm = PlanManager()
+    plan = _sample_plan()
+    assert plan.frozen_status == "drafting"
+
+    pm.freeze(plan, locked_sections=["requirements", "user_journey", "view.screens"])
+
+    assert plan.frozen_status == "frozen"
+    assert plan.frozen_at  # ISO timestamp 채워짐
+    assert plan.locked_sections == ["requirements", "user_journey", "view.screens"]
+    assert plan.last_activity == plan.frozen_at
+
+
+def test_freeze_empty_locked_raises() -> None:
+    """freeze() 에 empty locked_sections → PlanSchemaError."""
+    pm = PlanManager()
+    plan = _sample_plan()
+    with pytest.raises(PlanSchemaError, match="locked section"):
+        pm.freeze(plan, locked_sections=[])
+
+
+def test_refreeze_preserves_ai_drafted_when_none() -> None:
+    """re-freeze 시 ai_drafted_sections=None (default) → 기존 리스트 유지."""
+    pm = PlanManager()
+    plan = _sample_plan()
+    pm.freeze(plan, locked_sections=["requirements"], ai_drafted_sections=["view.screens"])
+    assert plan.ai_drafted_sections == ["view.screens"]
+
+    # re-freeze without specifying ai_drafted_sections — should preserve.
+    pm.freeze(plan, locked_sections=["requirements", "user_journey"])
+    assert plan.ai_drafted_sections == ["view.screens"]
+
+
+def test_refreeze_clears_ai_drafted_when_empty_list() -> None:
+    """re-freeze 시 ai_drafted_sections=[] 명시 → clear (post-promotion 경로)."""
+    pm = PlanManager()
+    plan = _sample_plan()
+    pm.freeze(plan, locked_sections=["requirements"], ai_drafted_sections=["view.screens"])
+    assert plan.ai_drafted_sections == ["view.screens"]
+
+    # Promotion: user reviewed view.screens — clear by passing [].
+    pm.freeze(plan, locked_sections=["requirements"], ai_drafted_sections=[])
+    assert plan.ai_drafted_sections == []
+
+
+def test_save_rejects_invalid_frozen_status(tmp_path: Path) -> None:
+    """plan.frozen_status 직접 corruption → save() 시점에 PlanSchemaError 차단."""
+    pm = PlanManager()
+    plan = _sample_plan()
+    plan.frozen_status = "corrupted"  # 의도적 invalid
+    path = tmp_path / "harness-plan.md"
+    with pytest.raises(PlanSchemaError, match="frozen_status must be one of"):
+        pm.save(plan, path)
+
+
+def test_serialize_omits_default_lock_fields(tmp_path: Path) -> None:
+    """frozen_status='drafting' + 빈 locked/ai_drafted 시 frontmatter 에 4 필드 미박힘 (legacy 호환)."""
+    pm = PlanManager()
+    plan = _sample_plan()
+    assert plan.frozen_status == "drafting"
+
+    path = tmp_path / "harness-plan.md"
+    pm.save(plan, path)
+    text = path.read_text(encoding="utf-8")
+
+    assert "frozen_status" not in text
+    assert "frozen_at" not in text
+    assert "locked_sections" not in text
+    assert "ai_drafted_sections" not in text
+
+
+def test_serialize_includes_frozen_state(tmp_path: Path) -> None:
+    """freeze() 후 save → load → 4 필드 일관성 (양방향 round-trip)."""
+    pm = PlanManager()
+    plan = _sample_plan()
+    pm.freeze(
+        plan,
+        locked_sections=["view.screens", "requirements"],
+        ai_drafted_sections=["user_journey"],
+    )
+
+    path = tmp_path / "harness-plan.md"
+    pm.save(plan, path)
+    loaded = pm.load(path)
+
+    assert loaded.frozen_status == "frozen"
+    assert loaded.frozen_at == plan.frozen_at
+    # locked_sections 은 sorted 저장 → load 후 sorted 순으로 복원
+    assert sorted(loaded.locked_sections) == ["requirements", "view.screens"]
+    assert loaded.ai_drafted_sections == ["user_journey"]
+
+
+def test_invalid_frozen_status_raises(tmp_path: Path) -> None:
+    """frontmatter 에 frozen_status='invalid' → PlanSchemaError."""
+    path = tmp_path / "harness-plan.md"
+    path.write_text(
+        "---\n"
+        "harness_version: 2\n"
+        "schema_version: 1\n"
+        "project_name: BadFreeze\n"
+        "project_type: cli\n"
+        "scale: small\n"
+        "frozen_status: invalid\n"
+        "profiles: []\n"
+        "skeleton_sections:\n"
+        "  required: []\n"
+        "  optional: []\n"
+        "  included: []\n"
+        "pipeline:\n"
+        "  steps: []\n"
+        "  current_step: init\n"
+        "  completed_steps: []\n"
+        "  skipped_steps: []\n"
+        "  gstack_mode: manual\n"
+        "---\n"
+        "body\n",
+        encoding="utf-8",
+    )
+    pm = PlanManager()
+    with pytest.raises(PlanSchemaError, match="frozen_status"):
+        pm.load(path)

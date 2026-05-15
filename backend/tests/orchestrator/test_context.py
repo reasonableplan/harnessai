@@ -49,8 +49,8 @@ SAMPLE_SKELETON = """\
 
 
 class TestSectionTitlesMap:
-    def test_all_33_standard_sections_present(self) -> None:
-        """SECTION_TITLES 33개 전부 존재 (기본 20 + auto-fit 10 + 모바일 3)."""
+    def test_all_36_standard_sections_present(self) -> None:
+        """SECTION_TITLES 36개 전부 존재 (기본 20 + auto-fit 10 + 운영/환경/UX 3 + 모바일 3)."""
         expected_ids = {
             # 기본 20
             "overview",
@@ -84,6 +84,10 @@ class TestSectionTitlesMap:
             "authorization_matrix",
             "ci_cd",
             "external_deps",
+            # 운영 / 환경 / UX (3) — required_when 으로 활성
+            "environments",
+            "error_ux",
+            "rate_limiting",
             # 모바일 (3)
             "mobile.navigation",
             "mobile.build_config",

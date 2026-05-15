@@ -61,6 +61,11 @@ TASK_STATUS_NEEDS_REBUILD = "needs_rebuild"
 # what an external review tool examined and changed, without driving a redesign lifecycle.
 ALLOWED_ENG_REVIEW_SCOPES = {"tasks", "skeleton", "both"}
 
+# HITL freeze lifecycle — /ha-design completion gate.
+#   drafting: /ha-design 채움 진행 중. frontmatter 에서 생략 (legacy backward-compat).
+#   frozen:   /ha-build 진입 허용. HITL-required sections 모두 확인 완료.
+ALLOWED_FROZEN_STATUS = {"drafting", "frozen"}
+
 
 # Data models
 
@@ -240,6 +245,22 @@ class HarnessPlan:
     # Values must be members of KNOWN_CAPABILITY_ATOMS; validated at the CLI layer
     # (ha-init write --external-capabilities) before being written here.
     external_capabilities: list[str] = field(default_factory=list)
+    # === Optional fields below — must come BEFORE created_at/updated_at/last_activity. ===
+    # _plan_to_dict 의 omitted-when-empty 패턴이 이 순서를 가정한다 (frontmatter 직렬화
+    # 시 timestamps 가 항상 마지막 그룹으로 묶이도록). 새 optional 필드는 여기에 추가.
+    #
+    # HITL freeze 상태 (v0.10.0). drafting → /ha-design 채움 진행 / frozen → /ha-build 진입 허용.
+    # frozen_status="drafting" 이면 frontmatter 에서 생략 (legacy backward-compat).
+    frozen_status: str = "drafting"
+    # frozen_at: frozen 진입 시점 ISO 8601 UTC. drafting 상태면 빈 문자열.
+    # 빈 문자열이면 frontmatter 에서 생략.
+    frozen_at: str = ""
+    # locked_sections: HITL gate 적용된 섹션 ID 목록 (e.g. ["requirements", "user_journey", "view.screens"]).
+    # 빈 리스트면 frontmatter 에서 생략.
+    locked_sections: list[str] = field(default_factory=list)
+    # ai_drafted_sections: 사용자가 인터뷰 회피 시 --ai-draft 옵트인으로 AI 가 채운 섹션.
+    # 사용자 promotion (검토 + 승인) 전까지 추적. 빈 리스트면 frontmatter 에서 생략.
+    ai_drafted_sections: list[str] = field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
     last_activity: str = ""
@@ -613,6 +634,47 @@ class PlanManager:
         plan.last_activity = _now_iso()
         return plan
 
+    def freeze(
+        self,
+        plan: HarnessPlan,
+        *,
+        locked_sections: list[str],
+        ai_drafted_sections: list[str] | None = None,
+    ) -> HarnessPlan:
+        """Transition plan to frozen status — /ha-design completion gate.
+
+        Sets frozen_status="frozen" + frozen_at=now + locked_sections.
+        Called by /ha-design after user confirms all HITL-required sections are filled.
+        Idempotent — freezing an already-frozen plan updates locked_sections + frozen_at.
+        No unfreeze() — frozen is a one-way gate by design (any rollback goes through
+        /ha-redesign which records an audit entry, not a silent state revert).
+
+        Args:
+            plan: HarnessPlan to transition.
+            locked_sections: Section IDs to lock (HITL gate). Must be non-empty.
+            ai_drafted_sections: Optional. None = preserve existing list (re-freeze with
+                no draft change). [] = explicitly clear (e.g. user promoted all drafts to
+                reviewed). list = replace.
+
+        Returns:
+            Mutated plan (also mutates in place).
+
+        Raises:
+            PlanSchemaError: locked_sections is empty (no point freezing nothing).
+        """
+        if not locked_sections:
+            raise PlanSchemaError("freeze() requires at least one locked section")
+        plan.frozen_status = "frozen"
+        plan.frozen_at = _now_iso()
+        plan.locked_sections = list(locked_sections)
+        # Distinguish None (preserve) from [] (clear) — clearing is the path for
+        # post-promotion: user reviewed an --ai-draft section and approved it, so it
+        # should leave ai_drafted_sections.
+        if ai_drafted_sections is not None:
+            plan.ai_drafted_sections = list(ai_drafted_sections)
+        plan.last_activity = plan.frozen_at
+        return plan
+
 
 # Serialization helpers
 
@@ -704,6 +766,22 @@ def _dict_to_plan(data: dict[str, Any], body: str) -> HarnessPlan:
             if isinstance(external_caps_raw, list)
             else []
         )
+        # frozen_status: legacy plans without this key load as "drafting" (backward-compat).
+        frozen_status = str(data.get("frozen_status") or "drafting")
+        if frozen_status not in ALLOWED_FROZEN_STATUS:
+            raise PlanSchemaError(
+                f"frozen_status must be one of {sorted(ALLOWED_FROZEN_STATUS)}, got '{frozen_status}'"
+            )
+        # frozen_at: legacy plans without this key load as "" (backward-compat).
+        frozen_at = str(data.get("frozen_at") or "")
+        # locked_sections: legacy plans without this key load as [] (backward-compat).
+        locked_raw = data.get("locked_sections") or []
+        locked_sections = [str(s) for s in locked_raw] if isinstance(locked_raw, list) else []
+        # ai_drafted_sections: legacy plans without this key load as [] (backward-compat).
+        ai_drafted_raw = data.get("ai_drafted_sections") or []
+        ai_drafted_sections = (
+            [str(s) for s in ai_drafted_raw] if isinstance(ai_drafted_raw, list) else []
+        )
 
         return HarnessPlan(
             project_name=data["project_name"],
@@ -755,6 +833,10 @@ def _dict_to_plan(data: dict[str, Any], body: str) -> HarnessPlan:
             activation_trace=activation_trace,
             skeleton_hash=skeleton_hash,
             external_capabilities=external_capabilities,
+            frozen_status=frozen_status,
+            frozen_at=frozen_at,
+            locked_sections=locked_sections,
+            ai_drafted_sections=ai_drafted_sections,
             created_at=data.get("created_at", ""),
             updated_at=data.get("updated_at", ""),
             last_activity=data.get("last_activity", ""),
@@ -843,4 +925,24 @@ def _plan_to_dict(plan: HarnessPlan) -> dict[str, Any]:
     # plans clean. Values are sorted for deterministic output (regression-test stability).
     if plan.external_capabilities:
         d["external_capabilities"] = sorted(plan.external_capabilities)
+    # frozen_status: "drafting" default 면 frontmatter 생략 (legacy 호환).
+    # frozen 인 경우만 박음. 직접 plan.frozen_status = "..." 로 corruption 했을
+    # 때 한 save/load 사이클이 지나서야 _dict_to_plan 이 잡으므로, 직렬화 시점에
+    # 한 번 더 검증해서 corruption 이 디스크에 못 쓰이게 차단.
+    if plan.frozen_status not in ALLOWED_FROZEN_STATUS:
+        raise PlanSchemaError(
+            f"frozen_status must be one of {sorted(ALLOWED_FROZEN_STATUS)}, "
+            f"got '{plan.frozen_status}'"
+        )
+    if plan.frozen_status != "drafting":
+        d["frozen_status"] = plan.frozen_status
+    # frozen_at: 빈 문자열이면 생략.
+    if plan.frozen_at:
+        d["frozen_at"] = plan.frozen_at
+    # locked_sections: 빈 리스트면 생략. 정렬해서 deterministic 출력.
+    if plan.locked_sections:
+        d["locked_sections"] = sorted(plan.locked_sections)
+    # ai_drafted_sections: 빈 리스트면 생략. 정렬해서 deterministic 출력.
+    if plan.ai_drafted_sections:
+        d["ai_drafted_sections"] = sorted(plan.ai_drafted_sections)
     return d

@@ -310,6 +310,9 @@ def _run_commit(
     *,
     allow_unknown_lessons: bool = False,
     harness_home_override: Path | None = None,
+    locked_sections: list[str] | None = None,
+    ai_drafted_sections: list[str] | None = None,
+    ai_draft: bool = False,
 ) -> tuple[int, dict | None, str]:
     """cmd_commit 실행. (returncode, parsed_json_or_None, stderr) 반환.
 
@@ -319,6 +322,12 @@ def _run_commit(
     cmd = [sys.executable, str(_RUN_PY), "commit", "--skeleton-path", str(skeleton_path)]
     if allow_unknown_lessons:
         cmd.append("--allow-unknown-lessons")
+    if locked_sections:
+        cmd += ["--locked-sections"] + locked_sections
+    if ai_drafted_sections:
+        cmd += ["--ai-drafted-sections"] + ai_drafted_sections
+    if ai_draft:
+        cmd.append("--ai-draft")
     env = _make_env()
     if harness_home_override is not None:
         env["HARNESS_AI_HOME"] = str(harness_home_override)
@@ -405,3 +414,127 @@ def test_commit_passes_when_lessons_md_missing(tmp_path: Path) -> None:
     assert "skip" in stderr or "없음" in stderr, (
         f"shared-lessons.md 없음 안내 없음: {stderr!r}"
     )
+
+
+# ── v0.10.0 HITL gate 테스트 ────────────────────────────────────────────────
+
+
+def test_prepare_outputs_locked_section_ids(tmp_path: Path) -> None:
+    """included 에 requirements/user_journey 있으면 output 의 locked_section_ids 에 포함."""
+    plan = _make_plan(
+        included=("overview", "stack", "requirements", "user_journey"),
+        activation_trace={
+            "overview": "always",
+            "stack": "always",
+            "requirements": "always",
+            "user_journey": "always",
+        },
+    )
+    _write_plan(tmp_path, plan)
+
+    output, _ = _run_prepare(tmp_path)
+
+    assert "locked_section_ids" in output, "locked_section_ids 필드 누락"
+    locked = output["locked_section_ids"]
+    assert isinstance(locked, list), f"locked_section_ids 가 list 아님: {type(locked)}"
+    assert "requirements" in locked, f"requirements 미포함: {locked}"
+    assert "user_journey" in locked, f"user_journey 미포함: {locked}"
+    # view.screens 는 included 에 없으므로 미포함
+    assert "view.screens" not in locked, f"view.screens 가 포함됨 (included 에 없음): {locked}"
+    # overview/stack 은 LOCKED 대상 아님
+    assert "overview" not in locked
+    assert "stack" not in locked
+
+
+def test_commit_freeze_called_with_locked_sections(tmp_path: Path) -> None:
+    """--locked-sections requirements user_journey 박으면 frontmatter 에 frozen_status='frozen' + locked_sections 박힘."""
+    plan = _make_plan(activation_trace={"overview": "always", "stack": "always"})
+    plan_path = _write_plan(tmp_path, plan)
+    skel = _write_skeleton(tmp_path / "docs", "정상 내용.")
+    _write_shared_lessons(tmp_path / "docs", [])
+
+    returncode, out, stderr = _run_commit(
+        tmp_path,
+        skel,
+        locked_sections=["requirements", "user_journey"],
+    )
+
+    assert returncode == 0, f"commit 실패: stderr={stderr!r}\nstdout={out}"
+    assert out is not None
+    assert out["frozen_status"] == "frozen", f"frozen_status 미변경: {out['frozen_status']}"
+    assert set(out["locked_sections"]) == {"requirements", "user_journey"}, (
+        f"locked_sections 불일치: {out['locked_sections']}"
+    )
+    # 실제 파일 frontmatter 에도 반영됐는지 확인
+    saved_text = plan_path.read_text(encoding="utf-8")
+    assert "frozen_status: frozen" in saved_text, "frontmatter 에 frozen_status 미기록"
+    assert "requirements" in saved_text
+
+
+def test_commit_ai_drafted_without_optin_fails(tmp_path: Path) -> None:
+    """--ai-drafted-sections 박았는데 --ai-draft 없으면 exit 1, frontmatter 변경 X."""
+    plan = _make_plan(activation_trace={"overview": "always", "stack": "always"})
+    plan_path = _write_plan(tmp_path, plan)
+    original_text = plan_path.read_text(encoding="utf-8")
+    skel = _write_skeleton(tmp_path / "docs", "정상 내용.")
+    _write_shared_lessons(tmp_path / "docs", [])
+
+    returncode, out, stderr = _run_commit(
+        tmp_path,
+        skel,
+        locked_sections=["requirements"],
+        ai_drafted_sections=["requirements"],
+        ai_draft=False,  # 옵트인 누락
+    )
+
+    assert returncode != 0, "옵트인 누락 시 exit code 0 — 방어선 미작동"
+    assert out is not None
+    assert out["transitioned_to"] is None, "실패 시 상태 전이 발생 — 이상"
+    # 파일 미변경 (상태 전이 + freeze 둘 다 미적용)
+    after_text = plan_path.read_text(encoding="utf-8")
+    assert after_text == original_text, "실패 시 frontmatter 변경됨 — 이상"
+
+
+def test_commit_ai_drafted_with_optin_succeeds(tmp_path: Path) -> None:
+    """--ai-drafted-sections + --ai-draft 양쪽 박으면 ai_drafted_sections 박힘."""
+    plan = _make_plan(activation_trace={"overview": "always", "stack": "always"})
+    plan_path = _write_plan(tmp_path, plan)
+    skel = _write_skeleton(tmp_path / "docs", "정상 내용.")
+    _write_shared_lessons(tmp_path / "docs", [])
+
+    returncode, out, stderr = _run_commit(
+        tmp_path,
+        skel,
+        locked_sections=["requirements"],
+        ai_drafted_sections=["requirements"],
+        ai_draft=True,
+    )
+
+    assert returncode == 0, f"옵트인 포함 시 실패: stderr={stderr!r}\nstdout={out}"
+    assert out is not None
+    assert out["frozen_status"] == "frozen"
+    assert "requirements" in out["ai_drafted_sections"], (
+        f"ai_drafted_sections 에 requirements 없음: {out['ai_drafted_sections']}"
+    )
+    # 파일에도 반영
+    saved_text = plan_path.read_text(encoding="utf-8")
+    assert "ai_drafted_sections" in saved_text, "frontmatter 에 ai_drafted_sections 미기록"
+
+
+def test_commit_no_locked_sections_skips_freeze(tmp_path: Path) -> None:
+    """--locked-sections 인자 없으면 freeze() 호출 X. frozen_status='drafting' 유지."""
+    plan = _make_plan(activation_trace={"overview": "always", "stack": "always"})
+    _write_plan(tmp_path, plan)
+    skel = _write_skeleton(tmp_path / "docs", "정상 내용.")
+    _write_shared_lessons(tmp_path / "docs", [])
+
+    # locked_sections 인자 없이 기존 방식 그대로
+    returncode, out, stderr = _run_commit(tmp_path, skel)
+
+    assert returncode == 0, f"기본 commit 실패: stderr={stderr!r}\nstdout={out}"
+    assert out is not None
+    assert out["frozen_status"] == "drafting", (
+        f"locked_sections 없는데 frozen: {out['frozen_status']}"
+    )
+    assert out["locked_sections"] == [], f"locked_sections 비어있어야: {out['locked_sections']}"
+    assert out["transitioned_to"] == "designed", "상태 전이 미작동"

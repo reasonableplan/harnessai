@@ -77,6 +77,11 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         "skeleton_path": str(plan_path.parent / "skeleton.md"),
         "current_step": plan.pipeline.current_step,
         "included_sections": list(plan.skeleton_sections.included),
+        # v0.10.0 HITL — 어느 included 섹션이 LOCKED 인지 SKILL.md 에 알림.
+        "locked_section_ids": [
+            sid for sid in plan.skeleton_sections.included
+            if sid in {"requirements", "user_journey", "view.screens"}
+        ],
         "activation_trace": activation_trace,
         "profiles": [
             {
@@ -175,12 +180,73 @@ def cmd_commit(args: argparse.Namespace) -> int:
                 print(json.dumps(output, ensure_ascii=False, indent=2))
                 return 1
 
+    # v0.10.0 HITL gate — freeze plan when LOCKED sections were filled via interview.
+    locked = list(args.locked_sections or [])
+    ai_drafted = list(args.ai_drafted_sections or [])
+
+    # 방어선: ai-drafted 박혔는데 명시 옵트인 없으면 거부.
+    if ai_drafted and not args.ai_draft:
+        info(
+            "[FAIL] --ai-drafted-sections 박았는데 --ai-draft 옵트인 누락. "
+            "AI 추측 채우기는 명시 동의 필요."
+        )
+        output = {
+            "skeleton_path": str(skel),
+            "plan_path": str(plan_path),
+            "placeholders_remaining": len(placeholders),
+            "unknown_lesson_references": unknown_lesson_refs,
+            "transitioned_to": None,
+            "next": None,
+            "frozen_status": plan.frozen_status,
+            "locked_sections": list(plan.locked_sections),
+            "ai_drafted_sections": list(plan.ai_drafted_sections),
+        }
+        print(json.dumps(output, ensure_ascii=False, indent=2))
+        return 1
+
     # skeleton hash 저장 — downstream skills 가 외부 수정을 감지할 수 있도록
     plan.skeleton_hash = compute_skeleton_hash(skel)
+
+    # locked_sections 박혔으면 plan.freeze() 호출.
+    if locked:
+        from src.orchestrator.plan_manager import PlanManager  # noqa: PLC0415
+        PlanManager().freeze(
+            plan,
+            locked_sections=locked,
+            ai_drafted_sections=ai_drafted or None,
+        )
+        info(
+            f"[freeze] frozen_status=frozen, locked={len(locked)}, "
+            f"ai_drafted={len(ai_drafted)}"
+        )
 
     # 상태 전이
     transition(plan, "designed", completed_step="ha-design")
     save_plan(plan, plan_path)
+
+    # v0.10.0 -- worklog 자동 append (change 카테고리)
+    _log_msg = (
+        f"/ha-design commit -- frozen_status={plan.frozen_status}, "
+        f"locked={len(list(plan.locked_sections))}, "
+        f"ai_drafted={len(list(plan.ai_drafted_sections))}"
+    )
+    try:
+        import subprocess  # noqa: PLC0415
+        subprocess.run(
+            [
+                sys.executable,
+                str(Path.home() / ".claude" / "skills" / "ha-log" / "run.py"),
+                "append",
+                "--category", "change",
+                "--message", _log_msg,
+                "--project", str(plan_path.parent.parent),
+            ],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as _worklog_err:
+        info(f"[WARN] worklog append failed (commit 진행): {_worklog_err}")
 
     output = {
         "skeleton_path": str(skel),
@@ -189,6 +255,9 @@ def cmd_commit(args: argparse.Namespace) -> int:
         "unknown_lesson_references": unknown_lesson_refs,
         "transitioned_to": plan.pipeline.current_step,
         "next": "/ha-plan",
+        "frozen_status": plan.frozen_status,
+        "locked_sections": list(plan.locked_sections),
+        "ai_drafted_sections": list(plan.ai_drafted_sections),
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0
@@ -212,6 +281,24 @@ def main() -> int:
         action="store_true",
         default=False,
         help="미정의 LESSON 인용 발견 시 차단하지 않고 경고만 출력 후 진행",
+    )
+    c.add_argument(
+        "--locked-sections",
+        nargs="*",
+        default=[],
+        help="HITL gate 통과한 섹션 ID 목록. plan.freeze() 호출. (v0.10.0)",
+    )
+    c.add_argument(
+        "--ai-drafted-sections",
+        nargs="*",
+        default=[],
+        help="--ai-draft 옵트인으로 AI 가 추측 채운 섹션 ID. 사용자 promotion 필요. (v0.10.0)",
+    )
+    c.add_argument(
+        "--ai-draft",
+        action="store_true",
+        default=False,
+        help="--ai-drafted-sections 가 비어있지 않으면 필수. AI 추측 채우기 명시 동의. (v0.10.0)",
     )
 
     args = parser.parse_args()
