@@ -28,6 +28,22 @@ allowed-tools:
 > Agent(model="sonnet") 로 명시 위임하는 것이 Sonnet 강제의 유일한 보장입니다.
 > 부모가 grep/read 부터 시작하면 곧장 직접 작업 모드로 빠져 룰이 무너집니다.
 
+## 사전 조건 (v0.10.0 HITL gate)
+
+`/ha-build` 진입 전 `frozen_status="frozen"` 필수. drafting 이면 차단.
+
+먼저 다음 흐름 완료:
+1. `/ha-design` 인터뷰 — LOCKED 섹션 (requirements/user_journey/view.screens) 후보 N 개 → 사용자 선택
+2. `/ha-design commit --locked-sections requirements user_journey view.screens` — `plan.freeze()` 호출
+3. `harness-plan.md` frontmatter 에 `frozen_status: frozen` + `frozen_at: <ISO>` 박힘
+
+확인:
+```bash
+grep "frozen_status" docs/harness-plan.md
+```
+
+마이그레이션 케이스 (기존 v0.9.x 프로젝트) 는 `--skip-frozen-gate` 옵트인.
+
 ## 역할
 
 `tasks.md` 의 단일 (또는 병렬 다중) 태스크를 구현.
@@ -124,6 +140,8 @@ python ~/.claude/skills/ha-build/run.py complete --task T-001 --status done
 - 문서/설계처럼 toolchain 무관한 태스크엔 `--skip-toolchain` 명시.
 - security_hooks 만 의도적으로 우회할 땐 `--skip-security` (toolchain 과 독립).
 - 배경: ui-assistant 2차 E2E 에서 단위 테스트만 통과 → done 흐름으로 pyright 15 errors 누적 발견.
+
+**v0.10.0**: `--status done` complete 후 worklog.md (docs/worklog.md) 에 변경 자동 append 됨.
 
 **LESSON-021 강화 (B3 — no-tests 우회 감지)**:
 - `toolchain.test` 가 exit 0 이어도 출력에 `no tests ran` / `passWithNoTests` /

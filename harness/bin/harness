@@ -1554,6 +1554,26 @@ def main() -> int:
         help="Phase subgraph 그룹 생략 (평면 노드 리스트)",
     )
 
+    mv10 = sub.add_parser(
+        "migrate-v10",
+        help="v0.9.x → v0.10.0 마이그레이션 (frozen_status 필드 추가)",
+    )
+    mv10.add_argument("project", type=Path, help="프로젝트 루트 경로 (docs/harness-plan.md 위치)")
+    mv10.add_argument(
+        "--auto-freeze",
+        action="store_true",
+        default=False,
+        dest="auto_freeze",
+        help="included LOCKED 후보 섹션 즉시 freeze (사용자 책임 — 가짜 frozen 위험)",
+    )
+    mv10.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        dest="dry_run",
+        help="변경 안 하고 미리보기",
+    )
+
     args = parser.parse_args()
 
     if args.cmd == "integrity":
@@ -1577,6 +1597,17 @@ def main() -> int:
             tasks_path=args.tasks_path.expanduser().resolve(),
             inject=args.inject,
             no_phases=args.no_phases,
+        )
+
+    if args.cmd == "migrate-v10":
+        _bin_dir = Path(__file__).resolve().parent
+        if str(_bin_dir) not in sys.path:
+            sys.path.insert(0, str(_bin_dir))
+        from migrate_v10 import migrate  # noqa: PLC0415
+        return migrate(
+            args.project.expanduser().resolve(),
+            auto_freeze=args.auto_freeze,
+            dry_run=args.dry_run,
         )
 
     if args.cmd != "validate":

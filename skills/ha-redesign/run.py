@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -296,6 +297,29 @@ def cmd_commit(args: argparse.Namespace) -> int:
             except OSError as exc:
                 info(f"[WARN] needs_rebuild 전이 실패 (tasks.md 쓰기 오류): {exc}")
                 info("       수동으로 stale task status 를 확인하세요.")
+
+    # v0.10.0 -- worklog 자동 append (applied 시만, change 카테고리)
+    if args.status == "applied":
+        _log_msg = (
+            f"/ha-redesign applied -- decision={args.decision[:60]}, "
+            f"sections={len(affected_sections)}, tasks={len(affected_tasks)}"
+        )
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(Path.home() / ".claude" / "skills" / "ha-log" / "run.py"),
+                    "append",
+                    "--category", "change",
+                    "--message", _log_msg,
+                    "--project", str(plan_path.parent.parent),
+                ],
+                capture_output=True,
+                timeout=5,
+                check=False,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as _worklog_err:
+            info(f"[WARN] worklog append failed (commit 진행): {_worklog_err}")
 
     output = {
         "decision": args.decision,

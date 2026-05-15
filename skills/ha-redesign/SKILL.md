@@ -222,30 +222,7 @@ Agent({
 }
 ```
 
-### 6-b. done 태스크 코드 재실행 여부 결정 (필수)
-
-Re-derivation 완료 후, `affected_tasks` 중 `status=done` 인 태스크가 있으면 코드는 이미
-작성됐지만 스펙이 바뀐 상태입니다. **이를 방치하면 silent spec drift** — 코드와 스펙이 조용히 불일치함.
-
-done 태스크가 1개 이상이면 **반드시** AskUserQuestion:
-
-```
-질문: "재설계로 다음 완료 태스크의 스펙이 변경되었습니다. 코드 재작업이 필요합니까?"
-
-  T-200 (<설명>): <변경된 내용 한 줄 요약>
-  T-201 (<설명>): <변경된 내용 한 줄 요약>
-
-선택지:
-  [재작업 필요]       tasks.md 에서 status "대기" 로 재설정 → applied 후 /ha-build 재실행
-  [무시 (의도적)]     reason 기록 후 진행 (코드-스펙 불일치 허용 선언)
-  [태스크별 개별 결정] 각 done 태스크마다 위 두 옵션 중 선택
-```
-
-**[재작업 필요] 선택 시**:
-- tasks.md 에서 해당 태스크 행 status 를 `"대기"` 로 Edit tool 로 직접 수정
-- applied commit 이후 `/ha-build T-NNN` 으로 재구현
-
-affected_tasks 중 done 이 없으면 이 단계 skip.
+**v0.10.0**: `--status applied` commit 후 worklog.md (docs/worklog.md) 에 변경 자동 append 됨.
 
 ### 7. applied 기록 + consistency check
 
@@ -276,15 +253,29 @@ run.py 가 다시 한 번 검증:
 - **다른 결정 보존**: affected 에 들어간 섹션만 갱신. 나머지 §N 은 손대지 않음.
 - **audit trail**: rejected 도 history 에 남김 — 검토했지만 적용 안 한 결정 추적.
 - **forward 상태 유지**: redesign 은 `current_step` 안 바꿈.
-- **post-build redesign 시 주의**: affected_tasks 가 done 인 경우 단계 6-b 에서 반드시
-  사용자 확인. [재작업 필요] 선택 시 tasks.md status "대기" 재설정 → /ha-build 재실행.
-  이 단계를 건너뛰면 코드-스펙 불일치(silent spec drift) 가 발생함.
+- **post-build stale 자동 가드**: `applied` 시 `affected_tasks` 중 status=`done` 인
+  태스크는 **run.py 가 자동으로 `needs_rebuild` 로 전이**한다. 이는 재설계로 spec 이 바뀐
+  stale 코드가 `/ha-verify` / `/ha-build --skip-done` 를 통과하는 것을 막는 안전 가드.
+  전이된 태스크 목록은 stdout JSON 의 `rebuild_required_tasks` 필드로 보고된다.
 - **HarnessAI 결정권 분리** (`user_harnessai_decision_authority.md`):
   - AI: 영향 분석 + 재설계 안 제안 + 실제 편집 (위임받은 영역)
   - 사용자: 승인/거부/수정 + 코드 스타일 영역
   - **모든 lifecycle 전이는 명시적 commit** — 자동 적용 금지.
 
 ## 트러블슈팅
+
+**plan 자체가 stale (legacy compute)**: 먼저 `harness migrate-plan` 으로 plan 정정 후 ha-redesign 진행.
+- `python ~/.claude/harness/bin/harness migrate-plan <project-dir>/docs/harness-plan.md` (dry-run)
+- 확인 후 `--apply` 로 적용. 자동 백업 생성됨.
+- skeleton.md 의 stale 섹션은 /ha-redesign 이 정리.
+- `--mark-skeleton-stale` 옵션으로 removed 섹션에 자동 마커 삽입 가능:
+  `python ~/.claude/harness/bin/harness migrate-plan <plan> --mark-skeleton-stale` (dry-run, `skeleton_will_mark` 미리보기)
+  `python ~/.claude/harness/bin/harness migrate-plan <plan> --apply --mark-skeleton-stale` (실제 삽입 + 자동 백업)
+
+**STALE 마커 발견 (`<!-- STALE: ... -->`)**: `migrate-plan --mark-skeleton-stale` 로 마킹된 섹션.
+- 해당 섹션 본문 검토 후 제거 (활성 profile 에서 완전히 빠진 경우) — `/ha-redesign` 이 정리.
+- 또는 `<!-- STALE ... -->` 주석 라인만 삭제 (paired profile 추가 예정이라 본문 유지 의도).
+- 마커 형식: `<!-- STALE: 이 섹션은 더 이상 활성 아님 (migrate-plan YYYY-MM-DD). ... -->`
 
 **"current step is init" 차단**: `/ha-init` + `/ha-design` 먼저. init 상태에선 redesign 할 게 없음.
 
@@ -296,6 +287,11 @@ run.py 가 다시 한 번 검증:
 
 **Re-derivation Agent 가 다른 섹션 건드림**: preservation 위반. git diff 로 확인 후 차단.
 SKILL.md 의 "다른 결정 보존" 룰을 Agent prompt 에 강하게 박아둔 이유.
+
+**`needs_rebuild` 된 task 처리**: `/ha-build complete --task T-XXX --status done` 으로
+재구현 후 마킹. 또는 사용자가 stale 이 아님을 확인하고 직접 tasks.md 의 status 를
+`done` 으로 되돌릴 수 있음 (명시적 결정). `/ha-build --skip-done` 은 `needs_rebuild`
+상태를 done 으로 취급하지 않으므로 자동 skip 안 됨 — 반드시 재실행 대상이 된다.
 
 ## 메모리/룰 호환성
 

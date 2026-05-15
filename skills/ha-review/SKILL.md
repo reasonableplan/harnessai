@@ -133,6 +133,48 @@ run.py 자동 검증:
 - APPROVE (BLOCK 0건) → "verified" → "reviewed" 전이
 - REJECT → "building" 으로 회귀
 
+### 6.5. LESSON 자동 추출 (v0.10.0 — ChatDev 영감)
+
+리뷰가 끝나면 *반복될 가능성 있는 패턴* 을 LESSON 으로 박아서 다음 프로젝트에 활용.
+
+**Claude 의 판단 기준** (각 리뷰 결과에 대해):
+
+LESSON 가치 있는 케이스:
+- *체계적* 패턴 — 한 번이 아니라 *3 번 이상* 발생할 가능성 있는 결함
+- *방어 가능한* 결함 — 명확한 규칙으로 막을 수 있는 것
+- *프레임워크 / 라이브러리 특수* — Python/FastAPI/React 등의 함정
+
+LESSON 가치 *없는* 케이스 (skip):
+- 일회성 typo / 오타
+- 비즈니스 로직 결함 (이 프로젝트만의 규칙)
+- 이미 LESSON 으로 박힌 패턴 (`shared-lessons.md` 그렙으로 중복 확인)
+
+**추출 흐름**:
+
+1. 리뷰에서 LESSON 가치 있는 패턴 N 개 식별 (보통 0-3 개. 0 도 정상).
+2. 각 패턴마다 `extract-lesson` 호출:
+
+```bash
+python ~/.claude/skills/ha-review/run.py extract-lesson \
+  --title "<짧은 제목 — 50자 이하>" \
+  --problem "<문제 설명 — 무엇이 잘못됐는지>" \
+  --rule "<규칙 — 어떻게 막을지, 코드 예시 가능>" \
+  --evidence "<리뷰에서 발견한 위치 / 빈도 — 선택>"
+```
+
+3. run.py 가 자동:
+   - 다음 LESSON ID 생성 (`shared-lessons.md` max ID + 1)
+   - `## Pending Lessons (자동 추출 — 사용자 promotion 대기)` 섹션에 append
+   - `auto_extracted: true` HTML 주석 마커 박음
+   - 섹션 없으면 *맨 아래* 에 신규 생성
+
+4. 사용자 promotion (수동):
+   - 사용자가 `shared-lessons.md` 직접 편집
+   - 승인 → Pending 섹션 → main 섹션으로 이동 + `auto_extracted` 마커 제거
+   - 거부 → 해당 LESSON 블록 삭제
+
+**중요**: Claude 가 *자동으로* main 섹션에 박지 않음. *반드시 Pending 섹션* 만 사용. 가짜 LESSON 자동 적용 방지.
+
 ### 7. 다음 안내
 
 **APPROVE**:

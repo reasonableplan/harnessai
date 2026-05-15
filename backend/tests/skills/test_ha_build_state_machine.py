@@ -67,6 +67,7 @@ def _make_plan(current_step: str, completed: tuple[str, ...] = ()):
         pipeline=_make_pipeline(current_step, completed),
         profiles=[SimpleNamespace(id="fastapi", path=".")],
         skeleton_hash=None,
+        frozen_status="frozen",  # v0.10.0 HITL gate: 기존 테스트는 게이트 통과 상태로 고정
     )
 
 
@@ -77,6 +78,7 @@ def _args(task: str, status: str, reason: str = "", skip_toolchain: bool = False
         reason=reason,
         skip_toolchain=skip_toolchain,
         skip_security=skip_security,
+        skip_frozen_gate=False,  # v0.10.0: frozen_status="frozen" 이므로 게이트 통과
     )
 
 

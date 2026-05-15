@@ -106,6 +106,18 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
     assert_state(plan, ["planned", "building"], "/ha-build")
 
+    # v0.10.0 HITL gate — frozen_status="drafting" 이면 /ha-build 진입 차단.
+    # /ha-design 의 LOCKED 섹션 (requirements/user_journey/view.screens) 인터뷰 통과 필수.
+    if plan.frozen_status != "frozen" and not args.skip_frozen_gate:
+        info(
+            "[BLOCK] /ha-build 진입 거부 — frozen_status=drafting (HITL 미완료).\n"
+            "  · /ha-design 의 LOCKED 섹션 (requirements/user_journey/view.screens) "
+            "인터뷰 채우기 필요.\n"
+            "  · 채운 후: /ha-design commit 시 plan.freeze() 가 호출되어 frozen 으로 전이.\n"
+            "  · 개발/마이그레이션용 우회: --skip-frozen-gate (의도적 사용 — 비추천)."
+        )
+        return 1
+
     tasks_path = plan_path.parent / "tasks.md"
     if not tasks_path.exists():
         info(f"[FAIL] tasks.md 없음: {tasks_path}")
@@ -360,6 +372,17 @@ def cmd_complete(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
     assert_state(plan, ["planned", "building"], "/ha-build")
 
+    # v0.10.0 HITL gate — frozen_status="drafting" 이면 /ha-build 진입 차단.
+    if plan.frozen_status != "frozen" and not args.skip_frozen_gate:
+        info(
+            "[BLOCK] /ha-build 진입 거부 — frozen_status=drafting (HITL 미완료).\n"
+            "  · /ha-design 의 LOCKED 섹션 (requirements/user_journey/view.screens) "
+            "인터뷰 채우기 필요.\n"
+            "  · 채운 후: /ha-design commit 시 plan.freeze() 가 호출되어 frozen 으로 전이.\n"
+            "  · 개발/마이그레이션용 우회: --skip-frozen-gate (의도적 사용 — 비추천)."
+        )
+        return 1
+
     try:
         validate_task_id(args.task)
     except ValueError as e:
@@ -448,6 +471,26 @@ def cmd_complete(args: argparse.Namespace) -> int:
 
     save_plan(plan, plan_path)
 
+    # v0.10.0 -- worklog 자동 append (done 만, change 카테고리)
+    if args.status == "done":
+        _log_msg = f"/ha-build complete -- task={args.task}, status=done"
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(Path.home() / ".claude" / "skills" / "ha-log" / "run.py"),
+                    "append",
+                    "--category", "change",
+                    "--message", _log_msg,
+                    "--project", str(plan_path.parent.parent),
+                ],
+                capture_output=True,
+                timeout=5,
+                check=False,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as _worklog_err:
+            info(f"[WARN] worklog append failed (commit 진행): {_worklog_err}")
+
     output = {
         "task": args.task,
         "new_status": args.status,
@@ -467,6 +510,11 @@ def main() -> int:
 
     p = sub.add_parser("prepare")
     p.add_argument("--task", required=True, help="T-001 또는 T-001,T-002 (병렬)")
+    p.add_argument(
+        "--skip-frozen-gate",
+        action="store_true",
+        help="HITL frozen_status 게이트 우회 (v0.10.0 — 마이그레이션/개발용. 정상 흐름은 /ha-design freeze 후 진입).",
+    )
 
     c = sub.add_parser("complete")
     c.add_argument("--task", required=True)
@@ -481,6 +529,11 @@ def main() -> int:
         "--skip-security",
         action="store_true",
         help="security_hooks 게이트 스킵 (의도적 보안 패턴 우회 시에만, toolchain 과 독립)",
+    )
+    c.add_argument(
+        "--skip-frozen-gate",
+        action="store_true",
+        help="HITL frozen_status 게이트 우회 (v0.10.0 — 마이그레이션/개발용).",
     )
 
     args = parser.parse_args()

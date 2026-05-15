@@ -736,6 +736,91 @@ def cmd_record(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_extract_lesson(args: argparse.Namespace) -> int:
+    """v0.10.0 — 리뷰에서 발견한 패턴을 shared-lessons.md 의 Pending 섹션에 append.
+
+    auto_extracted: true 마커 박힘. 사용자 promotion 으로만 main 섹션 진입.
+    """
+    from datetime import UTC, datetime
+
+    if args.lessons_path:
+        lessons_path = Path(args.lessons_path)
+    else:
+        lessons_path = HARNESS_HOME / "backend" / "docs" / "shared-lessons.md"
+
+    if not lessons_path.exists():
+        info(f"[FAIL] shared-lessons.md 없음: {lessons_path}")
+        return 1
+
+    text = lessons_path.read_text(encoding="utf-8")
+
+    # 다음 LESSON ID — 기존 중 max + 1
+    existing_ids = re.findall(r"## LESSON-(\d+):", text)
+    next_id = (max((int(i) for i in existing_ids), default=0) + 1) if existing_ids else 1
+    lesson_id = f"LESSON-{next_id:03d}"
+
+    # 중복 방지 — title 이 기존 LESSON 과 lowercase 비교 시 거부
+    title_norm = args.title.strip().lower()
+    for existing_title in re.findall(r"## LESSON-\d+: (.+)", text):
+        if title_norm == existing_title.strip().lower():
+            info(f"[SKIP] 중복 LESSON 제목 — 기존: {existing_title}")
+            output = {"lesson_id": None, "skipped": True, "reason": "duplicate_title"}
+            print(json.dumps(output, ensure_ascii=False, indent=2))
+            return 0
+
+    extracted_at = datetime.now(UTC).strftime("%Y-%m-%d")
+
+    block = (
+        f"## {lesson_id}: {args.title.strip()}\n"
+        f"<!-- auto_extracted: true / promotion_pending: true / extracted_at: {extracted_at} -->\n\n"
+        f"**문제**: {args.problem.strip()}\n\n"
+        f"**규칙**: {args.rule.strip()}\n"
+    )
+    if args.evidence:
+        block += f"\n**근거**: {args.evidence.strip()}\n"
+    block += "\n---\n"
+
+    pending_header = "## Pending Lessons (자동 추출 — 사용자 promotion 대기)"
+    if pending_header in text:
+        # 기존 Pending 섹션 끝에 append (다음 ## 헤딩 직전 또는 EOF)
+        idx = text.index(pending_header)
+        rest = text[idx:]
+        next_header_match = re.search(r"\n## (?!Pending Lessons)", rest)
+        if next_header_match:
+            insert_at = idx + next_header_match.start() + 1
+            new_text = text[:insert_at] + "\n" + block + text[insert_at:]
+        else:
+            new_text = text.rstrip() + "\n\n" + block
+    else:
+        # Pending 섹션 신규 생성 — 파일 끝에 박음
+        pending_intro = (
+            "\n\n"
+            + pending_header
+            + "\n\n"
+            + "> 자동 추출된 LESSON. 사용자 검토 후 main 섹션으로 promote"
+            + " (auto_extracted 마커 제거) 또는 거부 (블록 삭제).\n\n"
+            + block
+        )
+        new_text = text.rstrip() + pending_intro
+
+    try:
+        lessons_path.write_text(new_text, encoding="utf-8")
+    except OSError as e:
+        info(f"[FAIL] shared-lessons.md 쓰기 실패: {e}")
+        return 1
+
+    output = {
+        "lesson_id": lesson_id,
+        "title": args.title.strip(),
+        "extracted_at": extracted_at,
+        "section": "Pending Lessons",
+        "promotion_pending": True,
+        "lessons_path": str(lessons_path),
+    }
+    print(json.dumps(output, ensure_ascii=False, indent=2))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="ha-review")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -750,9 +835,21 @@ def main() -> int:
         default=False,
         help="BLOCK 위반이 있어도 approve 강제 (의도적 우회 시)",
     )
+    e = sub.add_parser("extract-lesson", help="자동 LESSON 추출 (v0.10.0 — Pending 섹션에 append)")
+    e.add_argument("--title", required=True, help="LESSON 제목 (50자 이하)")
+    e.add_argument("--problem", required=True, help="문제 설명")
+    e.add_argument("--rule", required=True, help="규칙 / 해결 방법")
+    e.add_argument("--evidence", default="", help="발견 위치 / 빈도 (선택)")
+    e.add_argument(
+        "--lessons-path",
+        default="",
+        help="shared-lessons.md 경로 (기본: <HARNESS_AI_HOME>/backend/docs/shared-lessons.md)",
+    )
     args = parser.parse_args()
     if args.cmd == "prepare":
         return cmd_prepare(args)
+    if args.cmd == "extract-lesson":
+        return cmd_extract_lesson(args)
     return cmd_record(args)
 
 

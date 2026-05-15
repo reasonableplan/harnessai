@@ -192,7 +192,8 @@ def test_ha_build_prepare_has_guideline_paths(tmp_path: Path) -> None:
     _advance_plan_to(
         project / "docs" / "harness-plan.md", "planned", ["ha-init", "ha-design", "ha-plan"]
     )
-    output = _run_skill(HA_BUILD_RUN, ["prepare", "--task", "T-001"], cwd=project)
+    # v0.10.0: frozen_status 미설정 plan → --skip-frozen-gate 로 게이트 우회 (마이그레이션 케이스)
+    output = _run_skill(HA_BUILD_RUN, ["prepare", "--task", "T-001", "--skip-frozen-gate"], cwd=project)
     assert "tasks" in output
     assert len(output["tasks"]) >= 1
     task = output["tasks"][0]
