@@ -2,7 +2,7 @@
 
 🌐 **English** · [한국어](README.ko.md)
 
-![tests](https://img.shields.io/badge/tests-893%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-939%20passing-brightgreen)
 ![pyright](https://img.shields.io/badge/pyright-0%20errors-brightgreen)
 ![ruff](https://img.shields.io/badge/ruff-clean-brightgreen)
 ![gate coverage](https://img.shields.io/badge/gate%20coverage-100%25-brightgreen)
@@ -129,12 +129,37 @@ In a fresh Claude Code session:
   /ha-verify ─────▶ [1] harness integrity (skeleton ↔ real FS)
                     [2] profile toolchain (pytest / ruff / pyright)
                                           ▼
-  /ha-review ─────▶ Security hooks × 6 + LESSONs × 21 + ai-slop × 7 + test distribution
+  /ha-review ─────▶ Security hooks × 7 + LESSONs × 21 + ai-slop × 7 + test distribution
                                           ▼
                                APPROVE / REJECT → /ship
 ```
 
 Each stage can chain with gstack skills (`/office-hours`, `/plan-eng-review`, `/review`, `/qa`, `/ship`, `/retro`).
+
+---
+
+## 🙋 Human-In-The-Loop Gate (v0.10.0+)
+
+Three sections (persona / user journey / screen designs) consistently produce flat results when AI fills them by guessing. v0.10.0 forces user interview for those sections.
+
+- `<!-- HUMAN-LOCKED:<section_id> -->` markers in `skeleton.md` — a PreToolUse hook (`~/.claude/harness/bin/check_locked.py`) blocks any Edit/Write inside locked regions
+- `/ha-design` presents 5 AI candidates per LOCKED section → `AskUserQuestion` → user picks → section filled
+- `/ha-build` entry requires `frozen_status="frozen"` in `harness-plan.md` frontmatter
+- Design changes go through `/ha-redesign` (audit record + mutation propagation), not direct edits
+
+```bash
+# Migrate an existing v0.9.x project
+python ~/.claude/harness/bin/harness migrate-v10 docs/harness-plan.md
+
+# Run /ha-design to complete HITL interview + freeze
+/ha-design
+
+# Build as normal
+/ha-build T-001
+
+# Escape hatch for development / CI (user takes responsibility)
+/ha-build --skip-frozen-gate
+```
 
 ---
 
@@ -285,12 +310,16 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 - v0.9.1: `harness graph` CLI backfill — tasks.md → Mermaid dependency graph (was documented in v0.8.0 but not implemented). +4 tests (866 → 870).
 - v0.9.2: mirror sync (repo ↔ `~/.claude` 5-file drift), profile hardening (LESSON-STYLE-001, whitelist additions), spec-code gap closure (G1 ha-deepinit augment-plan · G2 ha-verify integrity auto-run · G3 ha-build git WARN). +23 tests (870 → 893).
 
-**Phase 10 (planned)**:
+**Phase 10 — v0.10.0 (completed, 2026-05-15)**: **HITL Gate**. Human-locked sections (`requirements` / `user_journey` / `view.screens`) enforced via PreToolUse hook. `PlanManager.freeze()` one-way gate. `/ha-design` HITL interview (5 AI candidates → user pick). `/ha-build` frozen-status gate. `/ha-review extract-lesson` auto-appends to Pending Lessons. `/ha-log` micro skill (worklog append + subprocess auto-append). `harness migrate-v10` CLI. ChatDev / aider / CrewAI gap closed. +39 tests (893 → 939).
+
+**v1.0.0 backlog**:
 - Live LESSONS auto-learning (ha-review repeated pattern → LESSON candidate)
 - Multi-provider (Gemini / OpenAI backend) — `providers/gemini_*.py` foundation in place, full validation pending
 - macOS GitHub Actions CI for iOS native (`xcodebuild` test/build)
 - Cost tracking (per-agent token / USD accumulation)
 - Claude Code plugin manifest distribution
+- Vector memory (CrewAI-style) — per-project LESSON embedding
+- Execution sandbox (OpenHands-style) — isolated subprocess environment
 
 ---
 
@@ -301,7 +330,7 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 - **Package manager**: uv
 - **Agent execution**: Claude CLI subprocess (swappable — Gemini / local LLM)
 - **State**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (no DB)
-- **Tests**: **893** backend pytest + **12** install-snapshot assertions (0 regressions)
+- **Tests**: **939** backend pytest + **12** install-snapshot assertions (0 regressions)
 - **Type check**: pyright **0 errors** on `src/`
 - **Gate coverage** (self-test): 8 of the 10 gates measured on 35 fixtures (positive / negative) → **precision 100% / recall 100% / accuracy 100%**. The other 2 (test-distribution, skeleton-integrity) are covered by filesystem-level pytest fixtures. Details: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **Latency** (30-iter median, no LLM calls): profile detect **~5 ms**, skeleton assemble **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. Details: [benchmarks/](docs/benchmarks/)
@@ -322,7 +351,7 @@ backend/
   docs/shared-lessons.md      21 LESSONs
   src/orchestrator/           profile_loader / skeleton_assembler /
                               plan_manager / security_hooks / runner
-  tests/                      893 pytest + skills/ regression guards
+  tests/                      939 pytest + skills/ regression guards
 
 docs/
   ARCHITECTURE.md             System structure — read this first
@@ -338,7 +367,7 @@ docs/
 ```bash
 cd backend
 uv sync
-uv run pytest tests/ --rootdir=.      # 893 tests
+uv run pytest tests/ --rootdir=.      # 939 tests
 uv run ruff check src/                 # 0 errors
 uv run pyright src/                    # 0 errors
 uv run python -m src.main              # dashboard server (port 3002)

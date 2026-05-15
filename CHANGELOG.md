@@ -4,6 +4,51 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.10.0] — 2026-05-15 — "HITL Gate"
+
+ChatDev Experiential Co-Learning + aider confirm gate 영감으로 *사람-AI 결정권 분리* 강화. LESSON-014 / DESIGN-1 / ARCH-2 처럼 AI 추측 채우기로 발생하던 밋밋한 결과 패턴 차단.
+
+### Added
+
+- **HITL gate** — 페르소나 / 시나리오 / 화면 시안 = 사용자 인터뷰로만 채움. AI 추측 차단.
+  - `<!-- HUMAN-LOCKED:<section_id> -->` 마커 + `~/.claude/harness/bin/check_locked.py` PreToolUse hook (Edit/Write 차단)
+  - `HarnessPlan.frozen_status` (drafting/frozen), `frozen_at`, `locked_sections`, `ai_drafted_sections` 4 필드
+  - `PlanManager.freeze()` — one-way gate (no unfreeze; rollback 은 `/ha-redesign` audit 통해)
+- **`/ha-design` HITL 인터뷰** — LOCKED 섹션마다 AI 후보 5 개 → AskUserQuestion → 사용자 선택. `--ai-draft` 옵트인으로 AI 추측 채우기 (사용자 후속 promotion 필요)
+- **`/ha-build` 진입 게이트** — `frozen_status="frozen"` 필수. `--skip-frozen-gate` 마이그레이션용 escape hatch
+- **`/ha-review extract-lesson`** — 리뷰에서 패턴 발견 시 `shared-lessons.md` 의 Pending Lessons 섹션에 auto-append. 사용자 수동 promotion 으로만 main 진입 (가짜 LESSON 자동 적용 방지). ChatDev 영감
+- **`/ha-log` 마이크로 스킬** — `worklog.md` 수동 append (discussion / change / next 카테고리). `/ha-design`, `/ha-build` (done), `/ha-redesign` (apply) 자동 append (subprocess)
+- **`harness migrate-v10`** — v0.9.x → v0.10.0 마이그레이션. default drafting + `--auto-freeze` + `--dry-run` + `*.v9.bak` 백업
+- Reviewer-driven hardening: `freeze(ai_drafted_sections=None vs [])` 분리, `_plan_to_dict` `frozen_status` validation, fragment placeholder 컨벤션 주석
+- fragment 3 강화 — `requirements` / `user_journey` / `view.screens` 에 LOCKED 마커 + AI 제안 후보 슬롯 + HITL gate 가이드 + Mobbin/Dribbble 디자인 레퍼런스 URL 슬롯
+
+### Fixed
+
+- `test_context.py::test_all_36_standard_sections_present` — expected_ids 에 `environments` / `error_ux` / `rate_limiting` 3 개 추가 (실제 SECTION_TITLES 와 동기화)
+
+### Migration
+
+v0.9.x → v0.10.0 흐름:
+1. `python ~/.claude/harness/bin/harness migrate-v10 <project>` — frontmatter 에 lock 필드 박음 (drafting default)
+2. `/ha-design` 재실행 — HITL 인터뷰 통과 + freeze
+3. `/ha-build` 정상 진행
+
+또는 escape hatch (개발용): `--auto-freeze` (사용자 책임), `/ha-build --skip-frozen-gate`
+
+backward-compat: legacy v0.9.x plan 은 `frozen_status` 미존재 시 default `"drafting"` 으로 자동 로드.
+
+### Tests
+
+- pytest **939/939 pass** (+39 신규 — T1~T9 + reviewer hardening 합산)
+- ruff / pyright clean
+- mirror sync: 모든 스킬 양쪽 (`~/.claude/skills/` ↔ `<repo>/skills/`) 바이트 동일
+
+### 비교 분석
+
+OSS 비교 (MetaGPT / ChatDev / OpenHands / aider / CrewAI) 결과 — HITL gate 는 ChatDev / aider / CrewAI 3 개에 있고 HarnessAI 만 없었음. v0.10.0 으로 따라잡음. 자동 LESSON 추출 (ChatDev) 도 함께 박음. 벡터 메모리 (CrewAI) + 실행 sandbox (OpenHands) 는 v1.0.0 백로그.
+
+---
+
 ## [0.9.2] — 2026-05-12 — "audit cleanup"
 
 Final verification: **pytest 893 pass / ruff clean / pyright 0 errors**.

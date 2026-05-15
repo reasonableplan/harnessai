@@ -122,12 +122,37 @@ export HARNESS_AI_HOME="$(pwd)"       # (설치 스크립트가 안내)
   /ha-verify ─────▶ [1] harness integrity (skeleton ↔ 실재 FS)
                     [2] profile toolchain (pytest/ruff/pyright)
                                          ▼
-  /ha-review ─────▶ 보안훅 6 + LESSON 21 + ai-slop 7 + 테스트 분포
+  /ha-review ─────▶ 보안훅 7 + LESSON 21 + ai-slop 7 + 테스트 분포
                                          ▼
                                APPROVE / REJECT → /ship
 ```
 
 각 단계 앞뒤에 gstack 스킬 연계 가능 (`/office-hours`, `/plan-eng-review`, `/review`, `/qa`, `/ship`, `/retro`).
+
+---
+
+## 🙋 Human-In-The-Loop Gate (v0.10.0+)
+
+페르소나 / 사용자 여정 / 화면 시안 — AI 가 추측으로 채우면 밋밋한 결과가 나오는 3 영역. v0.10.0 은 이 섹션을 사용자 인터뷰로만 채우도록 강제한다.
+
+- `skeleton.md` 에 `<!-- HUMAN-LOCKED:<section_id> -->` 마커 — PreToolUse hook (`~/.claude/harness/bin/check_locked.py`) 이 LOCKED 영역 Edit/Write 를 차단
+- `/ha-design` 이 LOCKED 섹션마다 AI 후보 5 개 제시 → `AskUserQuestion` → 사용자 선택 → 섹션 채움
+- `/ha-build` 진입 시 `harness-plan.md` frontmatter 의 `frozen_status="frozen"` 필수
+- 설계 변경은 `/ha-redesign` 경유 (audit 기록 + mutation propagation)
+
+```bash
+# 기존 v0.9.x 프로젝트 마이그레이션
+python ~/.claude/harness/bin/harness migrate-v10 docs/harness-plan.md
+
+# /ha-design 으로 HITL 인터뷰 + freeze
+/ha-design
+
+# 정상 흐름
+/ha-build T-001
+
+# 개발/CI 용 escape hatch (사용자 책임)
+/ha-build --skip-frozen-gate
+```
 
 ---
 
@@ -277,12 +302,16 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 - v0.9.1: `harness graph` CLI 보충 구현 — tasks.md → Mermaid 의존성 그래프 (v0.8.0 에 구현됐다고 기록됐으나 실제 미구현). 회귀 +4 (866 → 870).
 - v0.9.2: mirror sync (repo ↔ `~/.claude` 5파일 drift 회복), profile 보강 (LESSON-STYLE-001, whitelist 항목 추가), 명세-코드 격차 해소 (G1 ha-deepinit augment-plan · G2 ha-verify integrity 자동 실행 · G3 ha-build git WARN). 회귀 +23 (870 → 893).
 
-**Phase 10 (계획)**:
+**Phase 10 — v0.10.0 (완료, 2026-05-15)**: **HITL Gate**. Human-locked 섹션 (`requirements` / `user_journey` / `view.screens`) PreToolUse hook 강제. `PlanManager.freeze()` one-way gate. `/ha-design` HITL 인터뷰 (AI 후보 5 개 → 사용자 선택). `/ha-build` frozen-status 진입 게이트. `/ha-review extract-lesson` Pending Lessons 자동 추가. `/ha-log` 마이크로 스킬 (worklog append + subprocess 자동). `harness migrate-v10` CLI. ChatDev / aider / CrewAI 격차 해소. 신규 테스트 +39 (893 → 939).
+
+**v1.0.0 백로그**:
 - Live LESSONS 자동 학습 (ha-review 반복 패턴 → 후보 등록)
 - multi-provider (Gemini/OpenAI backend)
 - macOS GitHub Actions CI (iOS native `xcodebuild` test/build)
 - 비용 추적 (에이전트별 토큰/달러 누적)
 - Claude Code plugin manifest 로 배포
+- 벡터 메모리 (CrewAI 방식) — 프로젝트별 LESSON embedding
+- 실행 sandbox (OpenHands 방식) — 격리된 subprocess 환경
 
 ---
 
@@ -293,7 +322,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 - **패키지**: uv
 - **에이전트 실행**: Claude CLI subprocess (Gemini/로컬 LLM 교체 가능)
 - **상태**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (DB 없음)
-- **테스트**: pytest **893개** backend + **12개** install 스냅샷 (회귀 0건)
+- **테스트**: pytest **939개** backend + **12개** install 스냅샷 (회귀 0건)
 - **타입 체크**: pyright **0 errors** (`src/` 전수)
 - **게이트 커버리지 (자기 검증)**: 9개 게이트 중 정규식/AST 기반 7개를 35 fixtures (positive/negative) 로 측정 → **precision 100% / recall 100% / accuracy 100%**. 나머지 2개 (test-distribution, skeleton-integrity) 는 filesystem fixture 로 별도 회귀 테스트. 상세 한계/방법: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **성능** (30 iter, LLM 제외): profile 감지 **~5 ms**, skeleton 조립 **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. [docs/benchmarks/](docs/benchmarks/)
@@ -314,7 +343,7 @@ backend/
   docs/shared-lessons.md      21 LESSONs
   src/orchestrator/           profile_loader / skeleton_assembler /
                               plan_manager / security_hooks / runner
-  tests/                      893 pytest + skills/ 회귀 방지
+  tests/                      939 pytest + skills/ 회귀 방지
 
 docs/
   ARCHITECTURE.md             시스템 구조 30분 이해
@@ -328,7 +357,7 @@ docs/
 ```bash
 cd backend
 uv sync
-uv run pytest tests/ --rootdir=.      # 893 tests
+uv run pytest tests/ --rootdir=.      # 939 tests
 uv run ruff check src/                 # 0 errors
 uv run pyright src/                    # 0 errors (타입 체크)
 uv run python -m src.main              # dashboard 서버 (포트 3002)
@@ -377,4 +406,4 @@ MIT
 
 ---
 
-**포트폴리오 목표**: 현업 시니어 수준의 코드 품질 기준으로 포트폴리오의 정점을 찍기. Phase 1–9 완료 (v0.9.2 audit cleanup), pytest 893 / ruff clean / pyright 0 / harness validate 50 files.
+**포트폴리오 목표**: 현업 시니어 수준의 코드 품질 기준으로 포트폴리오의 정점을 찍기. Phase 1–10 완료 (v0.10.0 HITL gate), pytest 939 / ruff clean / pyright 0 / harness validate 50 files.

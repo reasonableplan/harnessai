@@ -280,7 +280,7 @@ python ~/.claude/harness/bin/harness validate   # 프로파일 스키마 체크
 [ ] 프로파일 whitelist 업데이트 (라이브러리 변경 시)
 [ ] agents.yaml 모델/타임아웃 조정 (필요 시)
 [ ] harness validate — 50 files, 0 errors
-[ ] cd backend && uv run pytest tests/ — 893 pass
+[ ] cd backend && uv run pytest tests/ — 939 pass
 ```
 
 ---
@@ -322,6 +322,72 @@ python harness/bin/harness analyze-failure
 | `skeleton_hash` 없다는 경고가 뜰 때 | `migrate-skeleton-hash --apply` |
 | `/ha-build` 가 실패했는데 원인 불명 | `analyze-failure` |
 | tasks.md 의존성을 시각적으로 확인 | `graph docs/tasks.md` |
+| v0.9.x → v0.10.0 업그레이드 후 기존 plan | `migrate-v10 --apply` |
+
+---
+
+## v0.10.0 마이그레이션 (v0.9.x → v0.10.0)
+
+v0.10.0 은 `harness-plan.md` frontmatter 에 lock 필드 4 개 (`frozen_status`, `frozen_at`, `locked_sections`, `ai_drafted_sections`) 를 추가한다. legacy plan 은 `frozen_status` 가 없으면 default `"drafting"` 으로 자동 로드되므로 즉시 crash 는 없다. 그러나 `/ha-build` 진입 게이트가 `frozen_status="frozen"` 을 요구하므로 아래 흐름을 따라야 한다.
+
+### 권장 흐름
+
+```bash
+# 1. lock 필드를 frontmatter 에 명시적으로 박음 (drafting default)
+python ~/.claude/harness/bin/harness migrate-v10 docs/harness-plan.md           # dry-run
+python ~/.claude/harness/bin/harness migrate-v10 docs/harness-plan.md --apply   # 실제 갱신
+
+# 옵션: 기존 plan 을 검토 없이 곧바로 frozen 으로 올리기 (사용자 책임)
+python ~/.claude/harness/bin/harness migrate-v10 docs/harness-plan.md --apply --auto-freeze
+
+# 2. /ha-design 재실행 — LOCKED 섹션 HITL 인터뷰 통과 + freeze
+/ha-design
+
+# 3. /ha-build 정상 진행
+/ha-build T-001
+```
+
+### escape hatch (개발 / CI 환경)
+
+```bash
+# frozen_status 게이트 건너뜀 (개발용 — 사용자 책임)
+/ha-build T-001 --skip-frozen-gate
+
+# PreToolUse hook 임시 비활성 (lock 검사 건너뜀)
+HARNESS_SKIP_LOCK_HOOK=1 claude
+```
+
+### LOCKED 섹션 등록 (`<repo>/.claude/settings.json`)
+
+외부 프로젝트에서 check_locked.py hook 을 적용하려면 `.claude/settings.json` 에 추가:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ~/.claude/harness/bin/check_locked.py"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### 마이그레이션 전후 확인 사항
+
+```
+[ ] migrate-v10 --apply 실행 완료 (또는 --auto-freeze 로 즉시 frozen)
+[ ] /ha-design 재실행 — LOCKED 섹션 인터뷰 완료 + frozen_status="frozen" 확인
+[ ] harness validate — 0 errors
+[ ] cd backend && uv run pytest tests/ — 939 pass
+[ ] .claude/settings.json 에 check_locked.py hook 등록 (선택)
+```
 
 ---
 
@@ -512,7 +578,7 @@ Claude Code 세션 내에서 gstack 설치 (별도 가이드 참조).
 # → DB 정규화, API 일관성, 누락 엔드포인트 탐지
 
 # 3. IMPLEMENTING 완료 후 — 코드 리뷰
-/ha-review    # 보안훅 6 + LESSON 21 + ai-slop 7 + 테스트 분포
+/ha-review    # 보안훅 7 + LESSON 21 + ai-slop 7 + 테스트 분포
 /review       # SQL injection, 레이스 컨디션, 동시성
 
 # 4. 배포
