@@ -8,6 +8,10 @@ Claude Code hooks 양식 (v1):
   - exit 0: 통과 / exit 2: 차단 (사용자에게 stderr 보임)
 
 Escape hatch: env HARNESS_SKIP_LOCK_HOOK=1 → 무조건 통과 (개발/마이그레이션용).
+
+AI-WRITABLE sub-block (v0.10.1):
+  <!-- AI-WRITABLE:<sub_id> ... --> ... <!-- /AI-WRITABLE --> 마커 안 편집은
+  LOCKED 섹션 내부라도 허용 — /ha-design 인터뷰 중 AI 가 후보를 채우는 영역.
 """
 from __future__ import annotations
 
@@ -21,6 +25,19 @@ _LOCKED_RE = re.compile(
     r"<!--\s*HUMAN-LOCKED:([\w.]+)\s+—.*?-->\s*\n(.*?)<!--\s*/HUMAN-LOCKED:\1\s*-->",
     re.DOTALL,
 )
+
+_AI_WRITABLE_RE = re.compile(
+    r"<!--\s*AI-WRITABLE:[\w.-]+[^>]*-->(.*?)<!--\s*/AI-WRITABLE\s*-->",
+    re.DOTALL,
+)
+
+
+def _strip_ai_writable(text: str) -> str:
+    """AI-WRITABLE 블록 내용을 normalize — 마커는 남기고 내용만 제거 (변경 허용 비교용)."""
+    return _AI_WRITABLE_RE.sub(
+        lambda m: m.group(0)[: m.group(0).index("-->") + 3] + "\n<!-- /AI-WRITABLE -->",
+        text,
+    )
 
 
 def _is_skeleton_file(file_path: str) -> bool:
@@ -71,6 +88,11 @@ def main() -> int:
             return 0
         for section_id, body in locked_blocks:
             if old in body:
+                # AI-WRITABLE sub-block: /ha-design 인터뷰 중 AI 가 후보를 채우는 영역.
+                # LOCKED 안이지만 변경 허용 (v0.10.1 fix — hook self-block 해소).
+                ai_writable_blocks = [m.group(1) for m in _AI_WRITABLE_RE.finditer(body)]
+                if any(old in aw for aw in ai_writable_blocks):
+                    return 0  # AI-WRITABLE 안 → 통과
                 print(
                     f"[HITL BLOCK] Edit 차단 — section '{section_id}' 가 HUMAN-LOCKED.\n"
                     f"  · 변경 시 /ha-redesign 거치기 (mutation propagation 기록).\n"
@@ -99,6 +121,9 @@ def main() -> int:
             # only — internal whitespace must stay identical (otherwise Edit-style
             # rewrites slip through).
             if new_locked[section_id].strip() != body.strip():
+                # AI-WRITABLE 영역만 변경된 경우 → normalize 후 재비교해서 통과.
+                if _strip_ai_writable(new_locked[section_id]).strip() == _strip_ai_writable(body).strip():
+                    return 0  # AI-WRITABLE 안만 변경됨 → 통과
                 print(
                     f"[HITL BLOCK] Write 차단 — section '{section_id}' LOCKED body 변조 감지.\n"
                     f"  · 마커는 유지됐지만 내용이 바뀜 (silent HITL bypass).\n"

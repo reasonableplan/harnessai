@@ -178,3 +178,92 @@ def test_env_skip_lock_hook_bypasses(tmp_path: Path) -> None:
     }
     rc, _, _ = _call_hook(payload, env_override={"HARNESS_SKIP_LOCK_HOOK": "1"})
     assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# AI-WRITABLE sub-block 테스트 (v0.10.1) — fixture 확장
+# ---------------------------------------------------------------------------
+
+_LOCKED_WITH_AI_WRITABLE = """\
+# Skeleton
+
+## Requirements
+
+<!-- HUMAN-LOCKED:requirements — do not edit -->
+This is the locked requirements section.
+Confirmed choice: Feature A.
+
+<!-- AI-WRITABLE:requirements-candidates — AI fills candidate table here -->
+| 1 | `<AI 채움>` | `<AI 채움>` |
+| 2 | `<AI 채움>` | `<AI 채움>` |
+<!-- /AI-WRITABLE -->
+
+Bullet point 1.
+<!-- /HUMAN-LOCKED:requirements -->
+
+## Other Section
+
+Free to edit content here.
+"""
+
+
+def test_edit_inside_ai_writable_passes(tmp_path: Path) -> None:
+    """AI-WRITABLE 마커 안 Edit → exit 0 (LOCKED 안이지만 AI 가 후보 박는 영역)."""
+    skeleton = tmp_path / "docs" / "skeleton.md"
+    skeleton.parent.mkdir(parents=True)
+    skeleton.write_text(_LOCKED_WITH_AI_WRITABLE, encoding="utf-8")
+
+    payload = {
+        "tool_name": "Edit",
+        "tool_input": {
+            "file_path": str(skeleton),
+            # old_string 이 AI-WRITABLE 블록 안에 있음
+            "old_string": "| 1 | `<AI 채움>` | `<AI 채움>` |",
+            "new_string": "| 1 | 할 일 관리 | 진행 상황 추적 |",
+        },
+    }
+    rc, _, _ = _call_hook(payload)
+    assert rc == 0
+
+
+def test_edit_inside_locked_outside_ai_writable_blocks(tmp_path: Path) -> None:
+    """LOCKED 안 + AI-WRITABLE 외 (확정 섹션) Edit → exit 2 (변경 차단 유지)."""
+    skeleton = tmp_path / "docs" / "skeleton.md"
+    skeleton.parent.mkdir(parents=True)
+    skeleton.write_text(_LOCKED_WITH_AI_WRITABLE, encoding="utf-8")
+
+    payload = {
+        "tool_name": "Edit",
+        "tool_input": {
+            "file_path": str(skeleton),
+            # old_string 이 LOCKED 안이지만 AI-WRITABLE 밖 (확정 섹션)
+            "old_string": "Confirmed choice: Feature A.",
+            "new_string": "Confirmed choice: Feature B.",
+        },
+    }
+    rc, _, stderr = _call_hook(payload)
+    assert rc == 2
+    assert "HITL BLOCK" in stderr
+    assert "requirements" in stderr
+
+
+def test_write_modifies_ai_writable_only_passes(tmp_path: Path) -> None:
+    """Write 가 AI-WRITABLE 안 텍스트만 변경, 확정 섹션은 그대로 → exit 0."""
+    skeleton = tmp_path / "docs" / "skeleton.md"
+    skeleton.parent.mkdir(parents=True)
+    skeleton.write_text(_LOCKED_WITH_AI_WRITABLE, encoding="utf-8")
+
+    # AI-WRITABLE 블록 내 후보 채움 — 확정 섹션(Confirmed choice, Bullet point 1)은 그대로
+    modified = _LOCKED_WITH_AI_WRITABLE.replace(
+        "| 1 | `<AI 채움>` | `<AI 채움>` |\n| 2 | `<AI 채움>` | `<AI 채움>` |",
+        "| 1 | 할 일 관리 | 진행 상황 추적 |\n| 2 | 알림 설정 | 마감 기한 관리 |",
+    )
+    payload = {
+        "tool_name": "Write",
+        "tool_input": {
+            "file_path": str(skeleton),
+            "content": modified,
+        },
+    }
+    rc, _, _ = _call_hook(payload)
+    assert rc == 0
