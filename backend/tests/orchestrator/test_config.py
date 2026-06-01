@@ -162,3 +162,26 @@ class TestLoadAgentsConfig:
         assert cfg.architect.model == "claude-opus-4-6"
         assert cfg.backend_coder.model == "claude-sonnet-4-6"
         assert cfg.orchestrator.on_timeout == OnTimeout.RETRY
+
+    def test_all_prompt_paths_resolve(self) -> None:
+        """agents.yaml 의 모든 prompt_path 가 실재 파일이어야 한다.
+
+        회귀 가드 (2026-06-01): mobile_coder_* 4개 프롬프트가 .gitignore 의
+        bare ``CLAUDE.md`` 패턴에 걸려 커밋되지 않아 fresh clone 에서 누락됐던
+        버그 재발 방지. prompt_path 가 없으면 ``runner._resolve_prompt_path`` 가
+        None 을 반환해 역할 프롬프트 없이 silent degrade 하므로 가시화한다.
+        """
+        backend_dir = Path(__file__).parent.parent.parent
+        real_path = backend_dir / "agents.yaml"
+        if not real_path.exists():
+            pytest.skip("agents.yaml 없음")
+
+        cfg = load_agents_config(real_path)
+        missing = [
+            f"{name}: {agent.prompt_path}"
+            for name, agent in cfg.all_agents().items()
+            if not (backend_dir / agent.prompt_path).exists()
+        ]
+        assert not missing, (
+            "prompt_path 파일이 없습니다 (.gitignore 누락 의심):\n" + "\n".join(missing)
+        )
