@@ -231,6 +231,28 @@ class Orchestra:
             self._task_locks[task_id] = asyncio.Lock()
         return self._task_locks[task_id]
 
+    def _safe_transition(self, to: Phase) -> None:
+        """Best-effort 멱등 phase 전이.
+
+        병렬 태스크나 사용자(plan.*) 전이가 끼어들어도 안전하도록: 이미 목표
+        phase 면 no-op, 유효하지 않은 전이면 ``InvalidTransitionError`` 를 삼키고
+        debug 로깅한다. ``transition()`` 은 동기·원자적이라 락이 불필요하며, 이
+        헬퍼가 best-effort 전이의 단일 패턴이다.
+
+        lifecycle 전이(design/task_breakdown/deploy/done)는 순차 보장이 필요하므로
+        이 헬퍼가 아니라 ``phase_manager.transition()`` 을 직접 호출한다 (실패 시 raise).
+        """
+        if self.phase_manager.current_phase == to:
+            return
+        try:
+            self.phase_manager.transition(to)
+        except InvalidTransitionError:
+            logger.debug(
+                "best-effort 전이 생략 (%s → %s 불가) — 현재 phase 유지",
+                self.phase_manager.current_phase,
+                to,
+            )
+
     @classmethod
     def from_project_dir(cls, project_dir: str | Path) -> Orchestra:
         """Factory method — create an Orchestra instance from a project directory."""
@@ -500,9 +522,7 @@ class Orchestra:
 
     async def implement(self, task_id: str, agent: str, prompt: str) -> RunResult:
         """Implementation phase — run a single task with the given agent."""
-        current = self.phase_manager.current_phase
-        if current != Phase.IMPLEMENTING:
-            self.phase_manager.transition(Phase.IMPLEMENTING)
+        self._safe_transition(Phase.IMPLEMENTING)
 
         result = await self.runner.run(agent, prompt)
         self._log_result(agent, result)
@@ -523,14 +543,7 @@ class Orchestra:
             {"security", "pipeline", "reviewer", "passed"}.
             On failure, transitions back to IMPLEMENTING.
         """
-        if self.phase_manager.current_phase != Phase.VERIFYING:
-            try:
-                self.phase_manager.transition(Phase.VERIFYING)
-            except InvalidTransitionError:
-                # Another parallel task already transitioned to VERIFYING — ignore
-                logger.debug(
-                    "VERIFYING 전이 생략 — 현재 Phase: %s", self.phase_manager.current_phase
-                )
+        self._safe_transition(Phase.VERIFYING)
 
         # 1. Security hooks — analyze agent output code
         task_result = self.state.load_task_result(task_id)
@@ -580,13 +593,7 @@ class Orchestra:
                 pipeline_result.summary,
                 "pass" if reviewer_passed else "reject",
             )
-            try:
-                self.phase_manager.transition(Phase.IMPLEMENTING)
-            except InvalidTransitionError:
-                logger.error(
-                    "VERIFYING → IMPLEMENTING 전이 실패. 현재 Phase: %s",
-                    self.phase_manager.current_phase,
-                )
+            self._safe_transition(Phase.IMPLEMENTING)
 
         outcome: dict[str, Any] = {
             "security": security_result,
@@ -711,8 +718,7 @@ class Orchestra:
             f"Phase 리뷰 형식으로 결과를 출력하세요."
         )
 
-        if self.phase_manager.current_phase != Phase.VERIFYING:
-            self.phase_manager.transition(Phase.VERIFYING)
+        self._safe_transition(Phase.VERIFYING)
         reviewer_result = await self.runner.run("reviewer", phase_prompt)
         self._log_result("reviewer", reviewer_result)
         self.state.save_task_result(

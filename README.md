@@ -2,7 +2,7 @@
 
 🌐 **English** · [한국어](README.ko.md)
 
-![tests](https://img.shields.io/badge/tests-944%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-948%20passing-brightgreen)
 ![pyright](https://img.shields.io/badge/pyright-0%20errors-brightgreen)
 ![ruff](https://img.shields.io/badge/ruff-clean-brightgreen)
 ![gate coverage](https://img.shields.io/badge/gate%20coverage-100%25-brightgreen)
@@ -330,7 +330,7 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 - **Package manager**: uv
 - **Agent execution**: Claude CLI subprocess (swappable — Gemini / local LLM)
 - **State**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (no DB)
-- **Tests**: **944** backend pytest + **12** install-snapshot assertions (0 regressions)
+- **Tests**: **948** backend pytest + **12** install-snapshot assertions (0 regressions)
 - **Type check**: pyright **0 errors** on `src/`
 - **Gate coverage** (self-test): 8 of the 10 gates measured on 35 fixtures (positive / negative) → **precision 100% / recall 100% / accuracy 100%**. The other 2 (test-distribution, skeleton-integrity) are covered by filesystem-level pytest fixtures. Details: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **Latency** (30-iter median, no LLM calls): profile detect **~5 ms**, skeleton assemble **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. Details: [benchmarks/](docs/benchmarks/)
@@ -351,7 +351,7 @@ backend/
   docs/shared-lessons.md      28 LESSONs
   src/orchestrator/           profile_loader / skeleton_assembler /
                               plan_manager / security_hooks / runner
-  tests/                      944 pytest + skills/ regression guards
+  tests/                      948 pytest + skills/ regression guards
 
 docs/
   ARCHITECTURE.md             System structure — read this first
@@ -367,7 +367,7 @@ docs/
 ```bash
 cd backend
 uv sync
-uv run pytest tests/ --rootdir=.      # 944 tests
+uv run pytest tests/ --rootdir=.      # 948 tests
 uv run ruff check src/                 # 0 errors
 uv run pyright src/                    # 0 errors
 uv run python -m src.main              # dashboard server (port 3002)

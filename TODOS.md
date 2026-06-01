@@ -35,11 +35,11 @@
 
 ## 동시성
 
-- [ ] **`plan.*` WS 핸들러와 phase 전이 미조율** (동시성)
-  - 정정(2026-06-01): `_impl_lock`은 **존재하지 않음**. implement_with_retry()는 per-task `_get_task_lock(task_id)`만 사용하고, WS chat은 매번 새 `ws_<uuid>` task_id라 동시 implement 간 상호배제도 없음
-  - `server.py`의 `plan.approve/commit/start` 핸들러는 `pm.transition()`을 조율 없이 직접 호출 (실제 위치 `server.py` ~305)
-  - `PhaseManager.transition()`은 동기 함수 → asyncio 단일 루프에서 원자적이고 invalid 전이는 `InvalidTransitionError`로 거부됨 → **상태 손상(torn write)은 아님**. 단 implement(백그라운드 task)와 plan.* 전이가 동시 발생 시 spurious `InvalidTransitionError`/phase 혼란 가능 (MEDIUM)
-  - **해결책**: Orchestra에 `_phase_transition_lock` (asyncio.Lock) 추가 → implement 진행 중 plan.* 전이를 직렬화하거나 거부 (Phase C 에서 구현 예정)
+- [x] **`plan.*` WS 핸들러와 phase 전이 미조율** (동시성) ✅ 해소 (2026-06-02)
+  - 진단: `_impl_lock`은 **존재한 적 없음**(문서 오류였음). `PhaseManager.transition()`은 동기·원자적(내부 await 0)이라 **락은 무의미** — torn write 아님. 실제 결함은 implement()/review_phase()의 전이가 verify()와 달리 `try/except`가 없어 드문 순서(plan.* 끼어듦)에 uncaught `InvalidTransitionError` 가능했던 것.
+  - 해소: `Orchestra._safe_transition(to)` 멱등 헬퍼 추가 (이미 target이면 no-op, invalid면 swallow+debug log). best-effort 전이 4곳(implement / verify×2 / review_phase) 통일. lifecycle 전이(design/task_breakdown/deploy)는 순차 보장 위해 직접 transition 유지.
+  - 테스트: `test_orchestrate.py::TestSafeTransition` 4개 (멱등 / 유효 전이 / invalid swallow / user→orchestrator 안전).
+  - 남은 설계 이슈(별개): 전역 phase 1개를 병렬 태스크 N개가 공유해 thrash — 더 큰 리팩(스코프 밖).
 
 ## 성능
 

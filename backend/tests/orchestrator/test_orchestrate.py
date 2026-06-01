@@ -99,6 +99,43 @@ class TestOrchestraInit:
         assert orch.project_dir == tmp_path.resolve()
 
 
+# ── best-effort 멱등 전이 (동시성 가드) ──────────────────────────────────────
+
+
+class TestSafeTransition:
+    """`_safe_transition` — 병렬 태스크 / 사용자(plan.*) 전이가 끼어들어도 안전.
+
+    구버전 implement()/review_phase() 는 가드(`if != target`)만 있고 try/except 가
+    없어, plan.* 가 끼어든 드문 순서에서 uncaught InvalidTransitionError 를 던졌다.
+    멱등 헬퍼로 통일해 그 경로를 제거한다 (락 불필요 — transition() 은 동기·원자적).
+    """
+
+    def test_idempotent_when_already_at_target(self, orchestra: Orchestra) -> None:
+        assert orchestra.phase_manager.current_phase == Phase.PLANNING
+        orchestra._safe_transition(Phase.PLANNING)  # no-op, must not raise
+        assert orchestra.phase_manager.current_phase == Phase.PLANNING
+
+    def test_valid_transition_moves_phase(self, orchestra: Orchestra) -> None:
+        orchestra._safe_transition(Phase.DESIGNING)
+        assert orchestra.phase_manager.current_phase == Phase.DESIGNING
+
+    def test_invalid_transition_swallowed_no_raise(self, orchestra: Orchestra) -> None:
+        # PLANNING → IMPLEMENTING 은 불가. 예외 없이 현재 phase 유지해야 한다.
+        # (구버전 implement() 는 여기서 uncaught InvalidTransitionError 를 던졌다.)
+        assert orchestra.phase_manager.current_phase == Phase.PLANNING
+        orchestra._safe_transition(Phase.IMPLEMENTING)  # must not raise
+        assert orchestra.phase_manager.current_phase == Phase.PLANNING
+
+    def test_user_then_orchestrator_transition_is_safe(self, orchestra: Orchestra) -> None:
+        # 사용자(plan.*)가 먼저 IMPLEMENTING 으로 올린 뒤 오케스트레이터의
+        # best-effort 전이가 들어와도 멱등 — 예외 없이 IMPLEMENTING 유지.
+        orchestra.phase_manager.transition(Phase.DESIGNING)
+        orchestra.phase_manager.transition(Phase.TASK_BREAKDOWN)
+        orchestra.phase_manager.transition(Phase.IMPLEMENTING)
+        orchestra._safe_transition(Phase.IMPLEMENTING)
+        assert orchestra.phase_manager.current_phase == Phase.IMPLEMENTING
+
+
 # ── design() ────────────────────────────────────────────────────────────────
 
 
