@@ -1,6 +1,6 @@
 # Dogfooding Catches — LESSON 원천과 현재 게이트
 
-> **왜 이 문서가 있는가**: HarnessAI 의 품질 게이트 21개 LESSON 은 **전부 실제 사용 중 발생한 실수** 에서 유도됐다. 어떤 프로젝트의 어떤 이슈가 어떤 LESSON 을 낳았고, 현재 어떤 게이트가 그걸 자동 감지하는지 trace 한다.
+> **왜 이 문서가 있는가**: HarnessAI 의 품질 게이트 28개 LESSON 은 **전부 실제 사용 중 발생한 실수** 에서 유도됐다. 어떤 프로젝트의 어떤 이슈가 어떤 LESSON 을 낳았고, 현재 어떤 게이트가 그걸 자동 감지하는지 trace 한다.
 
 ---
 
@@ -105,14 +105,14 @@ v2 (code-hijack/ui-assistant) 부터 **게이트화 3건**:
 | pytest 통과지만 pyright 실패 상태 `done` 마킹 | BLOCK (toolchain-gate, LESSON-021) | 수동 체크 안 돌리면 숨음 |
 | skeleton 에 없는 `@router.post("/admin/wipe")` | BLOCK (contract-validator) | 스펙-코드 drift 감지 경로 없음 |
 
-plain Claude 가 못한다는 것이 아니라, **HarnessAI 는 "이 클래스의 실수는 이제 구조적으로 막힌다" 라고 보증** 한다는 차이. 21개 LESSON 이 21번 발견된 버그의 역사이므로, 게이트화된 것은 **재발률이 0 에 근사**.
+plain Claude 가 못한다는 것이 아니라, **HarnessAI 는 "이 클래스의 실수는 이제 구조적으로 막힌다" 라고 보증** 한다는 차이. 28개 LESSON 이 28번 발견된 버그의 역사이므로, 게이트화된 것은 **재발률이 0 에 근사**.
 
 ## 관련 문서
 
 - [gate-coverage.md](gate-coverage.md) — 게이트 정량 벤치마크 (35/35 pass)
 - [../e2e-reports/code-hijack.md](../e2e-reports/code-hijack.md) — 1차 E2E 기록 (LESSON-018/019/020 원천)
 - [../e2e-reports/ui-assistant-initial.md](../e2e-reports/ui-assistant-initial.md) — 2차 E2E (LESSON-021 원천)
-- [`backend/docs/shared-lessons.md`](../../backend/docs/shared-lessons.md) — 21개 LESSON 전문
+- [`backend/docs/shared-lessons.md`](../../backend/docs/shared-lessons.md) — 28개 LESSON 전문
 - [`docs/decisions/`](../decisions/) — ADR 5개 (LESSON 을 게이트화한 설계 결정)
 
 ## 정직한 한계

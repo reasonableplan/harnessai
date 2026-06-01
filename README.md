@@ -47,7 +47,7 @@ The constant declares 4 elements; the loop reads 2. Dead code that no test catch
 }
 ```
 
-This is the kind of error LLMs reliably introduce and humans miss in review. Across **35 fixture cases**, the 10 gates score **precision 100% / recall 100%** — see [gate-coverage.md](docs/benchmarks/gate-coverage.md).
+This is the kind of error LLMs reliably introduce and humans miss in review. Across **35 fixture cases**, the **7 benchmark-measured gates** score **precision 100% / recall 100%** — see [gate-coverage.md](docs/benchmarks/gate-coverage.md) for which gates and how the other 3 are covered.
 
 ---
 
@@ -332,7 +332,7 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 - **State**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (no DB)
 - **Tests**: **948** backend pytest + **12** install-snapshot assertions (0 regressions)
 - **Type check**: pyright **0 errors** on `src/`
-- **Gate coverage** (self-test): 8 of the 10 gates measured on 35 fixtures (positive / negative) → **precision 100% / recall 100% / accuracy 100%**. The other 2 (test-distribution, skeleton-integrity) are covered by filesystem-level pytest fixtures. Details: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
+- **Gate coverage** (self-test): **7 of the 10** gates measured on 35 fixtures (positive / negative) → **precision 100% / recall 100% / accuracy 100%**. The other 3 are covered separately — `auth-guard` by `test_security_hooks` unit tests, `test-distribution` + `skeleton-integrity` by filesystem-level pytest fixtures. Details: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **Latency** (30-iter median, no LLM calls): profile detect **~5 ms**, skeleton assemble **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. Details: [benchmarks/](docs/benchmarks/)
 - **v2 infrastructure**: `profile_loader`, `skeleton_assembler`, `plan_manager`, `harness` validation CLI
 

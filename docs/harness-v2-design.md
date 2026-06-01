@@ -19,7 +19,7 @@
 | [`docs/decisions/`](decisions/) | D1-D6 결정 **이유** — ADR 5개로 분리 |
 | [`docs/e2e-reports/`](e2e-reports/) | 실제 프로젝트 적용 사례 2개 (code-hijack + ui-assistant) |
 | [`docs/benchmarks/`](benchmarks/) | 실측 성능 수치 |
-| [`backend/docs/shared-lessons.md`](../backend/docs/shared-lessons.md) | 21개 과거 실수 패턴 (LESSON-001~021) |
+| [`backend/docs/shared-lessons.md`](../backend/docs/shared-lessons.md) | 28개 과거 실수 패턴 (LESSON-001~028) |
 
 **이 문서를 여는 경우**:
 - 프로파일 YAML 전체 필드 확인 (§3)

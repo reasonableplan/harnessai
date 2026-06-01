@@ -235,7 +235,7 @@ LESSONs are added manually by editing `shared-lessons.md` + each profile's `less
       mobile_coder_android/, mobile_coder_ios/
     agents.yaml           Per-agent runtime (model, timeout, on_timeout)
     docs/
-      shared-lessons.md   21 LESSONs
+      shared-lessons.md   28 LESSONs
       skeleton.md         (generated at runtime)
       harness-plan.md     (generated at runtime)
     src/

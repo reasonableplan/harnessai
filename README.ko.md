@@ -40,7 +40,7 @@ for i in range(max_retries):              # 그런데 2개만 사용
 }
 ```
 
-LLM 이 자주 만드는데 사람 리뷰에서 놓치는 종류의 실수. **35개 fixture** 에서 10개 게이트가 **precision 100% / recall 100%** — [gate-coverage.md](docs/benchmarks/gate-coverage.md).
+LLM 이 자주 만드는데 사람 리뷰에서 놓치는 종류의 실수. **35개 fixture** 에서 벤치마크 측정 7개 게이트가 **precision 100% / recall 100%** — [gate-coverage.md](docs/benchmarks/gate-coverage.md).
 
 ---
 
@@ -122,7 +122,7 @@ export HARNESS_AI_HOME="$(pwd)"       # (설치 스크립트가 안내)
   /ha-verify ─────▶ [1] harness integrity (skeleton ↔ 실재 FS)
                     [2] profile toolchain (pytest/ruff/pyright)
                                          ▼
-  /ha-review ─────▶ 보안훅 7 + LESSON 21 + ai-slop 7 + 테스트 분포
+  /ha-review ─────▶ 보안훅 7 + LESSON 28 + ai-slop 7 + 테스트 분포
                                          ▼
                                APPROVE / REJECT → /ship
 ```
@@ -207,7 +207,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 |---|---|---|---|---|
 | 범위 | 프로젝트 전체 | 파일/함수 단위 | 대화 기반 | diff 기반 |
 | 규칙 강제 | **프로파일 + 게이트 10개** | .cursorrules (선언만) | CLAUDE.md (선언만) | 커밋 스타일만 |
-| 실수 축적 | **LESSON 21** (자동 감지 + 리뷰어 참조) | ❌ | ❌ | ❌ |
+| 실수 축적 | **LESSON 28** (자동 감지 + 리뷰어 참조) | ❌ | ❌ | ❌ |
 | 스택 자동감지 | **12개 기본 + 확장 가능 (web · desktop · CLI · lib · 4 mobile)** | ❌ | ❌ | ❌ |
 | 병렬 구현 | **/ha-build --parallel** | ❌ | ❌ | ❌ |
 | 설계-구현 계약 | **skeleton.md + integrity 게이트** | ❌ | ❌ | ❌ |
@@ -324,7 +324,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 - **상태**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (DB 없음)
 - **테스트**: pytest **948개** backend + **12개** install 스냅샷 (회귀 0건)
 - **타입 체크**: pyright **0 errors** (`src/` 전수)
-- **게이트 커버리지 (자기 검증)**: 9개 게이트 중 정규식/AST 기반 7개를 35 fixtures (positive/negative) 로 측정 → **precision 100% / recall 100% / accuracy 100%**. 나머지 2개 (test-distribution, skeleton-integrity) 는 filesystem fixture 로 별도 회귀 테스트. 상세 한계/방법: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
+- **게이트 커버리지 (자기 검증)**: 10개 게이트 중 정규식/AST 기반 7개를 35 fixtures (positive/negative) 로 측정 → **precision 100% / recall 100% / accuracy 100%**. 나머지 3개 — `auth-guard` 는 test_security_hooks 단위테스트, `test-distribution`·`skeleton-integrity` 는 filesystem fixture 로 별도 검증. 상세 한계/방법: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **성능** (30 iter, LLM 제외): profile 감지 **~5 ms**, skeleton 조립 **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. [docs/benchmarks/](docs/benchmarks/)
 - **v2 인프라**: `profile_loader`, `skeleton_assembler`, `plan_manager`, `harness` 검증 CLI
 

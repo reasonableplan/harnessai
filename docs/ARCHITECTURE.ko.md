@@ -364,7 +364,7 @@ LESSON 추가는 수동 (`backend/docs/shared-lessons.md` 직접 편집 + 해당
       mobile_coder_android/, mobile_coder_ios/
     agents.yaml           에이전트 운영 설정 (model, timeout, on_timeout)
     docs/
-      shared-lessons.md   21 LESSONs
+      shared-lessons.md   28 LESSONs
       skeleton.md         (실행 시 생성됨)
       harness-plan.md     (실행 시 생성됨)
     src/
@@ -440,6 +440,6 @@ LESSON 추가는 수동 (`backend/docs/shared-lessons.md` 직접 편집 + 해당
 
 **참고 문서**:
 - `docs/harness-v2-design.md` — 이번 재설계의 상세 작업 로그 (1,270+ lines)
-- `backend/docs/shared-lessons.md` — 21개 과거 실수 패턴
+- `backend/docs/shared-lessons.md` — 28개 과거 실수 패턴
 - `README.md` — 사용자 관점 소개
 - `CLAUDE.md` — 구현 시 엄격 규칙 (현업 수준 품질 기준)
