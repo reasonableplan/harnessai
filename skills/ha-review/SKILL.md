@@ -73,6 +73,40 @@ prepare 가 자동 실행한 ai-slop 결과 외에 다음 패턴을 Grep 으로 
 - dead code (정의됐는데 안 쓰임)
 - 임시 핵 흔적 (TODO/FIXME 신규 추가)
 
+### 2.6. 발견 검증 — fp-check 체인 (2026-06-01 이식)
+
+> **BLOCK/WARN 을 REJECT 로 보고하기 전에 false positive 를 먼저 거른다.** (`fp-check` skill 원리 이식 — 자동 훅 출력을 무비판 신뢰하지 않음.)
+
+각 security_findings 항목에 대해, 보고 전 다음을 *코드를 직접 읽어* 확인:
+- **TRUE POSITIVE** — 변경 파일의 실제 코드 경로에서 재현/도달 가능한가? (예: db-guard 가 잡은 raw SQL 이 실제로 사용자 입력을 받는가, 아니면 상수인가)
+- **FALSE POSITIVE** — 테스트 픽스처 / 예시 / 주석 / 죽은 분기 / 프레임워크가 이미 막아주는 경로인가?
+
+판정 근거(파일:라인 + 1줄 이유)를 남기고, **TRUE POSITIVE 만 §5 의 BLOCK/WARN 집계에 포함.** FALSE POSITIVE 는 리뷰 출력의 "권장 사항"에 "검토했으나 FP" 로만 기록. (근거 없는 무조건 통과 금지 — 코드 trace 로 증명.)
+
+### 2.7. 도구無 보안 로직 (insecure-defaults + sharp-edges 이식, 2026-06-01)
+
+자동 secret-filter 훅 위에, LLM 이 변경 파일을 직접 읽어 추가 점검:
+
+**insecure-defaults — fail-open 탐지** (BLOCK 후보):
+- ❌ `SECRET = os.environ.get('KEY') or 'default'` / `?? 'changeme'` / `config.get('x', insecure_value)` — 설정 없으면 **약한 값으로 그냥 돌아감**
+- ✅ `os.environ['KEY']` (없으면 crash = fail-secure) 는 정상
+- 제외: 테스트 픽스처(`test/`, `__tests__/`), `.example`/`.template`, 개발 전용, crash-on-missing.
+- 합리화 거부: "개발 기본값일 뿐" / "프로덕션이 override" / "auth 뒤에 있음" → 프로덕션 코드에 도달하면 finding. 코드 trace 로 도달성 증명.
+
+**sharp-edges — footgun 탐지** (WARN 후보, API/설정 변경 시):
+- "secure 한 사용이 가장 쉬운 길인가?" — 개발자가 문서 읽고 특별 규칙을 기억해야만 안전하면 설계 실패(pit of success 위반).
+- ❌ 안전하지 않은 기본 동작 + 옵트인 보안, primitive 직접 노출, 위험한 설정 조합 허용
+- ✅ 안전한 high-level API 를 기본/유일 경로로, 위험 조합은 reject.
+
+→ 발견은 §2.6 fp-check 로 TRUE/FALSE 판정 후 §5 집계.
+
+### 2.8. Frontend 시각 AI티 (frontend-design 이식, 2026-06-01 — frontend 변경 시 WARN)
+
+변경 파일이 프론트(.tsx/.jsx/.vue/css/tailwind)면 Grep 으로 추가 확인:
+- Arial/Inter/Roboto/Space Grotesk 폰트, 보라 그래디언트, 카드 이모지(🙂🛡️ 등), 뻔한 레이아웃
+- conventions/DESIGN.md 에 명시된 미학과 어긋나는지. (없으면 단일 미학 일관성만)
+- 근거: "AI티 = 결함" — 신뢰·차별화 신호.
+
 ### 3. LESSON 패턴 점검
 `<HARNESS_AI_HOME>/backend/docs/shared-lessons.md` 에서 **`profile.lessons_applied` 목록에 있는 번호만** 점검.
 `lessons_applied` 에 없는 LESSON 은 현재 프로파일과 무관 — 점검 생략.
