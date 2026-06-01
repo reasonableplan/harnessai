@@ -2,7 +2,7 @@
 
 🌐 **English** · [한국어](README.ko.md)
 
-![tests](https://img.shields.io/badge/tests-939%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-943%20passing-brightgreen)
 ![pyright](https://img.shields.io/badge/pyright-0%20errors-brightgreen)
 ![ruff](https://img.shields.io/badge/ruff-clean-brightgreen)
 ![gate coverage](https://img.shields.io/badge/gate%20coverage-100%25-brightgreen)
@@ -129,7 +129,7 @@ In a fresh Claude Code session:
   /ha-verify ─────▶ [1] harness integrity (skeleton ↔ real FS)
                     [2] profile toolchain (pytest / ruff / pyright)
                                           ▼
-  /ha-review ─────▶ Security hooks × 7 + LESSONs × 21 + ai-slop × 7 + test distribution
+  /ha-review ─────▶ Security hooks × 7 + LESSONs × 28 + ai-slop × 7 + test distribution
                                           ▼
                                APPROVE / REJECT → /ship
 ```
@@ -197,7 +197,7 @@ The section content **is the contract**. `/ha-verify` checks that declared files
 
 ### 3. Shared Lessons — institutional memory
 
-`backend/docs/shared-lessons.md` stores 21 past mistakes. Every bug that was ever made gets a LESSON entry. Future `/ha-review` sessions read those entries so the same class of mistake never repeats.
+`backend/docs/shared-lessons.md` stores 28 past mistakes. Every bug that was ever made gets a LESSON entry. Future `/ha-review` sessions read those entries so the same class of mistake never repeats.
 
 Examples:
 - **LESSON-001** — FastAPI query params must be snake_case
@@ -215,7 +215,7 @@ LESSONs are enforced in three ways: text reference (Reviewer agent reads them), 
 |---|---|---|---|---|
 | Scope | Whole project | File / function | Conversation-based | Diff-based |
 | Rule enforcement | **Profiles + 10 gates** | `.cursorrules` (advisory) | `CLAUDE.md` (advisory) | Commit style only |
-| Mistake accumulation | **21 LESSONs** (auto-detect + reviewer context) | ❌ | ❌ | ❌ |
+| Mistake accumulation | **28 LESSONs** (auto-detect + reviewer context) | ❌ | ❌ | ❌ |
 | Stack auto-detection | **12 built-in + extensible (web · desktop · CLI · lib · 4 mobile)** | ❌ | ❌ | ❌ |
 | Parallel implementation | **`/ha-build --parallel`** | ❌ | ❌ | ❌ |
 | Design-implementation contract | **`skeleton.md` + integrity gate** | ❌ | ❌ | ❌ |
@@ -295,7 +295,7 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 
 ## 🗺 Roadmap
 
-**Phase 1–4 (completed)**: profile system · 7 `/ha-*` skills · 21 LESSONs · 10 quality gates · single-command install · `/my-*` legacy skills removed · v1 legacy code (SECTION_MAP / extract_section / fill_skeleton_template) removed · Orchestra v2 wiring
+**Phase 1–4 (completed)**: profile system · 7 `/ha-*` skills · 28 LESSONs · 10 quality gates · single-command install · `/my-*` legacy skills removed · v1 legacy code (SECTION_MAP / extract_section / fill_skeleton_template) removed · Orchestra v2 wiring
 
 **Phase 5 — v0.5.0 (completed, 2026-05-02)**: auto-fit skeleton — 6-axis interview answers (`user_scale` / `data_sensitivity` / `team_size` / `availability` / `monetization` / `lifecycle`) auto-activate fragments via `required_when` expressions. 30 standard sections, custom AST + parser + evaluator.
 
@@ -330,7 +330,7 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 - **Package manager**: uv
 - **Agent execution**: Claude CLI subprocess (swappable — Gemini / local LLM)
 - **State**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (no DB)
-- **Tests**: **939** backend pytest + **12** install-snapshot assertions (0 regressions)
+- **Tests**: **943** backend pytest + **12** install-snapshot assertions (0 regressions)
 - **Type check**: pyright **0 errors** on `src/`
 - **Gate coverage** (self-test): 8 of the 10 gates measured on 35 fixtures (positive / negative) → **precision 100% / recall 100% / accuracy 100%**. The other 2 (test-distribution, skeleton-integrity) are covered by filesystem-level pytest fixtures. Details: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **Latency** (30-iter median, no LLM calls): profile detect **~5 ms**, skeleton assemble **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. Details: [benchmarks/](docs/benchmarks/)
@@ -346,12 +346,12 @@ skills/               ha-* skills + _ha_shared         ├─ install.sh → ~/.
 install.sh/ps1        Install + manifest               ─┘
 
 backend/
-  agents/<role>/CLAUDE.md     7 agent system prompts (editable)
+  agents/<role>/CLAUDE.md     11 agent system prompts (editable)
   agents.yaml                 provider / model / timeout
-  docs/shared-lessons.md      21 LESSONs
+  docs/shared-lessons.md      28 LESSONs
   src/orchestrator/           profile_loader / skeleton_assembler /
                               plan_manager / security_hooks / runner
-  tests/                      939 pytest + skills/ regression guards
+  tests/                      943 pytest + skills/ regression guards
 
 docs/
   ARCHITECTURE.md             System structure — read this first
@@ -367,7 +367,7 @@ docs/
 ```bash
 cd backend
 uv sync
-uv run pytest tests/ --rootdir=.      # 939 tests
+uv run pytest tests/ --rootdir=.      # 943 tests
 uv run ruff check src/                 # 0 errors
 uv run pyright src/                    # 0 errors
 uv run python -m src.main              # dashboard server (port 3002)
@@ -407,7 +407,7 @@ python scripts/gate_benchmark.py   # 35 fixtures, exits 1 on any miss / false al
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 | [SETUP.md](SETUP.md) | End-to-end install + run guide |
 | [TODOS.md](TODOS.md) | Planned improvements |
-| [backend/docs/shared-lessons.md](backend/docs/shared-lessons.md) | 21 past-mistake patterns |
+| [backend/docs/shared-lessons.md](backend/docs/shared-lessons.md) | 28 past-mistake patterns |
 | [CLAUDE.md](CLAUDE.md) | Implementation rules (senior-production bar) |
 | [SECURITY.md](SECURITY.md) | Vulnerability disclosure |
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community conduct |

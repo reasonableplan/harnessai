@@ -9,6 +9,8 @@ drizzle/
 !packages/core/drizzle/
 /docs/
 CLAUDE.md
+# agent 역할 프롬프트는 core source — bare CLAUDE.md 패턴이 모바일 4개를 삼켜 미커밋된 footgun 수정 (2026-06-01)
+!backend/agents/**/CLAUDE.md
 .claude/
 .omc/
 MagicMock/

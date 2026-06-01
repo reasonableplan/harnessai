@@ -1,6 +1,6 @@
 {
   "name": "agent-orchestration",
-  "version": "0.1.0",
+  "version": "0.10.1",
   "private": true,
   "scripts": {
     "dev:frontend": "pnpm --filter dashboard-client run dev",

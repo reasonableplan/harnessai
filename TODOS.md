@@ -35,12 +35,11 @@
 
 ## 동시성
 
-- [ ] **`plan.*` WS 핸들러와 `_impl_lock` 미연동**
-  - `implement_with_retry()`는 `_impl_lock`으로 직렬화됨
-  - 그러나 `server.py`의 `plan.approve/commit/start` 핸들러는 `pm.transition()`을 lock 없이 직접 호출
-  - implement 진행 중에 `plan.commit` WS 메시지 도착 → Phase 상태 충돌 가능
-  - 파일: `backend/src/dashboard/server.py:254-280`
-  - **해결책**: Orchestra에 별도 `phase_transition_lock`을 두거나, plan.* 핸들러가 `_impl_lock` 보유 여부를 확인 후 거부
+- [ ] **`plan.*` WS 핸들러와 phase 전이 미조율** (동시성)
+  - 정정(2026-06-01): `_impl_lock`은 **존재하지 않음**. implement_with_retry()는 per-task `_get_task_lock(task_id)`만 사용하고, WS chat은 매번 새 `ws_<uuid>` task_id라 동시 implement 간 상호배제도 없음
+  - `server.py`의 `plan.approve/commit/start` 핸들러는 `pm.transition()`을 조율 없이 직접 호출 (실제 위치 `server.py` ~305)
+  - `PhaseManager.transition()`은 동기 함수 → asyncio 단일 루프에서 원자적이고 invalid 전이는 `InvalidTransitionError`로 거부됨 → **상태 손상(torn write)은 아님**. 단 implement(백그라운드 task)와 plan.* 전이가 동시 발생 시 spurious `InvalidTransitionError`/phase 혼란 가능 (MEDIUM)
+  - **해결책**: Orchestra에 `_phase_transition_lock` (asyncio.Lock) 추가 → implement 진행 중 plan.* 전이를 직렬화하거나 거부 (Phase C 에서 구현 예정)
 
 ## 성능
 

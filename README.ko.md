@@ -190,7 +190,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 
 ### 3. Shared Lessons — 집단 기억
 
-`backend/docs/shared-lessons.md` 에 과거 21개 실수 패턴. 한 번 발생한 버그는 시스템에 기록 → 모든 미래 `/ha-review` 가 참조 → 반복 방지.
+`backend/docs/shared-lessons.md` 에 과거 28개 실수 패턴. 한 번 발생한 버그는 시스템에 기록 → 모든 미래 `/ha-review` 가 참조 → 반복 방지.
 
 예시:
 - LESSON-001: FastAPI Query params 반드시 snake_case
@@ -287,7 +287,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 
 ## 🗺 Roadmap
 
-**Phase 1-4 (완료)**: 프로파일 시스템 · 7개 /ha-스킬 · 21 LESSONs · 9개 품질 게이트 · 단일 명령 설치 · /my-\* 스킬 12종 삭제 · v1 레거시 코드 (SECTION_MAP/extract_section/fill_skeleton_template) 제거 · Orchestra v2 wiring
+**Phase 1-4 (완료)**: 프로파일 시스템 · 7개 /ha-스킬 · 28 LESSONs · 10개 품질 게이트 · 단일 명령 설치 · /my-\* 스킬 12종 삭제 · v1 레거시 코드 (SECTION_MAP/extract_section/fill_skeleton_template) 제거 · Orchestra v2 wiring
 
 **Phase 5 — v0.5.0 (완료, 2026-05-02)**: auto-fit skeleton — 6축 인터뷰 답변 (`user_scale` / `data_sensitivity` / `team_size` / `availability` / `monetization` / `lifecycle`) 으로 fragment 자동 활성. 30개 표준 섹션, 커스텀 AST + parser + evaluator.
 
@@ -322,7 +322,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 - **패키지**: uv
 - **에이전트 실행**: Claude CLI subprocess (Gemini/로컬 LLM 교체 가능)
 - **상태**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (DB 없음)
-- **테스트**: pytest **939개** backend + **12개** install 스냅샷 (회귀 0건)
+- **테스트**: pytest **943개** backend + **12개** install 스냅샷 (회귀 0건)
 - **타입 체크**: pyright **0 errors** (`src/` 전수)
 - **게이트 커버리지 (자기 검증)**: 9개 게이트 중 정규식/AST 기반 7개를 35 fixtures (positive/negative) 로 측정 → **precision 100% / recall 100% / accuracy 100%**. 나머지 2개 (test-distribution, skeleton-integrity) 는 filesystem fixture 로 별도 회귀 테스트. 상세 한계/방법: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **성능** (30 iter, LLM 제외): profile 감지 **~5 ms**, skeleton 조립 **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. [docs/benchmarks/](docs/benchmarks/)
@@ -340,10 +340,10 @@ install.sh/ps1        설치 + manifest           ─┘
 backend/
   agents/<role>/CLAUDE.md     11개 에이전트 시스템 프롬프트 (편집 가능)
   agents.yaml                 provider/model/timeout
-  docs/shared-lessons.md      21 LESSONs
+  docs/shared-lessons.md      28 LESSONs
   src/orchestrator/           profile_loader / skeleton_assembler /
                               plan_manager / security_hooks / runner
-  tests/                      939 pytest + skills/ 회귀 방지
+  tests/                      943 pytest + skills/ 회귀 방지
 
 docs/
   ARCHITECTURE.md             시스템 구조 30분 이해
@@ -357,7 +357,7 @@ docs/
 ```bash
 cd backend
 uv sync
-uv run pytest tests/ --rootdir=.      # 939 tests
+uv run pytest tests/ --rootdir=.      # 943 tests
 uv run ruff check src/                 # 0 errors
 uv run pyright src/                    # 0 errors (타입 체크)
 uv run python -m src.main              # dashboard 서버 (포트 3002)
@@ -392,7 +392,7 @@ python harness/bin/harness analyze-failure          # 빌드 실패 원인 분�
 | [CHANGELOG.md](CHANGELOG.md) | 버전별 변경 이력 |
 | [SETUP.md](SETUP.md) | 처음부터 끝까지 설치/실행 가이드 |
 | [TODOS.md](TODOS.md) | 향후 개선 항목 |
-| [backend/docs/shared-lessons.md](backend/docs/shared-lessons.md) | 21개 과거 실수 패턴 |
+| [backend/docs/shared-lessons.md](backend/docs/shared-lessons.md) | 28개 과거 실수 패턴 |
 | [CLAUDE.md](CLAUDE.md) | 구현 시 엄격 규칙 (현업 시니어 수준) |
 | [SECURITY.md](SECURITY.md) | 취약점 보고 프로세스 |
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | 커뮤니티 행동 규범 |
@@ -406,4 +406,4 @@ MIT
 
 ---
 
-**포트폴리오 목표**: 현업 시니어 수준의 코드 품질 기준으로 포트폴리오의 정점을 찍기. Phase 1–10 완료 (v0.10.0 HITL gate), pytest 939 / ruff clean / pyright 0 / harness validate 50 files.
+**포트폴리오 목표**: 현업 시니어 수준의 코드 품질 기준으로 포트폴리오의 정점을 찍기. Phase 1–10 완료 (v0.10.0 HITL gate), pytest 943 / ruff clean / pyright 0 / harness validate 50 files.
