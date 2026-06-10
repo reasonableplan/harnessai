@@ -26,6 +26,8 @@ from utils import (  # noqa: E402, I001
     validate_task_id,
 )
 
+from src.orchestrator.skeleton_hash import check_skeleton_hash  # noqa: E402
+
 
 _AGENT_TO_PROFILE: dict[str, str] = {
     "mobile_coder_rn": "react-native-expo",
@@ -117,6 +119,22 @@ def cmd_prepare(args: argparse.Namespace) -> int:
             "  · 개발/마이그레이션용 우회: --skip-frozen-gate (의도적 사용 — 비추천)."
         )
         return 1
+
+    # skeleton drift 게이트 — freeze 이후 외부 수정 감지 (architecture review F2).
+    # skeleton_hash 는 ha-design/ha-redesign 만 갱신하므로 mismatch = 미감사 수정.
+    # 구현 단계가 skeleton 을 가장 많이 소비하는데 기존엔 이 검사가 없었다.
+    skel_path = plan_path.parent / "skeleton.md"
+    hash_check = check_skeleton_hash(plan.skeleton_hash or "", skel_path)
+    if not hash_check.skeleton_missing and not hash_check.is_legacy and not hash_check.is_match:
+        if not getattr(args, "accept_skeleton_drift", False):
+            info(
+                "[BLOCK] skeleton.md 가 마지막 ha-design/ha-redesign 이후 외부에서 수정됨 "
+                "(hash mismatch).\n"
+                "  · 변경을 추적하려면: /ha-redesign 으로 결정 반영 (권장 — audit trail 보존)\n"
+                "  · 의도적 수동 편집이면: --accept-skeleton-drift 로 재실행"
+            )
+            return 1
+        info("[WARN] skeleton hash mismatch — --accept-skeleton-drift 로 진행 (audit trail 누락)")
 
     tasks_path = plan_path.parent / "tasks.md"
     if not tasks_path.exists():
@@ -450,10 +468,22 @@ def cmd_complete(args: argparse.Namespace) -> int:
     all_resolved = statuses and all(s in _resolved for s in statuses.values())
     any_done = any(s in ("done", "완료", "completed") for s in statuses.values())
 
+    skipped_ids = sorted(tid for tid, s in statuses.items() if s == "skipped")
+
     if plan.pipeline.current_step == "planned" and any_done:
         transition(plan, "building", completed_step=f"ha-build:{args.task}")
     if plan.pipeline.current_step == "building" and all_resolved:
         transition(plan, "built", completed_step="ha-build:all-done")
+        if skipped_ids:
+            # skipped tasks bypass the toolchain/security gates entirely —
+            # surface them at the built transition so a skipped core component
+            # cannot slip through silently (architecture review F5).
+            info(
+                f"[WARN] built 전이 — skipped {len(skipped_ids)}개 포함: "
+                f"{', '.join(skipped_ids)}\n"
+                "  · skipped 태스크는 toolchain/security 게이트를 거치지 않았습니다. "
+                "MVP 필수 컴포넌트가 아닌지 확인하세요."
+            )
     elif plan.pipeline.current_step == "building":
         # building 유지, completed_steps 만 업데이트 — transition 우회
         completed = list(plan.pipeline.completed_steps)
@@ -495,6 +525,7 @@ def cmd_complete(args: argparse.Namespace) -> int:
         "task": args.task,
         "new_status": args.status,
         "all_tasks_resolved": all_resolved,
+        "skipped_tasks": skipped_ids,
         "current_step": plan.pipeline.current_step,
         "next": "/ha-verify" if all_resolved else "/ha-build <next T-ID>",
     }
@@ -510,6 +541,11 @@ def main() -> int:
 
     p = sub.add_parser("prepare")
     p.add_argument("--task", required=True, help="T-001 또는 T-001,T-002 (병렬)")
+    p.add_argument(
+        "--accept-skeleton-drift",
+        action="store_true",
+        help="skeleton hash mismatch 를 의도적 수동 편집으로 인정하고 진행 (audit trail 누락 감수)",
+    )
     p.add_argument(
         "--skip-frozen-gate",
         action="store_true",

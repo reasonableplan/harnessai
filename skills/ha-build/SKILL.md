@@ -44,6 +44,15 @@ grep "frozen_status" docs/harness-plan.md
 
 마이그레이션 케이스 (기존 v0.9.x 프로젝트) 는 `--skip-frozen-gate` 옵트인.
 
+## 사전 조건 2 — skeleton drift 게이트
+
+`prepare` 가 skeleton.md 의 hash 를 plan 의 `skeleton_hash` 와 비교한다.
+freeze 이후 외부 수정 (수동 편집 등) 이 감지되면 **BLOCK**. 진행하려면:
+- `/ha-redesign` 으로 변경을 audit trail 에 반영 (권장), 또는
+- `prepare --task T-XXX --accept-skeleton-drift` (의도적 수동 편집 인정 — audit 누락 감수)
+
+legacy plan (hash 미기록) 또는 skeleton.md 부재 시 비교 없이 통과.
+
 ## 역할
 
 `tasks.md` 의 단일 (또는 병렬 다중) 태스크를 구현.
