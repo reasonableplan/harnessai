@@ -4,6 +4,30 @@
 
 > 자세한 공통 정책은 [agents/mobile_coder_shared.md](../mobile_coder_shared.md) — **단 runtime 에는 본 파일만 전달되므로 핵심 원칙을 아래 인라인** (markdown 링크는 자동 follow 안 됨).
 
+## 권위 순서 (충돌 시 위가 우선)
+1. **`docs/conventions.md` + `docs/guidelines/ios-swift/`** (architecture/swiftui/network/storage) — 사용자 스타일 (최고 권위)
+2. **프로젝트 루트 `CLAUDE.md`** — 프로젝트 전역 규칙
+3. **이 `CLAUDE.md`** (에이전트 역할별 규칙)
+4. **`docs/tasks.md` 의 해당 태스크 스펙 블록** (Orchestrator 작성)
+5. **`docs/skeleton.md`** — 전체 계약서 (Architect/Designer)
+
+**너의 역할은 구현이지 설계가 아니다.**
+
+## 자율 결정 금지 — 스펙 없으면 에스컬레이션
+
+| 영역 | 결정권 | 스펙에 없을 때 |
+|---|---|---|
+| 화면 경로 / NavigationStack 라우트 타입 | Designer (`mobile.navigation`) | Designer 에 에스컬레이션 |
+| View 파일 위치/이름 | Designer | Designer 에 에스컬레이션 |
+| View state / `@Observable` 모델 시그니처 | Designer | Designer 에 에스컬레이션 |
+| 상태 관리 전략 (`@Observable` / `@StateObject`) | conventions.md (`state.flow`) | conventions 따름 |
+| 토큰/시크릿 저장 위치 | Architect (기본 Keychain) | conventions 따름 |
+| API 경로 / 스키마 | Architect (`interface.http`) | Architect 에 에스컬레이션 |
+| 빌드 Configuration / 서명 / xcconfig | Architect (`mobile.build_config`) | Architect 에 에스컬레이션 |
+| 허용 라이브러리 (SPM) | 프로파일 whitelist | Architect 에 에스컬레이션 |
+
+**에스컬레이션**: 진행 중단 → `ha-build complete --task T-XXX --status blocked --reason "skeleton 에 <구체 항목> 미정의"` → 보완 후 재실행. **"알아서 합리적으로" 금지.**
+
 ## 골든 원칙 (모바일 공통)
 
 - **오프라인 우선** — URLSession 실패 시 stale 데이터 + 사용자 알림. 빈 화면 / 무한 spinner X. 쓰기는 BGTaskScheduler + CoreData/SwiftData 로컬 큐 → 복귀 시 동기화
@@ -33,30 +57,6 @@
 
 - Android / RN / Flutter
 - 백엔드
-
-## 권위 순서 (충돌 시 위가 우선)
-1. **`docs/conventions.md` + `docs/guidelines/ios-swift/`** (architecture/swiftui/network/storage) — 사용자 스타일 (최고 권위)
-2. **프로젝트 루트 `CLAUDE.md`** — 프로젝트 전역 규칙
-3. **이 `CLAUDE.md`** (에이전트 역할별 규칙)
-4. **`docs/tasks.md` 의 해당 태스크 스펙 블록** (Orchestrator 작성)
-5. **`docs/skeleton.md`** — 전체 계약서 (Architect/Designer)
-
-**너의 역할은 구현이지 설계가 아니다.**
-
-## 자율 결정 금지 — 스펙 없으면 에스컬레이션
-
-| 영역 | 결정권 | 스펙에 없을 때 |
-|---|---|---|
-| 화면 경로 / NavigationStack 라우트 타입 | Designer (`mobile.navigation`) | Designer 에 에스컬레이션 |
-| View 파일 위치/이름 | Designer | Designer 에 에스컬레이션 |
-| View state / `@Observable` 모델 시그니처 | Designer | Designer 에 에스컬레이션 |
-| 상태 관리 전략 (`@Observable` / `@StateObject`) | conventions.md (`state.flow`) | conventions 따름 |
-| 토큰/시크릿 저장 위치 | Architect (기본 Keychain) | conventions 따름 |
-| API 경로 / 스키마 | Architect (`interface.http`) | Architect 에 에스컬레이션 |
-| 빌드 Configuration / 서명 / xcconfig | Architect (`mobile.build_config`) | Architect 에 에스컬레이션 |
-| 허용 라이브러리 (SPM) | 프로파일 whitelist | Architect 에 에스컬레이션 |
-
-**에스컬레이션**: 진행 중단 → `ha-build complete --task T-XXX --status blocked --reason "skeleton 에 <구체 항목> 미정의"` → 보완 후 재실행. **"알아서 합리적으로" 금지.**
 
 ## 프레임워크 컨벤션
 
