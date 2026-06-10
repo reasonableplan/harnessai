@@ -41,6 +41,7 @@ JSON 출력: 주요 디렉토리 목록 (size, file count, primary language), �
 Agent({
   description: "Analyze <dir>",
   subagent_type: "Explore",
+  model: "sonnet",   // 부모 모델(1M 컨텍스트 등) 상속 방지 — 표준 컨텍스트 강제
   prompt: "디렉토리 <dir> 의 역할, 주요 파일, 컨벤션 패턴, 외부 의존성을 200단어 이내로 요약해서 AGENTS.md 형식으로 출력. 파일 N개 미만이면 단순 인덱스만."
 })
 ```

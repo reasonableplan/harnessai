@@ -1,0 +1,69 @@
+# HarnessAI 게이트 전수 목록 (v2 파이프라인)
+
+> "8개 게이트" 가 아니다 — ha-review 한 단계의 훅 수(7 보안훅+ai-slop)만 센 옛 집계.
+> 아래가 2026-06-10 기준 전수. **BLOCK** = run.py 가 exit≠0 으로 차단 (우회는 명시
+> 플래그만), **advisory** = 경고/JSON 보고 후 진행 (LLM/사용자 판단).
+
+## 단계별 게이트
+
+### /ha-init · /ha-design
+| 게이트 | severity | 우회 |
+|---|---|---|
+| consistency_violations 표시 (atom 미충족) | HITL 승인 | "의도적 모순" 선택 |
+| HITL LOCKED 인터뷰 (requirements/user_journey/view.screens) | 강제 | `--ai-draft` 옵트인 (기록됨) |
+| LESSON 인용 검증 (미정의 LESSON-NNN) | BLOCK | `--allow-unknown-lessons` |
+| placeholder 잔재 카운트 | advisory | — |
+
+### /ha-plan (commit)
+| 게이트 | severity | 우회 |
+|---|---|---|
+| agent-mismatch (활성 프로파일과 안 맞는 배정) | BLOCK | `--allow-agent-mismatch` |
+| tasks.md schema 검증 (5컬럼/상태값/의존성) | BLOCK | `--allow-format-drift` |
+| skeleton hash 비교 | advisory | — |
+| tasks/skeleton 쓰기 실패 시 전이 중단 | BLOCK | — |
+
+### /ha-build
+| 게이트 | severity | 우회 |
+|---|---|---|
+| frozen gate (HITL 미완료 시 진입 차단) | BLOCK | `--skip-frozen-gate` |
+| skeleton drift gate (freeze 후 외부 수정) | BLOCK | `--accept-skeleton-drift` |
+| depends_on 미충족 / 병렬 그룹 내 의존 | BLOCK | — (직렬화 필요) |
+| LESSON-021 toolchain (test+lint+type, done 전용) | BLOCK | `--skip-toolchain` |
+| security gate | BLOCK | `--skip-security` |
+| no-tests 우회 감지 (B3) | advisory(WARN) | — |
+| built 전이 시 skipped 공개 | advisory(WARN) | — |
+
+### /ha-verify
+| 게이트 | severity | 우회 |
+|---|---|---|
+| skeleton integrity (filesystem 블록 ↔ 실재) | BLOCK | — (design 복귀) |
+| rework T-ID 필수 (passed=false) | BLOCK | `--no-rework` |
+| 동일 T-ID 3회째 FAIL 루프 가드 | BLOCK | `--force-continue` |
+| skeleton hash 비교 | advisory | — |
+
+### /ha-review
+| 게이트 | severity | 우회 |
+|---|---|---|
+| git repo 사전 조건 | BLOCK(exit 2) | git init |
+| 7 보안훅 (secret/command/db/dependency/code-quality/contract/auth) | BLOCK/WARN findings | record `--allow-block` |
+| ai-slop + mobile 룰 | BLOCK/WARN findings | 〃 |
+| fp-check 체인 (TRUE/FALSE 판정 후 집계) | LLM 절차 | — |
+| 역방향 contract (선언-미구현 엔드포인트) | advisory | — |
+| test distribution | advisory | — |
+| APPROVE+BLOCK 차단 / REJECT+violations 필수 | BLOCK | `--allow-block` / — |
+
+### /ha-redesign
+| 게이트 | severity | 우회 |
+|---|---|---|
+| affected §N/T-ID 실존 검증 | BLOCK | — |
+| done→needs_rebuild 자동 전이 (affected ∪ hash 파생) | 자동 가드 | 사용자가 status 직접 복원 |
+| cross-section consistency | advisory | — |
+
+### /ha-ship
+| 게이트 | severity | 우회 |
+|---|---|---|
+| reviewed 상태에서만 마킹 | BLOCK | — |
+
+## 집계
+- BLOCK 계열: **15** · advisory/HITL 계열: **10+**
+- 다이어그램/README 의 "8개 게이트" 는 이 표 기준으로 갱신할 것.

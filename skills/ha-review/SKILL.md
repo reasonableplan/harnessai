@@ -162,6 +162,10 @@ git diff <built-이전-hash>...HEAD
 ```
 
 ### 6. 결과 기록
+
+> ⚠️ prepare 와 record 사이에 **새 커밋을 만들지 마세요** — record 가 안전망(R6)으로 diff 를
+> 재스캔하므로, 중간 커밋 시 prepare 때 본 코드와 다른 결과(예상 못한 BLOCK)가 날 수 있습니다.
+
 ```bash
 python ~/.claude/skills/ha-review/run.py record \
   --verdict approve|reject \

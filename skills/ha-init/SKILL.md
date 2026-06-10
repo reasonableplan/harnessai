@@ -38,6 +38,10 @@ echo "PROJECT_ROOT: $PROJECT_ROOT"
 python ~/.claude/skills/ha-init/run.py detect "$PROJECT_ROOT"
 ```
 
+**기존 코드베이스면 먼저 /ha-deepinit 제안**: 프로젝트에 소스가 이미 상당량 있으면 (src/ 등)
+빈 skeleton 을 들이밀기 전에 `/ha-deepinit` 으로 AGENTS.md 를 먼저 생성하라고 제안 —
+`/ha-design` 이 훨씬 풍부한 컨텍스트로 시작한다.
+
 출력은 JSON. 다음 정보 추출:
 - `matches[]` — 감지된 프로파일 목록 (id, name, path, required/optional sections, toolchain, whitelist, gstack_recommended)
 
