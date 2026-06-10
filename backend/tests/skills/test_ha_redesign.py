@@ -383,3 +383,31 @@ def test_applied_detects_isolated_component(
     out = capsys.readouterr().out
     assert "OrphanedWidget" in out
     assert "isolated-component" in out
+
+
+# ── F3: 섹션 hash 기반 결정론적 rebuild 파생 ─────────────────────────
+
+
+def test_tasks_referencing_sections_matches_exact_and_prefix(ha_redesign) -> None:
+    """'skeleton 참조' 가 변경 섹션 ID (정확 일치 또는 'id.' prefix) 를 가리키는
+    task 만 문서 순으로 반환한다."""
+    tasks_text = (
+        "### T-001 — users 모델\n"
+        "- **skeleton 참조**: persistence.users\n\n"
+        "### T-002 — auth API\n"
+        "- **skeleton 참조**: interface.http.auth, auth\n\n"
+        "### T-003 — 화면\n"
+        "- **skeleton 참조**: view.screens\n"
+    )
+    fn = ha_redesign._tasks_referencing_sections
+    assert fn(tasks_text, ["persistence"]) == ["T-001"]
+    assert fn(tasks_text, ["auth"]) == ["T-002"]
+    # dot 포함 섹션 ID 자체도 매칭 (interface.http → interface.http.auth)
+    assert fn(tasks_text, ["interface.http"]) == ["T-002"]
+    assert fn(tasks_text, ["core.logic"]) == []
+
+
+def test_tasks_referencing_sections_ignores_blocks_without_ref(ha_redesign) -> None:
+    """'skeleton 참조' 줄이 없는 spec 블록은 파생 대상에서 제외."""
+    tasks_text = "### T-001 — 기타 작업\n- 설명만 있음\n"
+    assert ha_redesign._tasks_referencing_sections(tasks_text, ["auth"]) == []

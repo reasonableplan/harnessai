@@ -235,6 +235,11 @@ class HarnessPlan:
     # /ha-redesign audit). Empty string for legacy plans (no comparison).
     # Omitted from frontmatter when empty (backward-compatible with legacy plans).
     skeleton_hash: str = ""
+    # Per-section SHA-256 snapshot {section_id: hash}, written at the same
+    # moments as skeleton_hash (ha-design commit / ha-redesign apply). Lets
+    # ha-redesign diff sections and derive stale done-tasks deterministically.
+    # Empty dict for legacy plans; omitted from frontmatter when empty.
+    section_hashes: dict[str, str] = field(default_factory=dict)
     # external_capabilities: user-declared has.* atoms provided by external services
     # (e.g. Firebase / Supabase / managed backend) that are NOT covered by any
     # profile in the active profile set.  compute_has_keys() unions these in so
@@ -759,6 +764,13 @@ def _dict_to_plan(data: dict[str, Any], body: str) -> HarnessPlan:
         )
         # skeleton_hash: legacy plans without this key load as empty string (backward-compat).
         skeleton_hash = str(data.get("skeleton_hash") or "")
+        # section_hashes: legacy plans without this key load as empty dict (backward-compat).
+        section_hashes_raw = data.get("section_hashes") or {}
+        section_hashes = (
+            {str(k): str(v) for k, v in section_hashes_raw.items()}
+            if isinstance(section_hashes_raw, dict)
+            else {}
+        )
         # external_capabilities: legacy plans without this key load as empty list (backward-compat).
         external_caps_raw = data.get("external_capabilities") or []
         external_capabilities = (
@@ -832,6 +844,7 @@ def _dict_to_plan(data: dict[str, Any], body: str) -> HarnessPlan:
             backups=list(data.get("backups") or []),
             activation_trace=activation_trace,
             skeleton_hash=skeleton_hash,
+            section_hashes=section_hashes,
             external_capabilities=external_capabilities,
             frozen_status=frozen_status,
             frozen_at=frozen_at,
@@ -921,6 +934,10 @@ def _plan_to_dict(plan: HarnessPlan) -> dict[str, Any]:
     # clean. Set by ha-design commit and ha-redesign apply; empty for fresh plans.
     if plan.skeleton_hash:
         d["skeleton_hash"] = plan.skeleton_hash
+    # section_hashes: only written when non-empty. Keys sorted for deterministic
+    # output (regression-test stability), same as activation_trace.
+    if plan.section_hashes:
+        d["section_hashes"] = dict(sorted(plan.section_hashes.items()))
     # external_capabilities: only written when non-empty — omitting it keeps legacy
     # plans clean. Values are sorted for deterministic output (regression-test stability).
     if plan.external_capabilities:

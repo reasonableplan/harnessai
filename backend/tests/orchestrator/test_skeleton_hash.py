@@ -6,8 +6,50 @@ from pathlib import Path
 from src.orchestrator.skeleton_hash import (
     SkeletonHashCheckResult,
     check_skeleton_hash,
+    compute_section_hashes,
     compute_skeleton_hash,
 )
+
+# ── compute_section_hashes (per-section, ID-keyed) ──────────────────
+
+
+def test_section_hashes_change_only_for_edited_section(tmp_path: Path) -> None:
+    """한 섹션만 수정하면 그 섹션의 hash 만 바뀐다 (결정론적 rebuild 의 기반)."""
+    p = tmp_path / "skeleton.md"
+    p.write_text(
+        "# T\n\n## 1. 프로젝트 개요\nbefore\n\n## 2. 기술 스택\nstack\n",
+        encoding="utf-8",
+    )
+    before = compute_section_hashes(p)
+    p.write_text(
+        "# T\n\n## 1. 프로젝트 개요\nAFTER\n\n## 2. 기술 스택\nstack\n",
+        encoding="utf-8",
+    )
+    after = compute_section_hashes(p)
+    assert set(before) == {"overview", "stack"}
+    assert before["stack"] == after["stack"]
+    assert before["overview"] != after["overview"]
+
+
+def test_section_hashes_crlf_lf_normalized(tmp_path: Path) -> None:
+    lf = tmp_path / "lf.md"
+    crlf = tmp_path / "crlf.md"
+    lf.write_bytes("# T\n\n## 1. 프로젝트 개요\nbody\n".encode())
+    crlf.write_bytes("# T\r\n\r\n## 1. 프로젝트 개요\r\nbody\r\n".encode())
+    assert compute_section_hashes(lf) == compute_section_hashes(crlf)
+
+
+def test_section_hashes_missing_file_returns_empty(tmp_path: Path) -> None:
+    assert compute_section_hashes(tmp_path / "nope.md") == {}
+
+
+def test_section_hashes_unknown_heading_skipped(tmp_path: Path) -> None:
+    """SECTION_TITLES 에 없는 제목의 헤딩은 ID 로 해석 불가 — 결과에서 제외."""
+    p = tmp_path / "skeleton.md"
+    p.write_text(
+        "## 1. 프로젝트 개요\nbody\n\n## 2. 정체불명 섹션\nx\n", encoding="utf-8"
+    )
+    assert set(compute_section_hashes(p)) == {"overview"}
 
 
 def test_compute_hash_deterministic(tmp_path: Path) -> None:

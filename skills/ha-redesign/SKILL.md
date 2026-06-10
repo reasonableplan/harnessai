@@ -282,6 +282,9 @@ python ~/.claude/skills/ha-log/run.py append \
   태스크는 **run.py 가 자동으로 `needs_rebuild` 로 전이**한다. 이는 재설계로 spec 이 바뀐
   stale 코드가 `/ha-verify` / `/ha-build --skip-done` 를 통과하는 것을 막는 안전 가드.
   전이된 태스크 목록은 stdout JSON 의 `rebuild_required_tasks` 필드로 보고된다.
+  **추가 (F3)**: run.py 가 섹션별 hash 를 diff 해, agent 의 `affected_tasks` 에서 빠졌지만
+  변경 섹션을 `skeleton 참조` 로 가리키는 task 를 **결정론적으로 파생**해 합산한다
+  (`hash_derived_rebuild_candidates` 필드) — agent recall 누락에 대한 안전망.
 - **HarnessAI 결정권 분리** (`user_harnessai_decision_authority.md`):
   - AI: 영향 분석 + 재설계 안 제안 + 실제 편집 (위임받은 영역)
   - 사용자: 승인/거부/수정 + 코드 스타일 영역

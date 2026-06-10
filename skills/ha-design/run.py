@@ -32,7 +32,10 @@ from src.orchestrator.profile_loader import (  # noqa: E402
     find_consistency_violations,
     find_unknown_lesson_references,
 )
-from src.orchestrator.skeleton_hash import compute_skeleton_hash  # noqa: E402
+from src.orchestrator.skeleton_hash import (  # noqa: E402
+    compute_section_hashes,
+    compute_skeleton_hash,
+)
 
 
 # placeholder 패턴: <PROJECT_NAME>, <예: ...>, _미작성_, <DOMAIN>_NNN 등
@@ -206,6 +209,9 @@ def cmd_commit(args: argparse.Namespace) -> int:
 
     # skeleton hash 저장 — downstream skills 가 외부 수정을 감지할 수 있도록
     plan.skeleton_hash = compute_skeleton_hash(skel)
+    # 섹션별 hash snapshot — ha-redesign 이 변경 섹션을 diff 해 stale done-task 를
+    # 결정론적으로 파생할 수 있게 baseline 기록 (architecture review F3).
+    plan.section_hashes = compute_section_hashes(skel)
 
     # locked_sections 박혔으면 plan.freeze() 호출.
     if locked:

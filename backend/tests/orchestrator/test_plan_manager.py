@@ -104,6 +104,28 @@ def test_save_load_roundtrip(tmp_path: Path) -> None:
     assert "## Notes" in loaded.body
 
 
+def test_section_hashes_roundtrip(tmp_path: Path) -> None:
+    """section_hashes (섹션 ID → hash) 가 save/load 를 보존한다."""
+    pm = PlanManager()
+    original = _sample_plan()
+    original.section_hashes = {"overview": "a" * 64, "stack": "b" * 64}
+    path = tmp_path / "harness-plan.md"
+    pm.save(original, path)
+
+    loaded = pm.load(path)
+    assert loaded.section_hashes == original.section_hashes
+
+
+def test_legacy_plan_loads_empty_section_hashes(tmp_path: Path) -> None:
+    """section_hashes 없는 legacy plan 은 빈 dict 로 로드 (backward-compat)."""
+    pm = PlanManager()
+    path = tmp_path / "harness-plan.md"
+    pm.save(_sample_plan(), path)
+
+    loaded = pm.load(path)
+    assert loaded.section_hashes == {}
+
+
 def test_load_missing_raises(tmp_path: Path) -> None:
     pm = PlanManager()
     with pytest.raises(PlanNotFoundError):

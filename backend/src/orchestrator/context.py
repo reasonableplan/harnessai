@@ -11,6 +11,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from src.orchestrator.task_id import SKELETON_HEADING_RE
+
 # Standard 36 section IDs → heading titles matching fragment frontmatter `name`.
 # Must stay in sync with ~/.claude/harness/templates/skeleton/<id>.md name fields.
 SECTION_TITLES: dict[str, str] = {
@@ -188,6 +190,30 @@ EXTRA_HARNESS_DOCS: dict[str, list[str]] = {
         "templates/guidelines/ios-swift/storage.md",
     ],
 }
+
+
+# Inverted SECTION_TITLES — heading title → section ID. Titles are unique and
+# the assembler writes them verbatim, so exact title match is the stable key
+# (heading numbers are assigned dynamically per project's active fragment set).
+_TITLE_TO_ID: dict[str, str] = {title: sid for sid, title in SECTION_TITLES.items()}
+
+
+def split_sections_by_id(skeleton_text: str) -> dict[str, str]:
+    """Return {section_id: body} by matching `## N. <title>` headings.
+
+    Headings whose title is not a known SECTION_TITLES entry are skipped —
+    they cannot be addressed by ID.
+    """
+    matches = list(SKELETON_HEADING_RE.finditer(skeleton_text))
+    sections: dict[str, str] = {}
+    for i, m in enumerate(matches):
+        section_id = _TITLE_TO_ID.get(m.group(2).strip())
+        if section_id is None:
+            continue
+        body_start = m.end()
+        body_end = matches[i + 1].start() if i + 1 < len(matches) else len(skeleton_text)
+        sections[section_id] = skeleton_text[body_start:body_end]
+    return sections
 
 
 def extract_section_by_id(skeleton_text: str, section_id: str) -> str:

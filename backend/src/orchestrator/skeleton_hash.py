@@ -10,6 +10,26 @@ import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.orchestrator.context import split_sections_by_id
+
+
+def compute_section_hashes(skeleton_path: Path) -> dict[str, str]:
+    """Per-section SHA-256 keyed by section ID (resolved via heading title).
+
+    Same LF normalization as compute_skeleton_hash. Missing file → {}.
+    Snapshot is written by ha-design commit / ha-redesign apply so that
+    redesign can diff sections and derive stale done-tasks deterministically
+    instead of relying on the impact agent's recall.
+    """
+    if not skeleton_path.exists():
+        return {}
+    text = skeleton_path.read_text(encoding="utf-8", errors="replace")
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    return {
+        section_id: hashlib.sha256(body.encode("utf-8")).hexdigest()
+        for section_id, body in split_sections_by_id(normalized).items()
+    }
+
 
 def compute_skeleton_hash(skeleton_path: Path) -> str:
     """SHA-256 hex of skeleton.md content. Normalizes line endings to

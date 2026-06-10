@@ -14,8 +14,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from src.orchestrator.context import SECTION_TITLES
-from src.orchestrator.task_id import SKELETON_HEADING_RE, TASK_ROW_RE
+from src.orchestrator.context import split_sections_by_id
+from src.orchestrator.task_id import TASK_ROW_RE
 
 # CamelCase token of length ≥4 to filter noise. Captures component/class names
 # such as GameScreen, PushToTalkButton, DetectionAlertSheet. Lower bound avoids
@@ -33,10 +33,6 @@ _SECTION_REF_RE = re.compile(r"§\s*\d+")
 _COMPONENT_DEFINITION_IDS = ("view.components",)
 _COMPONENT_REFERENCE_IDS = ("state.flow", "core.logic")
 
-# Inverted SECTION_TITLES — heading title → section ID. Titles are unique and
-# the assembler enforces them verbatim, so exact match is the reliable key.
-_TITLE_TO_ID = {title: sid for sid, title in SECTION_TITLES.items()}
-
 
 @dataclass(frozen=True)
 class ConsistencyFinding:
@@ -53,24 +49,6 @@ class ConsistencyFinding:
     target: str  # the identifier (component name, T-XXX, etc.) the finding is about
 
 
-def _split_sections(skel_text: str) -> dict[str, str]:
-    """Return {section_id: body} resolved by matching heading titles.
-
-    Headings whose title is not a known SECTION_TITLES entry are skipped —
-    they cannot be addressed by ID and no check targets them.
-    """
-    matches = list(SKELETON_HEADING_RE.finditer(skel_text))
-    sections: dict[str, str] = {}
-    for i, m in enumerate(matches):
-        section_id = _TITLE_TO_ID.get(m.group(2).strip())
-        if section_id is None:
-            continue
-        body_start = m.end()
-        body_end = matches[i + 1].start() if i + 1 < len(matches) else len(skel_text)
-        sections[section_id] = skel_text[body_start:body_end]
-    return sections
-
-
 def _components_in_section(body: str) -> set[str]:
     """Extract CamelCase identifiers (length ≥ 4) from a section body."""
     return {m.group(1) for m in _CAMELCASE_RE.finditer(body) if len(m.group(1)) >= 4}
@@ -82,7 +60,7 @@ def check_isolated_components(skel_text: str) -> list[ConsistencyFinding]:
     A defined-but-unreferenced component is the canonical drift symptom:
     re-derivation added a UI piece without wiring its trigger or behavior.
     """
-    sections = _split_sections(skel_text)
+    sections = split_sections_by_id(skel_text)
     defined: set[str] = set()
     for sid in _COMPONENT_DEFINITION_IDS:
         if sid in sections:
@@ -118,7 +96,7 @@ def check_task_skeleton_references(
     A task that mentions neither a section number nor a known component is likely
     isolated from the skeleton — the implementer has nothing to anchor against.
     """
-    sections = _split_sections(skel_text)
+    sections = split_sections_by_id(skel_text)
     known_components: set[str] = set()
     for sid in _COMPONENT_DEFINITION_IDS:
         if sid in sections:
