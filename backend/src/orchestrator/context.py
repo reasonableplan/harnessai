@@ -36,8 +36,11 @@ SECTION_TITLES: dict[str, str] = {
     "deployment": "배포 설정",
     "tasks": "태스크 분해",
     "notes": "구현 노트",
-    "environments": "환경 설정 (Environments)",
-    "error_ux": "에러 UX",
+    # NOTE: 값은 fragment 의 frontmatter name + 본문 헤딩과 토씨까지 일치해야 한다
+    # (test_fragment_title_sync 가 3중 동기를 고정). fragment 가 정본 — 조립된
+    # skeleton 의 실제 헤딩이 fragment 본문에서 오기 때문.
+    "environments": "환경 분리",
+    "error_ux": "에러 처리 UX",
     "rate_limiting": "Rate Limiting",
     # required_when 표현식으로 6축 답변에 따라 자동 활성
     "data_model": "데이터 모델",
