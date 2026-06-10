@@ -59,6 +59,24 @@ SECTION_TITLES: dict[str, str] = {
     "mobile.lifecycle": "라이프사이클 / 권한",
 }
 
+# 사람이 위→아래로 읽는 서사 순서 (S-1). 프로파일 `order` 에 없는 활성 섹션
+# (6축 자동 활성 — user_journey/threat_model 등) 의 삽입 위치를 결정한다.
+# 기존엔 그런 섹션이 tasks/notes 뒤에 dangling 했다 (HITL 페르소나가 문서 끝에 숨음).
+# SECTION_TITLES 와 동일 키셋 — test_fragment_title_sync 가 고정. tasks/notes 항상 마지막.
+CANONICAL_SECTION_ORDER: tuple[str, ...] = (
+    "overview", "requirements", "user_journey", "stack",
+    "configuration", "environments",
+    "errors", "auth", "authorization_matrix", "threat_model", "audit_log",
+    "persistence", "data_model", "integrations", "external_deps",
+    "interface.http", "interface.cli", "interface.ipc", "interface.sdk",
+    "rate_limiting",
+    "view.screens", "view.components", "error_ux",
+    "mobile.navigation", "mobile.build_config", "mobile.lifecycle",
+    "state.flow", "core.logic",
+    "observability", "slo", "runbook", "deployment", "ci_cd", "test_strategy",
+    "tasks", "notes",
+)
+
 # Per-agent section ID mapping. "*" means all sections.
 # mobile_coder_* 는 mobile.* 섹션 + view/state + interface.http + persistence 를 받음.
 # Designer 는 mobile.navigation / mobile.lifecycle 포함 (모바일 화면/UX/네비게이션 담당).

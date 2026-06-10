@@ -167,3 +167,47 @@ def test_axis_no_warning_for_consistent_answers(ha_init_module) -> None:
     assert ha_init_module._axis_warnings(
         _axes(monetization="payment", data_sensitivity="payment")
     ) == []
+
+
+# ── S-1: 활성 섹션 canonical 삽입 배치 ──────────────────────────────
+
+_FASTAPI_ORDER = [
+    "overview", "requirements", "stack", "configuration", "environments",
+    "errors", "auth", "persistence", "integrations", "interface.http",
+    "rate_limiting", "state.flow", "core.logic", "observability",
+    "deployment", "test_strategy", "ci_cd",
+]
+
+
+def test_order_inserts_auto_sections_canonically(ha_init_module) -> None:
+    """프로파일 order 에 없는 6축 자동 활성 섹션이 끝에 append 되지 않고
+    canonical 위치에 삽입된다 (기존: user_journey 가 notes 뒤 dangling)."""
+    included = [*_FASTAPI_ORDER, "user_journey", "threat_model", "tasks", "notes"]
+    ordered = ha_init_module._order_included_sections(included, _FASTAPI_ORDER)
+
+    assert ordered.index("user_journey") == ordered.index("requirements") + 1
+    assert ordered.index("threat_model") < ordered.index("persistence")
+    assert ordered[-2:] == ["tasks", "notes"]
+
+
+def test_order_terminal_always_last(ha_init_module) -> None:
+    """canonical 후미 섹션(test_strategy 등)이 있어도 tasks/notes 가 마지막."""
+    included = ["overview", "test_strategy", "tasks", "notes", "slo"]
+    ordered = ha_init_module._order_included_sections(included, ["overview"])
+    assert ordered[-2:] == ["tasks", "notes"]
+    assert set(ordered) == set(included)
+
+
+def test_order_keeps_profile_primacy(ha_init_module) -> None:
+    """프로파일이 canonical 과 다른 순서를 명시하면 프로파일이 이긴다."""
+    profile_order = ["overview", "test_strategy", "ci_cd"]  # canonical 은 ci_cd 먼저
+    included = ["overview", "ci_cd", "test_strategy"]
+    ordered = ha_init_module._order_included_sections(included, profile_order)
+    assert ordered == ["overview", "test_strategy", "ci_cd"]
+
+
+def test_order_unknown_id_lands_before_terminal(ha_init_module) -> None:
+    """canonical 에 없는 미지 ID 는 본문 끝 (terminal 직전) 에 배치."""
+    included = ["overview", "zzz.custom", "tasks"]
+    ordered = ha_init_module._order_included_sections(included, ["overview"])
+    assert ordered == ["overview", "zzz.custom", "tasks"]

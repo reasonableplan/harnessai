@@ -41,6 +41,7 @@ ha-design 이 placeholder 인지 못 하고 그대로 남긴다 (HabitFlow 잔�
 | Phase 테이블 5컬럼 (ID/에이전트/의존성/설명/상태) | tasks | `_TASK_ROW_RE` 파서 |
 | `<!-- HUMAN-LOCKED:<id> -->` ... `<!-- /HUMAN-LOCKED:<id> -->` | LOCKED 3종 | ha-design 세션 재개 감지 |
 | `<!-- AI-WRITABLE:... -->` ... `<!-- /AI-WRITABLE -->` | LOCKED 후보 영역 | ha-design 후보 작성 위치 |
+| `Given <전제> / When <행동> / Then <결과>` | requirements 수용 기준 | ha-design Step D 작성 + (예정) ha-smoke 체크리스트 파서 |
 
 ## 5. 스택 중립성
 

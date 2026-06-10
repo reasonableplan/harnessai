@@ -28,6 +28,7 @@ except (AttributeError, OSError):
 sys.path.insert(0, str(Path(__file__).parent.parent / "_ha_shared"))
 from utils import HARNESS_HOME, info, resolve_guideline_paths  # noqa: E402, I001
 
+from src.orchestrator.context import CANONICAL_SECTION_ORDER  # noqa: E402
 from src.orchestrator.capabilities import KNOWN_CAPABILITY_ATOMS  # noqa: E402
 from src.orchestrator.plan_manager import (  # noqa: E402
     PlanManager,
@@ -121,6 +122,44 @@ def cmd_detect(args: argparse.Namespace) -> int:
 
 
 # ── write 서브커맨드 ──────────────────────────────────────────────────
+
+
+def _order_included_sections(
+    included: list[str], profile_order: list[str]
+) -> list[str]:
+    """활성 섹션 배치 (S-1) — 프로파일 order 우선 + canonical 삽입.
+
+    프로파일 `order` 를 1차 기준으로 유지하되, order 에 없는 활성 섹션
+    (6축 자동 활성 신형 — user_journey/threat_model 등) 은 끝에 append 하지
+    않고 CANONICAL_SECTION_ORDER 위치에 **삽입**한다. 기존 동작은 HITL
+    페르소나 섹션이 notes 뒤에 dangling 하는 결함이 있었다.
+    tasks/notes 는 항상 마지막.
+    """
+    canon_idx = {sid: i for i, sid in enumerate(CANONICAL_SECTION_ORDER)}
+    included_set = set(included)
+    terminal = [sid for sid in ("tasks", "notes") if sid in included_set]
+
+    seen: set[str] = set()
+    primary: list[str] = []
+    for sid in profile_order:
+        if sid in included_set and sid not in terminal and sid not in seen:
+            primary.append(sid)
+            seen.add(sid)
+
+    rest = sorted(
+        (sid for sid in included if sid not in seen and sid not in terminal),
+        key=lambda s: canon_idx.get(s, len(canon_idx)),
+    )
+    ordered = list(primary)
+    for sid in rest:
+        ci = canon_idx.get(sid, len(canon_idx))
+        pos = len(ordered)
+        for j, existing in enumerate(ordered):
+            if canon_idx.get(existing, -1) > ci:
+                pos = j
+                break
+        ordered.insert(pos, sid)
+    return ordered + terminal
 
 
 def _axis_warnings(axes) -> list[str]:
@@ -270,29 +309,14 @@ def cmd_write(args: argparse.Namespace) -> int:
     _TERMINAL = {"tasks", "notes"}
     seen_order: set[str] = set()
     merged_order: list[str] = []
-    terminal_order: list[str] = []
     for prof in profile_objs:
         for sid in prof.skeleton_sections.order:
-            if sid in _TERMINAL:
-                if sid not in seen_order:
-                    terminal_order.append(sid)
-                    seen_order.add(sid)
-            elif sid not in seen_order:
+            if sid not in _TERMINAL and sid not in seen_order:
                 merged_order.append(sid)
                 seen_order.add(sid)
-    full_order = merged_order + terminal_order
-
-    included_set = set(included)
-    seen: set[str] = set()
-    ordered_included: list[str] = []
-    for sid in full_order:
-        if sid in included_set and sid not in seen:
-            ordered_included.append(sid)
-            seen.add(sid)
-    for sid in included:  # full_order 에도 없는 항목 (edge case) → 끝에 append
-        if sid not in seen:
-            ordered_included.append(sid)
-            seen.add(sid)
+    # S-1: order 에 없는 활성 섹션은 canonical 위치에 삽입 (append 금지).
+    # terminal(tasks/notes) 강제 후미 배치는 helper 가 담당.
+    ordered_included = _order_included_sections(included, merged_order)
 
     docs_dir = _docs_dir(project, primary_path)
     docs_dir.mkdir(parents=True, exist_ok=True)

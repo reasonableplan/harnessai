@@ -79,3 +79,17 @@ def test_every_section_title_has_fragment() -> None:
     }
     missing = sorted(sid for sid in SECTION_TITLES if sid not in fragment_ids)
     assert not missing, f"fragment 파일 없는 SECTION_TITLES 항목: {missing}"
+
+
+def test_canonical_order_matches_section_titles() -> None:
+    """CANONICAL_SECTION_ORDER 는 SECTION_TITLES 와 동일 키셋 (S-1).
+
+    어긋나면 신형 섹션이 canonical 위치 없이 또 dangling 하게 된다.
+    """
+    from src.orchestrator.context import CANONICAL_SECTION_ORDER
+
+    assert len(CANONICAL_SECTION_ORDER) == len(set(CANONICAL_SECTION_ORDER)), "중복 ID"
+    assert set(CANONICAL_SECTION_ORDER) == set(SECTION_TITLES), (
+        f"차이: {set(CANONICAL_SECTION_ORDER) ^ set(SECTION_TITLES)}"
+    )
+    assert CANONICAL_SECTION_ORDER[-2:] == ("tasks", "notes")
