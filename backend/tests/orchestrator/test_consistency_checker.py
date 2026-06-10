@@ -13,7 +13,29 @@ from src.orchestrator.consistency_checker import (
     run_all_checks,
 )
 
-# ── §13 → §14/§15 isolation ─────────────────────────────────────────
+# ── view.components → state.flow/core.logic isolation ───────────────
+
+
+def test_id_keyed_resolution_with_dynamic_numbers() -> None:
+    """섹션 번호는 활성 fragment 셋에 따라 동적 부여 — 제목으로 ID 를 해석해야 한다."""
+    skel = (
+        "## 4. 컴포넌트 트리\n<GameScreen> <OrphanedWidget>\n\n"
+        "## 5. 상태 흐름\nGameScreen flows\n\n"
+        "## 6. 도메인 로직\nGameScreen logic\n"
+    )
+    findings = check_isolated_components(skel)
+    assert [f.target for f in findings] == ["OrphanedWidget"]
+
+
+def test_task_component_reference_with_dynamic_numbers() -> None:
+    """컴포넌트 트리가 §13 이 아니어도 known component 로 인정된다."""
+    skel = "## 7. 컴포넌트 트리\n<PushToTalkButton>\n"
+    tasks = (
+        "| ID | Agent | Dep | Desc | Status |\n"
+        "|----|-------|-----|------|--------|\n"
+        "| T-001 | be | - | PushToTalkButton 컴포넌트 구현 | done |\n"
+    )
+    assert check_task_skeleton_references(tasks, skel) == []
 
 
 def test_component_referenced_in_section_14_passes() -> None:
@@ -47,7 +69,7 @@ def test_component_only_in_section_13_flagged_isolated() -> None:
 
 def test_no_section_13_yields_no_findings() -> None:
     """§13 없으면 검증 대상 없음 — 빈 finding."""
-    skel = "## 1. 개요\nfoo bar\n## 14. 상태\nGameScreen 만\n"
+    skel = "## 1. 개요\nfoo bar\n## 14. 상태 흐름\nGameScreen 만\n"
     assert check_isolated_components(skel) == []
 
 
@@ -56,8 +78,8 @@ def test_short_camelcase_filtered_out() -> None:
     skel = (
         "## 13. 컴포넌트 트리\n"
         "Id Ok foo Game GameScreen\n"
-        "## 14. 상태\nplain text\n"
-        "## 15. 로직\nplain\n"
+        "## 14. 상태 흐름\nplain text\n"
+        "## 15. 도메인 로직\nplain\n"
     )
     findings = check_isolated_components(skel)
     targets = {f.target for f in findings}
@@ -71,7 +93,7 @@ def test_short_camelcase_filtered_out() -> None:
 
 
 def test_task_with_section_reference_passes() -> None:
-    skel = "## 13. 컴포넌트\nGameScreen\n"
+    skel = "## 13. 컴포넌트 트리\nGameScreen\n"
     tasks = (
         "| ID | Agent | Dep | Desc | Status |\n"
         "|----|-------|-----|------|--------|\n"
@@ -81,7 +103,7 @@ def test_task_with_section_reference_passes() -> None:
 
 
 def test_task_with_component_reference_passes() -> None:
-    skel = "## 13. 컴포넌트\n<GameScreen> <PushToTalkButton>\n"
+    skel = "## 13. 컴포넌트 트리\n<GameScreen> <PushToTalkButton>\n"
     tasks = (
         "| ID | Agent | Dep | Desc | Status |\n"
         "|----|-------|-----|------|--------|\n"
@@ -91,7 +113,7 @@ def test_task_with_component_reference_passes() -> None:
 
 
 def test_task_with_no_reference_flagged() -> None:
-    skel = "## 13. 컴포넌트\n<GameScreen>\n"
+    skel = "## 13. 컴포넌트 트리\n<GameScreen>\n"
     tasks = (
         "| ID | Agent | Dep | Desc | Status |\n"
         "|----|-------|-----|------|--------|\n"
@@ -106,7 +128,7 @@ def test_task_with_no_reference_flagged() -> None:
 
 def test_unknown_camelcase_in_task_does_not_satisfy() -> None:
     """§13 에 없는 CamelCase 는 reference 로 인정 안 함."""
-    skel = "## 13. 컴포넌트\n<GameScreen>\n"
+    skel = "## 13. 컴포넌트 트리\n<GameScreen>\n"
     tasks = (
         "| ID | Agent | Dep | Desc | Status |\n"
         "|----|-------|-----|------|--------|\n"
@@ -122,9 +144,9 @@ def test_unknown_camelcase_in_task_does_not_satisfy() -> None:
 
 def test_run_all_aggregates_findings() -> None:
     skel = (
-        "## 13. 컴포넌트\n<GameScreen> <OrphanedWidget>\n"
-        "## 14. 상태\nGameScreen\n"
-        "## 15. 로직\nGameScreen\n"
+        "## 13. 컴포넌트 트리\n<GameScreen> <OrphanedWidget>\n"
+        "## 14. 상태 흐름\nGameScreen\n"
+        "## 15. 도메인 로직\nGameScreen\n"
     )
     tasks = (
         "| ID | Agent | Dep | Desc | Status |\n"
@@ -141,7 +163,7 @@ def test_run_all_aggregates_findings() -> None:
 
 def test_run_all_skips_task_check_without_tasks() -> None:
     """tasks.md 없는 단계 (designed 직후) 도 호출 가능."""
-    skel = "## 13. 컴포넌트\n<GameScreen> <OrphanedWidget>\n## 14. 상태\nGameScreen\n## 15. 로직\nGameScreen\n"
+    skel = "## 13. 컴포넌트 트리\n<GameScreen> <OrphanedWidget>\n## 14. 상태 흐름\nGameScreen\n## 15. 도메인 로직\nGameScreen\n"
     findings = run_all_checks(skeleton_text=skel)
     targets = {f.target for f in findings}
     assert "OrphanedWidget" in targets
@@ -150,7 +172,7 @@ def test_run_all_skips_task_check_without_tasks() -> None:
 
 def test_run_all_empty_tasks_text_runs_check() -> None:
     """tasks_text='' (빈 파일) 은 None 과 다름 — task check 실행하되 0 finding."""
-    skel = "## 13. 컴포넌트\n<GameScreen>\n## 14. 상태\nGameScreen\n## 15. 로직\nGameScreen\n"
+    skel = "## 13. 컴포넌트 트리\n<GameScreen>\n## 14. 상태 흐름\nGameScreen\n## 15. 도메인 로직\nGameScreen\n"
     # 빈 tasks_text 도 task check 가 실행되지만 매칭되는 행이 없어 0 finding.
     findings = run_all_checks(skeleton_text=skel, tasks_text="")
     assert all(not f.target.startswith("T-") for f in findings)
@@ -158,7 +180,7 @@ def test_run_all_empty_tasks_text_runs_check() -> None:
 
 def test_finding_dataclass_fields() -> None:
     """ConsistencyFinding 의 필수 필드 4개 모두 채워짐."""
-    skel = "## 13. 컴포넌트\n<GameScreen>\n## 14. 상태\nplain\n## 15. 로직\nplain\n"
+    skel = "## 13. 컴포넌트 트리\n<GameScreen>\n## 14. 상태 흐름\nplain\n## 15. 도메인 로직\nplain\n"
     findings = check_isolated_components(skel)
     assert len(findings) == 1
     f = findings[0]
