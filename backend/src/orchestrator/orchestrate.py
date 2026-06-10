@@ -1,4 +1,13 @@
-"""Main orchestrator — entry point that coordinates the full agent workflow."""
+"""Main orchestrator — entry point that coordinates the full agent workflow.
+
+DEPRECATED (v1 path): This Orchestra/dashboard pipeline is the original v1
+execution path. The active workflow is the v2 ``/ha-*`` skills, run instead of
+the dashboard server. The Reviewer/QA agent dispatch here (``verify`` /
+``phase_review`` / ``qa_phase``) is superseded by the ``ha-review`` skill
+(fp-check + LESSON gate + 7 security hooks). Kept for the dashboard server and
+its test coverage; prefer the ``/ha-*`` skills for new work.
+See backend/docs/prompt-evaluation-2026-06-10.md.
+"""
 
 from __future__ import annotations
 
