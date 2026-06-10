@@ -376,6 +376,11 @@ commit 출력 JSON 에 `unknown_lesson_references` 필드가 항상 포함됨 (�
 - frozen_status="frozen" 이 박혀야 다음 단계 `/ha-build` 진입 가능.
 - **v0.10.0**: commit 후 worklog.md (docs/worklog.md) 에 변경 자동 append 됨.
 
+### 5.5. 핸드오프 노트 전달 (Architect / Designer → 사용자)
+
+각 역할(Architect, Designer)이 담당 섹션 작성 후 남긴 **핸드오프 노트**(결정 요약 / 우려 1가지 /
+사용자가 정해야 할 것 / 다음 역할에게)를 commit 후 사용자에게 보여준다 — "우려 1가지" 생략 금지.
+
 ### 6. 다음 단계 안내
 
 ```
