@@ -5,23 +5,21 @@ required_when: scale.small_or_larger
 description: MVP 기능, 추가 기능, 비즈니스 규칙
 ---
 
-<!-- placeholder 컨벤션: HITL <AI 채움> / <기능 1> 등은 uppercase/Korean 으로 박음 (assembler _ANGLE_PLACEHOLDER_RE 는 lowercase snake_case 만 잡음). -->
+<!-- placeholder/표기 컨벤션: 같은 디렉토리의 _README.md 참조 -->
 <!-- HUMAN-LOCKED:requirements — 이 섹션은 사용자 인터뷰로만 채움. /ha-redesign 거쳐서만 변경 허용. -->
 
 ## {{section_number}}. 기능 요구사항
 
 ### AI 제안 후보 (사용자 선택 — /ha-design 단계에서 채워짐)
-> AI 가 도메인 + 스택 + 페르소나 분석 후 5개 후보 제시. 사용자가 AskUserQuestion 으로 선택/수정.
+> AI 가 도메인 + 스택 + 페르소나 분석 후 3개 후보 제시. 사용자가 AskUserQuestion 으로 선택/수정.
 > 사용자 미응답 시 `/ha-design --ai-draft` 옵트인 명시해야 진행 가능 (frontmatter `ai_drafted_sections` 에 기록).
 
-<!-- AI-WRITABLE:requirements-candidates — /ha-design 이 후보 5 박는 영역. hook 통과. -->
+<!-- AI-WRITABLE:requirements-candidates — /ha-design 이 후보 3 박는 영역. hook 통과. -->
 | # | 후보 기능 | 사용자 가치 | 근거 (페르소나 / 시나리오) | 선택 |
 |---|----------|-------------|---------------------------|:---:|
 | 1 | `<AI 채움>` | `<AI 채움>` | `<페르소나 ID / 시나리오 N>` | ☐ |
 | 2 | `<AI 채움>` | `<AI 채움>` | `<...>` | ☐ |
 | 3 | `<AI 채움>` | `<AI 채움>` | `<...>` | ☐ |
-| 4 | `<AI 채움>` | `<AI 채움>` | `<...>` | ☐ |
-| 5 | `<AI 채움>` | `<AI 채움>` | `<...>` | ☐ |
 <!-- /AI-WRITABLE -->
 
 ### 확정 기능 (사용자 선택 결과 — MVP Phase 1)

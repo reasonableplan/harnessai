@@ -5,7 +5,7 @@ required_when: has.ui
 description: 경로 → 컨테이너 매핑, 사용자 흐름
 ---
 
-<!-- placeholder 컨벤션: HITL <Mobbin URL> / <화면 1 ASCII wireframe> 등은 uppercase/Korean 으로 박음 (assembler _ANGLE_PLACEHOLDER_RE 는 lowercase snake_case 만 잡음). -->
+<!-- placeholder/표기 컨벤션: 같은 디렉토리의 _README.md 참조 -->
 <!-- HUMAN-LOCKED:view.screens — 이 섹션은 사용자 인터뷰로만 채움. /ha-redesign 거쳐서만 변경 허용. -->
 
 ## {{section_number}}. 화면 목록

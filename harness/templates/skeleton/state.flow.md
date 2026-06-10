@@ -32,20 +32,8 @@ description: 상태 머신, 전이 규칙, 불변식
 | `<a>` | `<action_1>` | `<b>` | <precondition> |
 | `<a>` | `<action_2>` | `<c>` | <precondition> |
 
-### 도메인 계산 규칙 (예: 스트릭 계산)
-
-```
-기준일: today (서버 날짜)
-완료 기록 집합: Set<date>
-
-1. today ∈ 완료 → cursor = today
-2. today ∉ 완료, (today-1) ∈ 완료 → cursor = today-1
-3. 그 외 → streak = 0
-
-cursor부터 역방향 반복:
-  cursor ∈ 완료 → streak++, cursor -= 1일
-  else → 종료
-```
+> 도메인 계산/알고리즘 의사코드는 `core.logic` 섹션에 기술 — 여기는
+> 상태 머신/전이/불변식만 (한 내용을 두 곳에 두면 재설계 시 drift).
 
 ### 불변식 (Invariants)
 - <예: "사용자당 같은 습관은 하루 1회만 체크 가능">

@@ -54,6 +54,7 @@ Response 200: items
 ```
 
 > 작성 가이드:
+> - 엔드포인트 표기는 **`METHOD /path`** (backtick+bold) 엄수 — `/ha-review` 역방향 contract 검증이 이 표기를 파싱
 > - 각 엔드포인트: Method, Path, [Auth 여부], Request, Response, 에러 코드
 > - N+1 쿼리 방지 주석 (예: eager load)
 > - 전체 목록은 `persistence` 스키마와 1:1 대응

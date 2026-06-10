@@ -44,6 +44,7 @@ description: 핵심 비즈니스 규칙, 알고리즘, 순수 함수 vs I/O 분�
 - <예: 음수 나이 → ValidationError>
 
 ### 테스트 전략
+> `test_strategy` 섹션이 활성인 프로젝트는 그쪽이 우선 — 여기는 core/ 모듈 원칙만.
 - **단위 테스트**: pure 함수는 property-based test (hypothesis/fast-check) 권장
 - **통합 테스트**: impure 함수는 실제 DB/파일로
 - **커버리지 목표**: core/ 모듈 ≥ 90%, io/ 모듈 ≥ 70%

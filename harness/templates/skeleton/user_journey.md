@@ -5,24 +5,22 @@ required_when: has.users and lifecycle in [mvp, ga]
 description: 페르소나 + 핵심 시나리오 + 화면 전이. view.flow 가 컴포넌트 상태라면 user_journey 는 비즈니스 가치 흐름.
 ---
 
-<!-- placeholder 컨벤션: HITL <AI> / <Primary> 등은 uppercase/Korean 으로 박음 (assembler _ANGLE_PLACEHOLDER_RE 는 lowercase snake_case 만 잡음). -->
+<!-- placeholder/표기 컨벤션: 같은 디렉토리의 _README.md 참조 -->
 <!-- HUMAN-LOCKED:user_journey — 이 섹션은 사용자 인터뷰로만 채움. /ha-redesign 거쳐서만 변경 허용. -->
 
 ## {{section_number}}. 사용자 시나리오 (User Journey)
 
 ### AI 제안 페르소나 후보 (사용자 선택 — /ha-design 단계)
-> AI 가 도메인 + 사용자 설명 분석 후 3-5개 *구체적* 페르소나 후보 제시.
+> AI 가 도메인 + 사용자 설명 분석 후 3개 *구체적* 페르소나 후보 제시.
 > 구체성 기준: "30대 직장인" 금지 → "주 2회 야근하는 30대 IT 기획자, 독서 시간 부족" 처럼.
 > 사용자가 선택/수정/추가. 미응답 시 `--ai-draft` 옵트인 필수.
 
-<!-- AI-WRITABLE:user-journey-persona-candidates — /ha-design 이 페르소나 후보 5 박는 영역. hook 통과. -->
+<!-- AI-WRITABLE:user-journey-persona-candidates — /ha-design 이 페르소나 후보 3 박는 영역. hook 통과. -->
 | # | 후보 페르소나 (한 줄 구체) | 역할 | 동기 | 좌절 | 선택 |
 |---|---------------------------|------|------|------|:---:|
 | 1 | `<AI: 구체적 한 줄 — 직업/상황/현재 행동>` | `<AI>` | `<AI>` | `<AI>` | ☐ |
 | 2 | `<AI>` | `<AI>` | `<AI>` | `<AI>` | ☐ |
 | 3 | `<AI>` | `<AI>` | `<AI>` | `<AI>` | ☐ |
-| 4 | `<AI>` | `<AI>` | `<AI>` | `<AI>` | ☐ |
-| 5 | `<AI>` | `<AI>` | `<AI>` | `<AI>` | ☐ |
 <!-- /AI-WRITABLE -->
 
 ### 확정 페르소나 (사용자 선택 결과)

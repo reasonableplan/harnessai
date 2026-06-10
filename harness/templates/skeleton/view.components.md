@@ -14,9 +14,9 @@ App
 │   ├─ ProtectedRoute
 │   │   ├─ <HomeContainer /> (/)
 │   │   │   ├─ <Header />
-│   │   │   ├─ <HabitList>
-│   │   │   │   └─ <HabitCard />[]
-│   │   │   └─ <AddHabitSheet />
+│   │   │   ├─ <DomainList>
+│   │   │   │   └─ <DomainCard />[]
+│   │   │   └─ <AddDomainSheet />
 │   │   └─ ...
 │   └─ <AuthLayout>
 │       ├─ <LoginContainer /> (/login)
@@ -36,13 +36,15 @@ App
 
 **색상 (CSS 변수)**
 ```css
---bg-base:       <#0f1117>
---bg-surface:    <#1a1d27>
---text-primary:  <#f1f3fa>
---text-secondary:<#9ca3c4>
---accent:        <#4f76f6>
---success:       <#22c55e>
---error:         <#ef4444>
+/* 값은 view.screens 의 디자인 레퍼런스에서 추출 — 고정 팔레트 제시 금지.
+   프로젝트마다 테마 변주 (AI티 방지 — LESSON-014, ha-build 슬롭 룰 9) */
+--bg-base:       <레퍼런스에서 추출>
+--bg-surface:    <레퍼런스에서 추출>
+--text-primary:  <레퍼런스에서 추출>
+--text-secondary:<레퍼런스에서 추출>
+--accent:        <레퍼런스에서 추출>
+--success:       <레퍼런스에서 추출>
+--error:         <레퍼런스에서 추출>
 ```
 
 **타이포그래피**
@@ -50,10 +52,10 @@ App
 - 본문: <...>
 
 **스타일 규칙**
-- CVA + `index.style.ts` 분리
-- 인라인 Tailwind 2개 이상 금지
-- `type="number"` 금지 → `type="text" inputMode="numeric"` (LESSON-006)
-- 폼 submit 아닌 버튼: `type="button"` 명시
+- 활성 프로파일의 `guidelines/<profile>/style.md` 를 따른다 — 스택별 규칙은
+  프로파일이 단일 진실원천 (이 섹션은 has.ui 로 Flutter/Android/iOS 에도 활성되므로
+  특정 스택 규칙을 여기 나열하지 않는다)
+- 예: react 계열 CVA + `index.style.ts` / Flutter ThemeData / Compose Theme / SwiftUI ViewModifier
 
 ### 상태 관리 매핑
 | Store | 담당 | 경로 |
