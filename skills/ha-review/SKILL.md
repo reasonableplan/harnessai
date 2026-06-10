@@ -107,6 +107,15 @@ prepare 가 자동 실행한 ai-slop 결과 외에 다음 패턴을 Grep 으로 
 - conventions/DESIGN.md 에 명시된 미학과 어긋나는지. (없으면 단일 미학 일관성만)
 - 근거: "AI티 = 결함" — 신뢰·차별화 신호.
 
+### 2.9. 역방향 contract 검증 (선언-미구현)
+
+`prepare` 출력의 `missing_declared_endpoints` — skeleton `interface.http` 에 선언됐지만
+소스 어디에도 정적 prefix 가 발견되지 않는 엔드포인트 목록 (자동 계산).
+
+- **skipped / Phase 2+ 태스크로 설명되면** → "권장 사항" 에 기록만 (위반 아님)
+- **설명 안 되면** → WARN finding 으로 §5 집계 (§2.6 fp-check 로 TRUE/FALSE 판정 후)
+- contract-validator 훅 (skeleton 에 없는 endpoint) 과 합쳐 양방향 검증 완성
+
 ### 3. LESSON 패턴 점검
 `<HARNESS_AI_HOME>/backend/docs/shared-lessons.md` 에서 **`profile.lessons_applied` 목록에 있는 번호만** 점검.
 `lessons_applied` 에 없는 LESSON 은 현재 프로파일과 무관 — 점검 생략.

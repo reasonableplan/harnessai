@@ -32,6 +32,7 @@ from utils import (  # noqa: E402, I001
 
 # backend src import — utils.py 가 backend/ 를 sys.path 에 추가 보장
 from src.orchestrator.security_hooks import SecurityHooks  # noqa: E402
+from src.orchestrator.context import extract_section_by_id  # noqa: E402
 from src.orchestrator.skeleton_hash import check_skeleton_hash  # noqa: E402
 
 
@@ -474,6 +475,68 @@ def _extract_diff(project: Path) -> str:
     return diff
 
 
+# 역방향 contract 검증 (architecture review F7-1) — contract-validator 훅은
+# "skeleton 에 없는 endpoint 구현" 만 잡는다. 반대 방향 (선언했는데 미구현) 은
+# 아래 helper 가 잡는다. skeleton 의 interface.http 표기: **`GET /api/users`**.
+_HTTP_METHOD_PATH_RE = re.compile(r"`(GET|POST|PUT|PATCH|DELETE)\s+(/[^\s`]+)`")
+_REVERSE_SOURCE_EXTS = {".py", ".ts", ".tsx", ".js", ".jsx", ".kt", ".swift", ".dart"}
+_REVERSE_SKIP_DIRS = {
+    "node_modules", ".venv", "venv", "dist", "build", "__pycache__",
+    ".git", "docs", ".orchestra",
+}
+
+
+def _iter_source_texts(project: Path) -> list[str]:
+    """프로젝트 소스 파일 내용 목록 (벤더/빌드/문서 디렉토리 제외)."""
+    texts: list[str] = []
+    stack = [project]
+    while stack:
+        d = stack.pop()
+        try:
+            entries = list(d.iterdir())
+        except OSError:
+            continue
+        for e in entries:
+            if e.is_dir():
+                if e.name not in _REVERSE_SKIP_DIRS:
+                    stack.append(e)
+            elif e.suffix in _REVERSE_SOURCE_EXTS:
+                try:
+                    texts.append(e.read_text(encoding="utf-8", errors="replace"))
+                except OSError:
+                    continue
+    return texts
+
+
+def _check_missing_declared_endpoints(
+    project: Path, skeleton_text: str
+) -> list[dict[str, str]]:
+    """skeleton interface.http 에 선언됐지만 소스 어디에도 없는 엔드포인트.
+
+    path 의 정적 prefix ("{param}" 앞부분) 가 소스 전체에서 발견되지 않을 때만
+    보고 — router prefix 조합 (`APIRouter(prefix=...)` + `@router.get("/{id}")`)
+    로 인한 false positive 를 보수적으로 회피. 발견은 advisory — skipped/Phase 2
+    태스크로 설명되는지 리뷰어가 cross-check 후 집계한다 (SKILL.md §2.9).
+    """
+    section = extract_section_by_id(skeleton_text, "interface.http")
+    if not section:
+        return []
+    declared = sorted(
+        {(m.group(1), m.group(2)) for m in _HTTP_METHOD_PATH_RE.finditer(section)}
+    )
+    if not declared:
+        return []
+    haystacks = _iter_source_texts(project)
+    findings: list[dict[str, str]] = []
+    for method, path_str in declared:
+        prefix = path_str.split("{")[0].rstrip("/") or path_str
+        if not any(prefix in h for h in haystacks):
+            findings.append(
+                {"method": method, "path": path_str, "static_prefix": prefix}
+            )
+    return findings
+
+
 def _collect_findings(
     project: Path,
     profiles: list,  # list[Profile]
@@ -618,6 +681,21 @@ def cmd_prepare(args: argparse.Namespace) -> int:
             "/ha-redesign 으로 변경 사항 추적 권장."
         )
 
+    # 역방향 contract 검증 — 선언-미구현 엔드포인트 (advisory, §2.9)
+    missing_declared_endpoints: list[dict[str, str]] = []
+    if skel_path.exists():
+        try:
+            missing_declared_endpoints = _check_missing_declared_endpoints(
+                project, skel_path.read_text(encoding="utf-8")
+            )
+        except OSError as exc:
+            info(f"[WARN] 역방향 contract 검증 건너뜀 — skeleton 읽기 실패: {exc}")
+    if missing_declared_endpoints:
+        info(
+            f"[WARN] 선언-미구현 엔드포인트 {len(missing_declared_endpoints)}건 — "
+            "skipped/Phase 2 태스크로 설명되는지 확인 후 집계 (§2.9)"
+        )
+
     # 보안 훅 + ai-slop + mobile 룰 자동 실행 (prepare 는 advisory — exit 0 유지)
     findings = _collect_findings(project, profiles, diff)
 
@@ -645,6 +723,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
             "warn_count": findings["warn_count"],
         },
         "test_distribution_findings": test_distribution_findings,
+        "missing_declared_endpoints": missing_declared_endpoints,
         "skeleton_hash_check": {
             "is_match": hash_check.is_match,
             "is_legacy": hash_check.is_legacy,
