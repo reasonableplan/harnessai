@@ -92,12 +92,28 @@ LOCKED 대상 섹션:
 - `user_journey` — 페르소나 + 핵심 시나리오
 - `view.screens` — 화면 + 디자인 레퍼런스 URL
 
+#### 0. 재개 여부 판단 (세션 중단 복구)
+
+`prepare` 출력의 `locked_section_status` 필드를 먼저 본다. 각 LOCKED 섹션마다:
+
+- `"not_included"` — 본 plan 에 해당 섹션 미활성. 스킵.
+- `"empty"` — AI 후보 표가 비어있음 (placeholder 3개 이상 남음). **Step A 부터 시작**.
+- `"filled"` — 후보 표 채워짐. *확정* 섹션의 placeholder 수를 본문에서 직접 확인:
+  - 확정 섹션이 비어있으면 (예: `<기능 1>` / `<Primary>` 잔재) → **Step B 부터 재개**
+  - 확정 섹션도 채워짐 → 해당 섹션 스킵 (이미 완료)
+
+이 분기 덕분에 세션이 중단돼도 빈 섹션만 이어서 채우면 된다.
+
 #### 흐름 (각 LOCKED 섹션마다 반복)
 
-**Step A — AI 후보 5 개 생성**
+**Step A — AI 후보 3 개 생성**
 - 입력: user_description + 활성 프로파일 + 이미 채워진 이전 LOCKED 섹션 (페르소나 → 시나리오 → 화면 순)
-- 출력: 5 개 *구체적* 후보. 한 줄 요약 + 근거 (어느 페르소나 / 시나리오에서 왔는지)
-- 후보 양식: fragment 의 `### AI 제안 후보` 표 그대로 채움
+- 출력: 3 개 *구체적* 후보. 한 줄 요약 + 근거 (어느 페르소나 / 시나리오에서 왔는지)
+- 후보 양식: fragment 의 `<!-- AI-WRITABLE:...-candidates -->` 블록 안 표 그대로 채움 (3행)
+- 작성 위치 마커 — Edit 으로 찾을 때:
+  - requirements → `<!-- AI-WRITABLE:requirements-candidates -->`
+  - user_journey → `<!-- AI-WRITABLE:user-journey-persona-candidates -->`
+  - view.screens → `<!-- AI-WRITABLE:view-screens-design-reference -->`
 
 **Step B — AskUserQuestion 으로 사용자 선택**
 ```
@@ -106,8 +122,6 @@ options:
   - 후보 1: <한 줄>
   - 후보 2: <한 줄>
   - 후보 3: <한 줄>
-  - 후보 4: <한 줄>
-  - 후보 5: <한 줄>
 multiSelect: true (requirements / user_journey 페르소나)
 multiSelect: false (디자인 레퍼런스 — 1 개 출처만)
 ```
@@ -124,7 +138,7 @@ multiSelect: false (디자인 레퍼런스 — 1 개 출처만)
    - "예 — 나중에 검토" → 진행. 해당 섹션 ID 를 `ai_drafted_sections` 누적 (commit 시 박음).
    - "아니오 — 다시 인터뷰" → Step B 재시도.
 
-2. AI 가 5 개 후보 중 *best 1-3* 박음. fragment 의 *확정* 섹션에 박되 *맨 위에 ⚠️ AI-DRAFTED* 표시.
+2. AI 가 3 개 후보 중 *best 1-2* 박음. fragment 의 *확정* 섹션에 박되 *맨 위에 ⚠️ AI-DRAFTED* 표시.
 
 #### 특별 가드 — `view.screens` 의 디자인 레퍼런스
 
@@ -142,7 +156,7 @@ LOCKED 섹션 채울 때마다:
 
 §5 commit 단계에서 두 리스트를 인자로 전달.
 
-**세션 유실 시 복구**: Claude Code 세션이 중단되면 `run.py prepare` 재실행. 이미 채워진 LOCKED 섹션은 fragment 의 AI 후보 표 + 확정 섹션 텍스트로 식별 가능 — 빈 부분만 이어서 채움. `--ai-draft` 옵트인했던 섹션은 frontmatter `ai_drafted_sections` 에서 확인.
+**세션 유실 시 복구**: `run.py prepare` 재실행 → `locked_section_status` 필드로 각 섹션의 빈/채움 상태 즉시 확인. 위 §0 흐름대로 빈 섹션만 이어서 진행. `--ai-draft` 옵트인했던 섹션은 plan frontmatter `ai_drafted_sections` 에서 확인.
 
 ---
 
@@ -377,16 +391,35 @@ commit 출력 JSON 에 `unknown_lesson_references` 필드가 항상 포함됨 (�
 
 ### 출력의 guideline_paths 도 읽으세요
 
-`prepare` 출력 JSON 의 `profiles[].guideline_paths` 에
-프로파일별 컨벤션 문서 경로가 포함됩니다. **반드시 작업 시작 전 모두 읽으세요**:
+`prepare` 출력 JSON 의 `profiles[].guideline_paths` 에 프로파일별 컨벤션 문서 경로가 포함됩니다.
+**작업 시작 전 모두 Read 로 읽으세요.** 프로파일별 파일 목록 → `<HARNESS_AI_HOME>/skills/_ha_shared/GUIDELINES_NOTE.md` 참조.
 
-- `react-native-expo`: navigation/state/storage/style 4 파일 — Expo Router + Zustand + SecureStore 컨벤션
-- `flutter`: navigation/state/storage/style 4 파일 — go_router + Riverpod + drift + ThemeData
-- `android-kotlin`: architecture/compose/network/storage 4 파일 — MVVM + Compose + Retrofit + Room
-- `ios-swift`: architecture/swiftui/network/storage 4 파일 — MV pattern + SwiftUI + URLSession + Keychain
-- `fastapi`: api/services/structure 3 파일 — Clean Arch + DI + 패키지 구조
+**모바일 사용자**: 안 읽으면 LESSON-STYLE-001 / 보안 위반 / 컨벤션 drift 가능성. 시스템 프롬프트만으로는 부족합니다.
 
-**모바일 사용자**: 위 가이드라인을 안 읽으면 LESSON-STYLE-001 / 보안 위반 / 컨벤션 drift 가능성. 시스템 프롬프트만으로는 부족합니다.
+## 작업 일지 자동 기록 (worklog)
+
+run.py 가 commit 시 박는 메타 1줄 (`frozen_status=..., locked=...`) 과 **별개로**, 이 스킬
+작업 중 부모 세션이 판단해서 의미 있는 변경을 `ha-log` 로 worklog.md 에 박는다.
+
+**설계 인터뷰 도중 — 그때그때**: 사용자가 다음을 주면 처리 완료 직후 1줄 요약을 박는다.
+- 방향을 바꾼 수정 요청 ("이거 이렇게 바꿔줘", §3.5 gate 의 "수정 요청" 포함)
+- 버그/모순 지적 + 수정
+- 설계에 영향 준 결정 (인증 방식 확정, 스키마 변경 등)
+
+```bash
+python ~/.claude/skills/ha-log/run.py append \
+  --category change \
+  --message "<무엇을 왜 바꿨는지 한 줄>" \
+  --project "<프로젝트 루트 — docs/ 의 상위>"
+```
+
+카테고리: 수정/버그 → `change`, 결정/논의 → `discussion`, 다음 할 일 → `next`.
+
+**제외 (노이즈 차단)**: 오타·포맷·표현 수정, 단순 질문/잡담, run.py 가 이미 박는 commit 메타.
+
+**세션 마무리 — "오늘 끝 / 마무리 / 오늘 한 일 정리" 신호 시**: 이 세션에서 한 작업을
+카테고리별로 모아 worklog 에 박는다 (항목마다 append 1회 호출). 구현/수정 → `change`,
+정한 것 → `discussion`, 다음 할 것 → `next`. 박은 뒤 "오늘 N건 일지 기록" 1줄 보고.
 
 ## 가드레일
 

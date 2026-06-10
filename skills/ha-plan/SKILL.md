@@ -28,6 +28,28 @@ python ~/.claude/skills/ha-plan/run.py prepare
 ```
 JSON 출력: profile components, skeleton 섹션 채워짐 여부, orchestrator 프롬프트 경로.
 
+추가 출력 필드:
+- `consistency_violations`: list — 각 항목 `{section_id, trigger_expression, missing_atom, expected_providers}` 형식.
+  - 빈 list = 이상 없음.
+  - 비어있지 않으면 plan 의 included 섹션이 활성 profile 셋과 정합하지 않음 (stale plan 상태).
+
+### 1.5 Plan consistency 검토 (cross-check)
+
+prepare 출력의 `consistency_violations` 가 있으면:
+
+- 각 violation: `{section_id, trigger_expression, missing_atom, expected_providers}` 형식
+- 의미: plan 의 included 섹션이 활성 profile 셋과 정합하지 않음 — 본질적으로 stale plan 상태
+- 처리:
+  1. AskUserQuestion 으로 사용자에게 보여줌 (해당 섹션들이 backend 가정인 경우 paired profile 추가 권고)
+  2. 사용자 선택:
+     - 그대로 진행 — 의도적 mismatch (외부 backend / BaaS 가정). task 분해에 반영 (해당 capability 작업은 외부 책임 명시)
+     - 취소 → `/ha-redesign` 으로 plan 재정렬 후 다시 ha-plan
+     - 수동 정정 → `/ha-redesign` 사용 안내
+
+본 검증은 advisory — 차단 안 함. 다만 violations 가 있으면 task 분해 시 그 영향을 §19 구현 노트의 "결정 로그" 에 기록 권고.
+
+**가드레일**: consistency_violations 를 자동으로 무시하지 말 것 — 사용자에게 반드시 보여주거나 §19 에 기록.
+
 ### 2. Orchestrator 프롬프트 + skeleton 로드
 - `<HARNESS_AI_HOME>/backend/agents/orchestrator/CLAUDE.md` 읽기
 - 채워진 `docs/skeleton.md` 전체 읽기
@@ -46,9 +68,7 @@ JSON 출력: profile components, skeleton 섹션 채워짐 여부, orchestrator 
 4. view.* (해당 시)
 5. integrations (해당 시)
 
-**태스크 단위**: 1 PR = 1 태스크.
-- **분리 기준**: 변경 파일 6개 초과 / 구현 예상 시간 4시간 초과 / 여러 skeleton 섹션 동시 구현
-- **병합 기준**: 변경 파일 1개 이하 + 단순 필드 추가 수준 (예: 컬럼 1개 추가 → 관련 태스크에 합치기)
+**태스크 단위**: 1 PR = 1 태스크. 너무 크면 분리, 너무 작으면 병합.
 
 **테스트 태스크 동반** (필수 — `/ha-review` 의 분포 체크가 BLOCK/WARN 발동):
 - **구현 태스크 1개 = 대응 테스트 태스크 최소 1개** (또는 같은 태스크 안에 테스트 포함)
@@ -92,10 +112,7 @@ JSON 출력: profile components, skeleton 섹션 채워짐 여부, orchestrator 
 ```
 
 - 스펙 블록은 모든 Phase 테이블 **아래에 연속 배치**
-- skeleton 에 필요한 정보가 없으면 태스크 분해 중단. 에스컬레이션 절차:
-  1. 부족한 내용 구체 명시 (예: "persistence.orders — 컬럼 타입/제약 미정의")
-  2. 사용자에게 `/ha-design` 재실행 또는 `skeleton.md` 직접 편집 요청
-  3. skeleton 보완 확인 후 `/ha-plan` 재실행
+- skeleton 에 필요한 정보가 없으면 태스크 분해 중단 → Architect/Designer 에게 에스컬레이션 (skeleton 보완 후 재개)
 - 스펙 블록 없는 태스크는 미완성 산출물로 간주
 
 ### 4. tasks.md 작성 + skeleton 의 tasks 섹션 갱신
@@ -122,16 +139,67 @@ run.py 가:
   /ha-build --parallel T-XXX,T-YYY  — 병렬 (의존성 없을 때)
 ```
 
-### 출력의 guideline_paths 읽기 (필수)
+### 출력의 guideline_paths 도 읽으세요
 
-출력 JSON 의 `profiles[].guideline_paths` 에 포함된 경로를 **작업 시작 전 모두 Read 로 읽으세요.**
-프로파일별 파일 목록 → `<HARNESS_AI_HOME>/skills/_ha_shared/GUIDELINES_NOTE.md` 참조.
+`prepare` 출력 JSON 의 `profiles[].guideline_paths` 에 프로파일별 컨벤션 문서 경로가 포함됩니다.
+**작업 시작 전 모두 Read 로 읽으세요.** 프로파일별 파일 목록 → `<HARNESS_AI_HOME>/skills/_ha_shared/GUIDELINES_NOTE.md` 참조.
+
+**모바일 사용자**: 안 읽으면 LESSON-STYLE-001 / 보안 위반 / 컨벤션 drift 가능성. 시스템 프롬프트만으로는 부족합니다.
 
 ## 가드레일
-- 태스크에 reviewer/qa 직접 배정 금지 (`/ha-verify` 와 `/ha-review` 가 모든 코드를 자동 커버하므로 별도 태스크 불필요. 배정하면 파이프라인에서 "에이전트 없음" 에러 발생)
+- 태스크에 reviewer/qa 직접 배정 금지 (Phase 리뷰는 자동 처리)
 - skeleton 에 정의된 모든 컴포넌트가 태스크로 커버되는지 확인
 - 의존성 순환 금지
 - skeleton 의 다른 섹션은 절대 수정 X (tasks 만)
+- agent ↔ active context 매칭은 `commit` 시점 자동 검증. task description 의미 일치는 orchestrator 책임 (Step 2 한계).
+
+## Agent 매핑 룰 (Step 2 추가)
+
+각 task 의 agent 컬럼은 다음을 따라야 한다 — `ha-plan commit` 의 검증이 자동 실행:
+
+1. **활성 컨텍스트** = `plan.profiles` 의 `provides_capabilities` union + 6축에서 derived capability 셋 (`active has_keys`).
+2. **agent별 매칭 조건** (agents.yaml 의 `requires_capabilities`, `requires_profile_ids`):
+   - `backend_coder`: active has_keys 에 `http_server` / `cli_entrypoint` / `sdk_surface` 중 하나
+   - `frontend_coder`: active has_keys 에 `ui` 있고 mobile profile 없음 (웹 한정)
+   - `mobile_coder_rn`/`flutter`/`android`/`ios`: 각 profile + `ui` + `navigation` capability
+   - capability-agnostic (architect, designer, orchestrator, reviewer, qa): 컨텍스트 무관
+3. **agent ↔ 활성 컨텍스트 1차 가드**: `ha-plan commit` 이 검증. 위반 시 차단.
+4. **task description ↔ agent 의미 매핑은 별도** — 1차 가드를 통과해도 task 의 실제 작업 내용 (예: "auth API") 과 agent 책임 영역이 일치하는지는 orchestrator 가 직접 판단 (LLM 의미 추론). 본 자동 검증은 컨텍스트 정합만 보장.
+
+검증 우회: 의도적 mismatch (예: paired profile 추가 예정) → `commit --allow-agent-mismatch`.
+
+## tasks.md 표준 schema (Step 4-1)
+
+`ha-plan commit` 이 자동 검증. 위반 시 차단 — `--allow-format-drift` 로 우회 가능.
+
+### Task ID
+- 형식: `T-NNN` (3자리 정수, 예: T-001, T-024, T-100)
+- fractional (T-024.5), letter (T-A01), 다른 길이 (T-1, T-1000) 거부
+
+### 표 컬럼 순서 (강제)
+```
+| ID | 에이전트 | 의존성 | 설명 | 상태 |
+```
+- 컬럼명은 한국어/영어 혼용 허용 (`agent`/`에이전트`, `depends`/`의존성`, `status`/`상태` 등)
+- 컬럼 수 = 5, 순서 변경 시 거부
+
+### 상태 값 (allow-list)
+`대기` / `pending` / `진행중` / `in-progress` / `완료` / `done` / `completed` / `차단` / `blocked` / `needs_rebuild`
+
+### 의존성
+- 없음: `-`, `—`, `없음`, `(없음)`, `none`, 빈 셀
+- 있음: 콤마 구분 task ID (예: `T-001` 또는 `T-001, T-002`)
+- 자유 텍스트 (`T-001 완료 후`) 거부
+
+### Phase 헤더 (선택)
+- 형식: `### Phase N[+] — <name>` (예: `### Phase 1 — MVP`, `### Phase 2+ — 확장`)
+- `—` (em dash) 없이 공백으로 이은 형식 거부 (예: `### Phase 2+ 태스크 스펙` → 거부)
+- Phase 헤더가 없으면 단일 Phase 로 간주 (위반 아님)
+
+## 트러블슈팅
+
+- **Agent mismatch FAIL**: tasks.md 의 task 가 활성 컨텍스트와 정합하지 않은 agent 에 배정. 해결 — agent 변경 or `plan.profiles` 추가 (paired 모드) or `--allow-agent-mismatch` 로 우회.
+- **Schema violation FAIL**: tasks.md 의 ID/컬럼/상태/의존성/Phase 헤더 형식 위반. 해결 — 위반 항목 수정 or `--allow-format-drift` 로 우회 (경고로 기록 후 진행).
 
 ## 모바일 프로젝트 사용 예시 (Flutter)
 

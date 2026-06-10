@@ -190,6 +190,31 @@ blocked 처리 후 원인이 해결됐으면:
 `mobile_coder_android` → android-kotlin, `mobile_coder_ios` → ios-swift,
 `backend_coder` → plan 의 backend 프로파일, `frontend_coder` → plan 의 frontend 프로파일.
 
+## 작업 일지 자동 기록 (worklog)
+
+run.py 가 complete 시 박는 메타 1줄 (`task=..., status=done`) 과 **별개로**, 이 스킬 작업
+중 부모 세션이 판단해서 의미 있는 변경을 `ha-log` 로 worklog.md 에 박는다.
+
+**구현 도중 — 그때그때**: 사용자가 다음을 주면 처리 완료 직후 1줄 요약을 박는다.
+- 방향을 바꾼 수정 요청 ("이거 이렇게 바꿔줘")
+- 버그 지적 + 수정
+- 구현에 영향 준 결정
+
+```bash
+python ~/.claude/skills/ha-log/run.py append \
+  --category change \
+  --message "<무엇을 왜 바꿨는지 한 줄>" \
+  --project "<프로젝트 루트 — docs/ 의 상위>"
+```
+
+카테고리: 수정/버그 → `change`, 결정/논의 → `discussion`, 다음 할 일 → `next`.
+
+**제외 (노이즈 차단)**: 오타·포맷·표현 수정, 단순 질문/잡담, run.py 가 이미 박는 complete 메타.
+
+**세션 마무리 — "오늘 끝 / 마무리 / 오늘 한 일 정리" 신호 시**: 이 세션에서 한 작업을
+카테고리별로 모아 worklog 에 박는다 (항목마다 append 1회 호출). 구현/수정 → `change`,
+정한 것 → `discussion`, 다음 할 것 → `next`. 박은 뒤 "오늘 N건 일지 기록" 1줄 보고.
+
 ## 가드레일
 
 - 태스크 description 외 작업 추가 금지 (scope creep 방지)
