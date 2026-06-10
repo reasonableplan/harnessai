@@ -304,6 +304,8 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 
 **Phase 10 — v0.10.0 (완료, 2026-05-15)**: **HITL Gate**. Human-locked 섹션 (`requirements` / `user_journey` / `view.screens`) PreToolUse hook 강제. `PlanManager.freeze()` one-way gate. `/ha-design` HITL 인터뷰 (AI 후보 5 개 → 사용자 선택). `/ha-build` frozen-status 진입 게이트. `/ha-review extract-lesson` Pending Lessons 자동 추가. `/ha-log` 마이크로 스킬 (worklog append + subprocess 자동). `harness migrate-v10` CLI. ChatDev / aider / CrewAI 격차 해소. 신규 테스트 +39 (893 → 939).
 
+**Phase 11 — v0.11.0 (완료, 2026-06-10)**: **Design Integrity & Intent Capture**. 전체 시스템 리뷰 (프롬프트 감사 + 코드/아키텍처 리뷰 에이전트 병렬) → ID-키잉 consistency checker, fail-open 5곳 수정, skeleton drift 게이트, 섹션별 hash 결정론 rebuild, 역방향 contract 검증, 루프 탈출 가드, `/ha-ship` 라스트마일. dogfood 피드백 ("작동은 하는데 의도와 다르게") 대응 의도 포착 배치: Intent Echo · 기능별 Given/When/Then 수용 기준 · 행동 워크스루 게이트 · 모호어 스캔 · 적대적 자가비판. 에이전트 9종 시니어 핸드오프 노트. 3중 제목 동기 테스트 (첫 실행에서 실 drift 2건 적발). `GATES.md` 게이트 전수표. 신규 테스트 +47 (939 → 986).
+
 **v1.0.0 백로그**:
 - Live LESSONS 자동 학습 (ha-review 반복 패턴 → 후보 등록)
 - multi-provider (Gemini/OpenAI backend)
@@ -322,7 +324,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 - **패키지**: uv
 - **에이전트 실행**: Claude CLI subprocess (Gemini/로컬 LLM 교체 가능)
 - **상태**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (DB 없음)
-- **테스트**: pytest **948개** backend + **12개** install 스냅샷 (회귀 0건)
+- **테스트**: pytest **986개** backend + **12개** install 스냅샷 (회귀 0건)
 - **타입 체크**: pyright **0 errors** (`src/` 전수)
 - **게이트 커버리지 (자기 검증)**: 10개 게이트 중 정규식/AST 기반 7개를 35 fixtures (positive/negative) 로 측정 → **precision 100% / recall 100% / accuracy 100%**. 나머지 3개 — `auth-guard` 는 test_security_hooks 단위테스트, `test-distribution`·`skeleton-integrity` 는 filesystem fixture 로 별도 검증. 상세 한계/방법: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **성능** (30 iter, LLM 제외): profile 감지 **~5 ms**, skeleton 조립 **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. [docs/benchmarks/](docs/benchmarks/)
@@ -343,7 +345,7 @@ backend/
   docs/shared-lessons.md      28 LESSONs
   src/orchestrator/           profile_loader / skeleton_assembler /
                               plan_manager / security_hooks / runner
-  tests/                      948 pytest + skills/ 회귀 방지
+  tests/                      986 pytest + skills/ 회귀 방지
 
 docs/
   ARCHITECTURE.md             시스템 구조 30분 이해
@@ -357,7 +359,7 @@ docs/
 ```bash
 cd backend
 uv sync
-uv run pytest tests/ --rootdir=.      # 948 tests
+uv run pytest tests/ --rootdir=.      # 986 tests
 uv run ruff check src/                 # 0 errors
 uv run pyright src/                    # 0 errors (타입 체크)
 uv run python -m src.main              # dashboard 서버 (포트 3002)

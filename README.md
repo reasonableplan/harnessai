@@ -2,7 +2,7 @@
 
 🌐 **English** · [한국어](README.ko.md)
 
-![tests](https://img.shields.io/badge/tests-948%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-986%20passing-brightgreen)
 ![pyright](https://img.shields.io/badge/pyright-0%20errors-brightgreen)
 ![ruff](https://img.shields.io/badge/ruff-clean-brightgreen)
 ![gate coverage](https://img.shields.io/badge/gate%20coverage-100%25-brightgreen)
@@ -246,7 +246,9 @@ What it does:
 
 ---
 
-## 🧪 Quality gates (10)
+## 🧪 Quality gates (15 BLOCK-class + 10 advisory)
+
+> Full registry with stage / severity / bypass flag: [backend/docs/GATES.md](backend/docs/GATES.md). Highlights:
 
 | Gate | Location | Role |
 |---|---|---|
@@ -261,6 +263,10 @@ What it does:
 | **test distribution** | ` " ` | Detect skewed test coverage (BLOCK: 0 tests for a src module, WARN: 10x variance) |
 | **skeleton integrity** | `harness integrity` | Declared paths ↔ real filesystem + placeholder residue |
 | **file_structure drift** | `ha-build` (advisory) | Detects uncommitted FS drift vs skeleton-declared paths (WARN) |
+| **skeleton drift gate** | `ha-build prepare` | Post-freeze external skeleton edits BLOCK (`--accept-skeleton-drift` to override) |
+| **reverse contract** | `ha-review prepare` | Declared-but-unimplemented endpoints (`missing_declared_endpoints`) |
+| **loop-escape guard** | `ha-verify record` | 3rd FAIL of the same task blocks the loop (`--force-continue`) |
+| **design cross-section** | `ha-design commit` | error_ux↔errors codes / screen APIs↔interface.http / blank Auth cells (`design_findings`) |
 
 ---
 
@@ -277,8 +283,8 @@ What it does:
 | mobile_coder_flutter | Flutter + Dart (Riverpod · go_router · drift · Material3) |
 | mobile_coder_android | Android Kotlin + Jetpack Compose (StateFlow · Room · Retrofit · Hilt) |
 | mobile_coder_ios | iOS Swift + SwiftUI (`@Observable` · NavigationStack · CoreData/SwiftData · Keychain) |
-| Reviewer | Security + LESSON + convention review |
-| QA | Integration test scenario verification |
+| Reviewer | *(v1 path — superseded by `/ha-review` skill: fp-check + LESSON + 7 hooks)* |
+| QA | *(v1 path — superseded by `/ha-verify` + `/ha-review`)* |
 
 Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 
@@ -312,6 +318,8 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 
 **Phase 10 — v0.10.0 (completed, 2026-05-15)**: **HITL Gate**. Human-locked sections (`requirements` / `user_journey` / `view.screens`) enforced via PreToolUse hook. `PlanManager.freeze()` one-way gate. `/ha-design` HITL interview (5 AI candidates → user pick). `/ha-build` frozen-status gate. `/ha-review extract-lesson` auto-appends to Pending Lessons. `/ha-log` micro skill (worklog append + subprocess auto-append). `harness migrate-v10` CLI. ChatDev / aider / CrewAI gap closed. +39 tests (893 → 939).
 
+**Phase 11 — v0.11.0 (completed, 2026-06-10)**: **Design Integrity & Intent Capture**. Full-system review (prompt audit + parallel code/architecture review agents) → ID-keyed consistency checker, 5 fail-open fixes, skeleton drift gate, per-section hashes for deterministic rebuild derivation, reverse contract validation, loop-escape guard, `/ha-ship` last mile. Intent-capture batch from dogfood feedback ("works, but not what I meant"): Intent Echo, per-feature Given/When/Then acceptance criteria, behavioral walkthrough gates, vague-word scan, adversarial self-critique. Senior handoff notes across 9 agent prompts. 3-way fragment title sync test (caught 2 live drifts on first run). `GATES.md` registry. +47 tests (939 → 986).
+
 **v1.0.0 backlog**:
 - Live LESSONS auto-learning (ha-review repeated pattern → LESSON candidate)
 - Multi-provider (Gemini / OpenAI backend) — `providers/gemini_*.py` foundation in place, full validation pending
@@ -320,6 +328,8 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 - Claude Code plugin manifest distribution
 - Vector memory (CrewAI-style) — per-project LESSON embedding
 - Execution sandbox (OpenHands-style) — isolated subprocess environment
+- Runtime smoke gate (`ha-smoke`) — serve + declared-endpoint liveness + user_journey browser smoke (GWT acceptance criteria as checklist)
+- `/ha-export` — read-only 기술명세서 / 화면설계서 / 페르소나 renders from skeleton (single source of truth preserved)
 
 ---
 

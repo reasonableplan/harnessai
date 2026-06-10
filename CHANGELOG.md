@@ -4,6 +4,45 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.11.0] — 2026-06-10 — "Design Integrity & Intent Capture"
+
+전체 시스템 리뷰 (프롬프트 감사 + 코드/아키텍처 리뷰 에이전트 2종 병렬 + 최신 기법 리서치) 의 결함 수정 + 사용자 dogfood 피드백 ("작동은 하는데 의도와 다르게 작동") 대응. 설계 게이트 3→6개, 의도 손실 깔때기 5지점 봉합.
+
+### Added
+
+- **skeleton drift 게이트** (`/ha-build prepare`) — freeze 후 외부 수정 감지 시 BLOCK. `--accept-skeleton-drift` 로만 우회. 기존엔 skeleton 을 가장 많이 소비하는 build 단계에 hash 검사가 없었음
+- **섹션별 hash 결정론 rebuild** — `plan.section_hashes` snapshot (ha-design commit / ha-redesign apply 기록). `/ha-redesign` 이 변경 섹션을 diff 해 `skeleton 참조` 하는 done task 를 **agent recall 과 무관하게** `needs_rebuild` 파생 (`hash_derived_rebuild_candidates`)
+- **역방향 contract 검증** (`/ha-review prepare`) — `interface.http` 에 선언됐는데 소스에 정적 prefix 가 없는 엔드포인트 보고 (`missing_declared_endpoints`, SKILL §2.9). 기존 contract-validator (초과 구현) 와 합쳐 양방향 완성
+- **설계-시점 cross-section 검증** (`/ha-design commit`, `design_findings`) — error_ux 코드↔errors 정의 / 화면 참조 API↔interface.http 선언 / Auth 칸 공백을 기계 대조 — §4 충돌 검토 (LLM 절차) 의 기계 보강
+- **의도 포착 배치** (`/ha-design`) — Intent Echo (후보 생성 전 이해 재서술 + 모호점 질문) · 기능별 **Given/When/Then 수용 기준** HITL 확정 (Step D) · 게이트 **행동 워크스루** (구조 표 + 사용 장면 서사) · **모호어 스캔** §4.5 (알아서/적절히/자동으로 → 질문화) · **적대적 자가비판** §4.7 (깨지는 시나리오 3개 → 막는 섹션 확인)
+- **루프 탈출 가드** (`/ha-verify record`) — 동일 T-ID 3회째 FAIL 은 차단 (`--force-continue` 우회). build↔verify 무한 왕복 방지
+- **`/ha-ship`** — `reviewed → shipped` 라스트마일 마킹 (상태머신에 정의만 있고 운전자가 없던 고아 상태 해소)
+- **6축 모순 경고** (`/ha-init`, `axis_warnings`) — `monetization=payment + data_sensitivity=none` / `availability=high + lifecycle=poc`
+- **conventions.md 생성 경로** (`/ha-init` §6.5) — 모든 에이전트 권위 1순위 문서의 생성 단계 공석 해소 (/code-hijack 연결 / 스텁 생성)
+- **시니어 핸드오프 노트** — 활성 에이전트 9종 프롬프트 (한 일 / 우려 1가지 / 이견 / 다음 역할에게) + ha-build/ha-plan/ha-design 의 사용자 노출 relay
+- **3중 제목 동기 테스트** — fragment frontmatter name = 본문 헤딩 = SECTION_TITLES. 첫 실행에서 실제 drift 2건 적발
+- 문서: `backend/docs/GATES.md` (게이트 전수 — BLOCK 15 + advisory 10+), `harness/templates/skeleton/_README.md` (fragment 작성 가이드), `backend/docs/prompt-evaluation-2026-06-10.md` (프롬프트 감사)
+
+### Fixed
+
+- **SECTION_TITLES drift** — `environments`("환경 분리") / `error_ux`("에러 처리 UX") 가 fragment 와 어긋나 제목 키잉 기능 전부에 invisible 이었음
+- **consistency checker ID-키잉** — 하드코딩 §13/14/15 가 동적 섹션 번호 체계에서 엉뚱한 섹션을 검사하던 결함 (리뷰 에이전트 2종이 독립 수렴한 최대 발견)
+- **fail-open 5곳** — ha-plan/ha-init 파일쓰기 가드 (실패 시 상태 전이 중단), ha-plan re.sub 람다화 (LLM 출력 `` 주입), 프로파일 로드 blind except 협소화 (agent-mismatch 게이트 공허 통과 차단), ha-review git diff timeout, profile_loader 부모 누락 stderr 경고
+- **fragment de-rot** — tasks 의 가짜 6컬럼 스키마 → 실제 파서 5컬럼 + 실상태값, 존재하지 않는 `--reset` 안내 제거, AI 후보 표 5→3행 (런타임 ha-design 과 동기), view.components 의 HabitFlow 잔재 + 고정 다크 팔레트 시드 제거 (LESSON-014 모순), state.flow 중복 소절 삭제, 웹 전용 CVA 규칙 → 프로파일 위임
+- **ha-deepinit Agent model 핀** — `model: "sonnet"` 누락으로 1M 컨텍스트 부모 상속 시 크레딧 에러 (실증 후 수정)
+- `built` 전이 시 skipped 태스크 목록 공개 (`skipped_tasks` — 사일런트 게이트 우회 차단)
+
+### Changed / Deprecated
+
+- **v1 Orchestra 경로 deprecated** — `reviewer`/`qa` CLAUDE.md + `orchestrate.py` 에 표시. v2 에선 `/ha-review` (fp-check + LESSON + 7훅) / `/ha-verify` 가 대체. 코드/테스트는 유지
+- guideline 블록 dedup — `_ha_shared/GUIDELINES_NOTE.md` 단일 원천으로 6개 스킬 통일
+- 모바일 코더 4종 프롬프트 섹션 순서 통일 (권위 → 자율결정금지 → 골든원칙)
+- repo↔`~/.claude` 미러 정리 — stale backport 해소 + byte-identical 동기 운영 (ha-design run.py 만 의도적 divergence)
+
+테스트 939 → **986** (+47). ruff / pyright clean.
+
+---
+
 ## [0.10.0] — 2026-05-15 — "HITL Gate"
 
 ChatDev Experiential Co-Learning + aider confirm gate 영감으로 *사람-AI 결정권 분리* 강화. LESSON-014 / DESIGN-1 / ARCH-2 처럼 AI 추측 채우기로 발생하던 밋밋한 결과 패턴 차단.
