@@ -259,16 +259,10 @@ python ~/.claude/skills/ha-init/run.py write \
 
 ### 출력의 guideline_paths 도 읽으세요
 
-`detect` 및 `write` 출력 JSON 의 `matches[].guideline_paths` / `profiles[].guideline_paths` 에
-프로파일별 컨벤션 문서 경로가 포함됩니다. **반드시 작업 시작 전 모두 읽으세요**:
+`detect` / `write` 출력 JSON 의 `matches[].guideline_paths` / `profiles[].guideline_paths` 에 프로파일별 컨벤션 문서 경로가 포함됩니다.
+**작업 시작 전 모두 Read 로 읽으세요.** 프로파일별 파일 목록 → `<HARNESS_AI_HOME>/skills/_ha_shared/GUIDELINES_NOTE.md` 참조.
 
-- `react-native-expo`: navigation/state/storage/style 4 파일 — Expo Router + Zustand + SecureStore 컨벤션
-- `flutter`: navigation/state/storage/style 4 파일 — go_router + Riverpod + drift + ThemeData
-- `android-kotlin`: architecture/compose/network/storage 4 파일 — MVVM + Compose + Retrofit + Room
-- `ios-swift`: architecture/swiftui/network/storage 4 파일 — MV pattern + SwiftUI + URLSession + Keychain
-- `fastapi`: api/services/structure 3 파일 — Clean Arch + DI + 패키지 구조
-
-**모바일 사용자**: 위 가이드라인을 안 읽으면 LESSON-STYLE-001 / 보안 위반 / 컨벤션 drift 가능성. 시스템 프롬프트만으로는 부족합니다.
+**모바일 사용자**: 안 읽으면 LESSON-STYLE-001 / 보안 위반 / 컨벤션 drift 가능성. 시스템 프롬프트만으로는 부족합니다.
 
 ## 가드레일 — 절대 하지 마라
 
