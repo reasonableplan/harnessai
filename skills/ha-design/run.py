@@ -140,6 +140,23 @@ def cmd_commit(args: argparse.Namespace) -> int:
         if len(placeholders) > 5:
             info(f"  ... +{len(placeholders) - 5} 개 더")
 
+    # 설계-시점 cross-section 검증 (design backlog A) — advisory, commit 은 진행.
+    # 섹션 간 참조가 어긋난 채 freeze 되는 것을 표면화 — §4 충돌 검토(LLM)의 기계 보강.
+    from src.orchestrator.consistency_checker import run_all_checks  # noqa: PLC0415
+    design_findings = [
+        {
+            "severity": f.severity,
+            "pattern": f.pattern,
+            "target": f.target,
+            "message": f.message,
+        }
+        for f in run_all_checks(skeleton_text=text)
+    ]
+    if design_findings:
+        info(f"[WARN] 설계 정합 advisory {len(design_findings)}건 — 검토 권장:")
+        for df in design_findings[:8]:
+            info(f"  - [{df['severity']}] {df['pattern']}: {df['target']}")
+
     # LESSON reference 검증
     lessons_path = HARNESS_HOME / "backend" / "docs" / "shared-lessons.md"
     unknown_lesson_refs: list[dict] = []
@@ -259,6 +276,7 @@ def cmd_commit(args: argparse.Namespace) -> int:
         "plan_path": str(plan_path),
         "placeholders_remaining": len(placeholders),
         "unknown_lesson_references": unknown_lesson_refs,
+        "design_findings": design_findings,
         "transitioned_to": plan.pipeline.current_step,
         "next": "/ha-plan",
         "frozen_status": plan.frozen_status,

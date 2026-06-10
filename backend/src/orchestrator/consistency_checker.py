@@ -126,6 +126,98 @@ def check_task_skeleton_references(
     return findings
 
 
+# ── 설계-시점 cross-section 검증 (design backlog A) ──────────────────
+# ha-design commit / ha-redesign applied 에서 advisory 로 보고. 섹션 간 참조가
+# 어긋난 채 freeze 되는 것을 표면화한다 — §4 충돌 검토(LLM 절차)의 기계 보강.
+
+_ERROR_CODE_RE = re.compile(r"\b([A-Z][A-Z0-9]*_\d{3})\b")
+_ENDPOINT_TOKEN_RE = re.compile(r"`(GET|POST|PUT|PATCH|DELETE)\s+(/[^\s`]+)`")
+
+
+def check_error_ux_codes_defined(skel_text: str) -> list[ConsistencyFinding]:
+    """error_ux 매핑이 참조하는 에러 코드가 errors 섹션에 정의돼 있는가."""
+    sections = split_sections_by_id(skel_text)
+    ux_body = sections.get("error_ux")
+    errors_body = sections.get("errors")
+    if ux_body is None or errors_body is None:
+        return []
+    defined = set(_ERROR_CODE_RE.findall(errors_body))
+    findings: list[ConsistencyFinding] = []
+    for code in sorted(set(_ERROR_CODE_RE.findall(ux_body)) - defined):
+        findings.append(
+            ConsistencyFinding(
+                severity="warn",
+                pattern="error-code-undefined",
+                target=code,
+                message=(
+                    f"error_ux 가 '{code}' 를 매핑하지만 errors 섹션에 정의 없음 — "
+                    "코더가 추정 구현하게 됨."
+                ),
+            )
+        )
+    return findings
+
+
+def check_screen_api_references(skel_text: str) -> list[ConsistencyFinding]:
+    """view.screens 가 참조하는 엔드포인트가 interface.http 에 선언돼 있는가."""
+    sections = split_sections_by_id(skel_text)
+    screens_body = sections.get("view.screens")
+    http_body = sections.get("interface.http")
+    if screens_body is None or http_body is None:
+        return []
+    declared = set(_ENDPOINT_TOKEN_RE.findall(http_body))
+    findings: list[ConsistencyFinding] = []
+    used = set(_ENDPOINT_TOKEN_RE.findall(screens_body))
+    for method, path in sorted(used - declared):
+        findings.append(
+            ConsistencyFinding(
+                severity="warn",
+                pattern="screen-api-missing",
+                target=f"{method} {path}",
+                message=(
+                    f"화면이 '{method} {path}' 를 참조하지만 interface.http 에 "
+                    "선언 없음 — 계약 밖 API."
+                ),
+            )
+        )
+    return findings
+
+
+def check_screen_auth_column(skel_text: str) -> list[ConsistencyFinding]:
+    """auth 활성 프로젝트에서 화면 표의 Auth 칸이 비어 있지 않은가."""
+    sections = split_sections_by_id(skel_text)
+    screens_body = sections.get("view.screens")
+    if screens_body is None or "auth" not in sections:
+        return []
+    findings: list[ConsistencyFinding] = []
+    auth_idx: int | None = None
+    for line in screens_body.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            auth_idx = None  # 표 종료 — 다음 표를 위해 리셋
+            continue
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        if auth_idx is None:
+            if "Auth" in cells and any("경로" in c for c in cells):
+                auth_idx = cells.index("Auth")
+            continue
+        if set("".join(cells)) <= set("-: "):  # separator row
+            continue
+        if len(cells) > auth_idx and not cells[auth_idx]:
+            findings.append(
+                ConsistencyFinding(
+                    severity="warn",
+                    pattern="screen-auth-unspecified",
+                    target=cells[0].strip("`"),
+                    message=(
+                        f"화면 '{cells[0]}' 의 Auth 칸이 비어 있음 — "
+                        "보호 여부 미정인 채 freeze 되는 화면."
+                    ),
+                )
+            )
+    return findings
+
+
 def run_all_checks(
     *, skeleton_text: str, tasks_text: str | None = None
 ) -> list[ConsistencyFinding]:
@@ -136,6 +228,9 @@ def run_all_checks(
     """
     findings: list[ConsistencyFinding] = []
     findings.extend(check_isolated_components(skeleton_text))
+    findings.extend(check_error_ux_codes_defined(skeleton_text))
+    findings.extend(check_screen_api_references(skeleton_text))
+    findings.extend(check_screen_auth_column(skeleton_text))
     # Distinguish "no tasks file" (None) from "empty tasks file" (""). The empty
     # case yields zero findings naturally, but running the check preserves the
     # type contract that callers expect.

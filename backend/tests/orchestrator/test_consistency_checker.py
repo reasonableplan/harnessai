@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from src.orchestrator.consistency_checker import (
     ConsistencyFinding,
+    check_error_ux_codes_defined,
     check_isolated_components,
+    check_screen_api_references,
+    check_screen_auth_column,
     check_task_skeleton_references,
     run_all_checks,
 )
@@ -189,3 +192,82 @@ def test_finding_dataclass_fields() -> None:
     assert f.pattern
     assert f.message
     assert f.target
+
+
+# ── 설계-시점 cross-section 검증 (design backlog A) ──────────────────
+
+
+def test_error_ux_undefined_code_flagged() -> None:
+    """error_ux 매핑에 쓴 코드가 errors 에 정의 안 됨 → warn."""
+    skel = (
+        "## 5. 에러 핸들링\n| 코드 | 의미 |\n|---|---|\n| AUTH_001 | 인증 실패 |\n\n"
+        "## 6. 에러 처리 UX\n| 백엔드 코드 | UI |\n|---|---|\n"
+        "| AUTH_001 | redirect |\n| AUTH_005 | modal |\n"
+    )
+    findings = check_error_ux_codes_defined(skel)
+    assert [f.target for f in findings] == ["AUTH_005"]
+    assert findings[0].pattern == "error-code-undefined"
+    assert findings[0].severity == "warn"
+
+
+def test_error_ux_all_defined_passes() -> None:
+    skel = (
+        "## 5. 에러 핸들링\n| AUTH_001 | x |\n| SERVER_001 | y |\n\n"
+        "## 6. 에러 처리 UX\n| AUTH_001 | redirect |\n"
+    )
+    assert check_error_ux_codes_defined(skel) == []
+
+
+def test_error_ux_check_skips_when_section_missing() -> None:
+    skel = "## 6. 에러 처리 UX\n| AUTH_005 | modal |\n"
+    assert check_error_ux_codes_defined(skel) == []
+
+
+def test_screen_api_missing_flagged() -> None:
+    """화면이 참조하는 엔드포인트가 interface.http 에 없음 → warn."""
+    skel = (
+        "## 9. HTTP API\n**`GET /api/habits`**\n\n"
+        "## 13. 화면 목록\n"
+        "| 경로 | 화면명 | Auth | 주요 API |\n|---|---|---|---|\n"
+        "| `/` | 홈 | ✅ | `GET /api/habits` |\n"
+        "| `/stats` | 통계 | ✅ | `GET /api/stats` |\n"
+    )
+    findings = check_screen_api_references(skel)
+    assert [f.target for f in findings] == ["GET /api/stats"]
+    assert findings[0].pattern == "screen-api-missing"
+
+
+def test_screen_api_check_skips_without_http_section() -> None:
+    skel = "## 13. 화면 목록\n| `/` | 홈 | ✅ | `GET /api/x` |\n"
+    assert check_screen_api_references(skel) == []
+
+
+def test_screen_auth_blank_flagged_when_auth_active() -> None:
+    """auth 섹션 활성인데 화면 표의 Auth 칸 공백 → warn."""
+    skel = (
+        "## 6. 인증 / 권한\nJWT\n\n"
+        "## 13. 화면 목록\n"
+        "| 경로 | 화면명 | Auth | 비고 |\n|------|------|:---:|----|\n"
+        "| `/login` | 로그인 | ❌ | |\n"
+        "| `/stats` | 통계 |  | |\n"
+    )
+    findings = check_screen_auth_column(skel)
+    assert [f.target for f in findings] == ["/stats"]
+    assert findings[0].pattern == "screen-auth-unspecified"
+
+
+def test_screen_auth_check_skips_without_auth_section() -> None:
+    skel = (
+        "## 13. 화면 목록\n| 경로 | 화면명 | Auth |\n|---|---|---|\n| `/x` | x |  |\n"
+    )
+    assert check_screen_auth_column(skel) == []
+
+
+def test_run_all_includes_design_checks() -> None:
+    """run_all_checks 가 설계 검증 3종을 집계에 포함한다."""
+    skel = (
+        "## 5. 에러 핸들링\n| AUTH_001 | x |\n\n"
+        "## 6. 에러 처리 UX\n| ORPHAN_001 | toast |\n"
+    )
+    targets = {f.target for f in run_all_checks(skeleton_text=skel)}
+    assert "ORPHAN_001" in targets
