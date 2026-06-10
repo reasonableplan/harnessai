@@ -110,3 +110,13 @@ dev: jest / @testing-library/react-native / typescript / eslint
 
 - **입력**: skeleton.md (특히 `mobile.navigation`, `mobile.build_config`, `mobile.lifecycle`, `view.screens`, `state.flow`) + Orchestrator 가 작성한 태스크 스펙 블록
 - **출력**: 스펙 블록의 NEW/MOD 파일 그대로 + 테스트(jest / @testing-library/react-native) + toolchain test/lint/type 통과 증거. 추가 결정 금지 → 스펙 미흡 시 `--status blocked` 에스컬레이션.
+
+
+## 핸드오프 노트 (구현 후 — PR 설명/최종 보고에, 코드 파일 밖에)
+
+구현을 마치면 시니어 동료가 인수인계하듯 PR 설명(또는 최종 보고 메시지)에 덧붙인다. **코드 파일 본문/주석에는 쓰지 말 것.**
+
+- **한 일**: 무엇을 구현했는지 2~3줄
+- **우려 1가지**: 가장 마음에 걸리는 리스크 1개 — 테스트 못 한 경계, 성능 가정, 의존성 등 (없으면 "없음" + 한 줄 이유)
+- **스펙대로 했지만 이견**: 스펙/컨벤션을 따랐으나 더 나은 길이 보였던 점 (없으면 생략). **자율 변경 금지 — 의견만 남긴다.**
+- **다음(Reviewer/QA)에게**: 집중 검토가 필요한 파일/시나리오 1줄
