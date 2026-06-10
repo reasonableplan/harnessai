@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -206,6 +207,31 @@ def cmd_record(args: argparse.Namespace) -> int:
     else:
         rework_tasks = []
 
+    # ── 루프 탈출 가드: 동일 T-ID 3회째 FAIL 차단 (architecture review ④) ──
+    # "동일 T-ID 2회+ FAIL → /ha-redesign 검토" 가드레일을 결정론으로 강제.
+    # build↔verify 무한 왕복(토큰 소모)을 막고 설계 결함 신호를 표면화한다.
+    if not passed and rework_tasks and not getattr(args, "force_continue", False):
+        prior_fail_counts: dict[str, int] = {}
+        for rec in plan.verify_history:
+            if getattr(rec, "passed", True) or getattr(rec, "step", "") != "ha-verify":
+                continue
+            m = re.search(r"\[rework: ([^\]]+)\]", getattr(rec, "summary", "") or "")
+            if not m:
+                continue
+            for tid in (t.strip() for t in m.group(1).split(",")):
+                prior_fail_counts[tid] = prior_fail_counts.get(tid, 0) + 1
+        third_timers = sorted(
+            t for t in rework_tasks if prior_fail_counts.get(t, 0) >= 2
+        )
+        if third_timers:
+            info(
+                f"[BLOCK] 동일 태스크 3회째 FAIL: {', '.join(third_timers)} — "
+                "구현 재시도가 아니라 설계 결함 신호일 가능성이 높습니다.\n"
+                "  · 권장: /ha-redesign 으로 해당 섹션 설계 재검토\n"
+                "  · 그래도 재시도하려면: --force-continue 명시"
+            )
+            return 1
+
     # summary 에 rework tasks 자동 포함
     summary = args.summary
     if rework_tasks:
@@ -252,6 +278,12 @@ def main() -> int:
         action="store_true",
         default=False,
         help="task 재작업 아닌 환경 문제 등으로 rework-tasks 없이 passed=false 허용.",
+    )
+    r.add_argument(
+        "--force-continue",
+        action="store_true",
+        default=False,
+        help="동일 T-ID 3회째 FAIL 가드를 의도적으로 우회하고 재시도 기록.",
     )
     args = parser.parse_args()
     if args.cmd == "prepare":

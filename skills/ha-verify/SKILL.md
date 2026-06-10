@@ -166,7 +166,7 @@ run.py 자동 검증:
 - 테스트 결과 임의 조작 X — 실패는 실패로 기록
 - timeout 60~600초 사이 (큰 테스트 스위트는 백그라운드 실행 권장)
 - `passed=false` 시 **재작업 T-ID 없이 FAIL 보고 금지** — **`record --passed false` 에 `--rework-tasks` 없으면 run.py 가 exit 1 로 차단**. 환경 문제로 task 재작업 아니면 `--no-rework` 명시
-- verify_history 활용: 동일 T-ID 가 2회 이상 FAIL 하면 `/ha-redesign` 으로 설계 근본 수정 검토
+- 동일 T-ID **3회째 FAIL 은 run.py 가 record 를 차단** (`--force-continue` 로만 우회) — 2회째부터 `/ha-redesign` 설계 근본 수정 검토 권장
 
 ## 모바일 프로젝트 사용 예시 (Flutter)
 
