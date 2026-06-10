@@ -10,6 +10,7 @@ description: 저장소 타입, 스키마 정의, 인덱스, 마이그레이션
 ### 저장소 타입
 <프로젝트에서 사용하는 영속 저장 수단>
 - 예: PostgreSQL + 마이그레이션 도구 / SQLite + expo-sqlite / JSON 파일 / Redis / 파일 시스템
+- 선택 근거: <왜 이 저장소인가 — /ha-redesign 의 보존/번복 판단 기준>
 
 ### ER 다이어그램
 

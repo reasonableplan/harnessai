@@ -38,13 +38,14 @@ description: 경로 → 컨테이너 매핑, 사용자 흐름
 <!-- /AI-WRITABLE -->
 
 ### 경로 매핑
-| 경로 | 화면명 | 컨테이너 | Auth | 비고 |
-|------|--------|----------|:---:|------|
-| `/login` | 로그인 | `LoginContainer` | ❌ | |
-| `/register` | 회원가입 | `RegisterContainer` | ❌ | |
-| `/` | 홈 | `HomeContainer` | ✅ | |
-| `/<resource>` | <목록> | `<Container>` | ✅ | |
-| `/<resource>/:id` | <상세> | `<Container>` | ✅ | |
+| 경로 | 화면명 | 컨테이너 | Auth | 주요 API | 비고 |
+|------|--------|----------|:---:|----------|------|
+| `<예: /login>` | <예: 로그인> | `<예: LoginContainer>` | ❌ | `POST /api/auth/login` | |
+| `<예: />` | <예: 홈> | `<예: HomeContainer>` | ✅ | `GET /api/<resource>` | |
+| `/<resource>/:id` | <상세> | `<Container>` | ✅ | `GET /api/<resource>/{id}` | |
+
+> 주요 API 는 `interface.http` 에 선언된 **`METHOD /path`** 표기 그대로 —
+> commit 시 cross-section 검증이 선언 여부를 대조한다. Auth 칸 공백도 검증 대상.
 
 ### 사용자 흐름
 
@@ -67,6 +68,14 @@ description: 경로 → 컨테이너 매핑, 사용자 흐름
 - 403 → toast "권한이 없습니다"
 - 404 → NotFound 화면 또는 toast
 - 5xx → toast "잠시 후 다시 시도"
+
+### 빈 상태 / 첫 사용자 경험
+
+> 가장 흔한 설계 누락 — 정하지 않으면 코더가 추정한다.
+
+- 목록이 비었을 때: <예: 일러스트 + "첫 ~를 추가해보세요" CTA / 단순 안내 문구>
+- 첫 로그인 직후 화면: <예: 온보딩 1장 / 빈 홈 + 가이드 / 샘플 데이터 시드>
+- 검색/필터 결과 0건: <예: "조건에 맞는 항목 없음" + 필터 초기화 버튼>
 
 ### 반응형 / 접근성
 - 모바일 우선 / 데스크탑 우선: `<정책>`

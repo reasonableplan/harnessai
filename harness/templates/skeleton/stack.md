@@ -12,6 +12,7 @@ description: 런타임/프레임워크/라이브러리/빌드/테스트 도구
 
 ### 프레임워크 / 주요 라이브러리
 - <예: FastAPI, SQLAlchemy / React 19, Vite>
+- 선택 근거: <왜 이 조합인가 — /ha-redesign 의 보존/번복 판단 기준이 된다>
 
 ### 빌드 / 패키지 관리
 - <예: uv / pnpm / cargo>

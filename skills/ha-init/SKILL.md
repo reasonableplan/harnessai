@@ -241,6 +241,20 @@ python ~/.claude/skills/ha-init/run.py write \
 
 기존 `docs/harness-plan.md` 또는 `docs/skeleton.md` 가 있으면 자동 백업 (`.backup-*`).
 
+**`axis_warnings` 확인**: write 출력 JSON 의 `axis_warnings` 가 비어있지 않으면
+(예: monetization=payment 인데 data_sensitivity=none) 사용자에게 보여주고 해당 축을
+재질문한다. 모순을 인지하고 그대로 두는 것도 허용 (의도적 선택 — 그 사실을 기록).
+
+### 6.5. conventions.md 확인 (권위 1순위 문서)
+
+모든 에이전트의 권위 순서 1위가 `docs/conventions.md` 인데, 파이프라인에 이 문서를
+만들어 주는 단계가 없었다 — 여기서 확인한다:
+- **이미 있으면**: 통과.
+- **기존 코드베이스가 있으면**: `/code-hijack` 으로 시니어 스타일 추출을 제안.
+- **신규 프로젝트면**: AskUserQuestion — "선호하는 코드 스타일이 있나요?" → 답을 바탕으로
+  최소 스텁 생성 (네이밍 / 에러 패턴 / 상태관리 전략 3~5줄). "없음" 이면 skip
+  (프로파일 guidelines 만으로 진행 — 권위 공석을 인지한 선택).
+
 ### 7. 다음 단계 안내
 
 출력 예시:
