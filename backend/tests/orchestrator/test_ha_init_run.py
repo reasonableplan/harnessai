@@ -8,11 +8,14 @@ subprocess 방식으로 run.py 를 직접 실행 — test_ha_design_run.py 패�
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
 import sys
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -117,3 +120,50 @@ def test_write_rejects_unknown_external_atom(tmp_path: Path) -> None:
     assert "unknown atom" in result.stderr.lower() or "unknown" in result.stderr, (
         f"stderr 에 'unknown atom' 메시지 없음: {result.stderr}"
     )
+
+
+# ── 6축 모순 결정론 체크 (design backlog D) ─────────────────────────
+
+
+_REPO_RUN_PY = _HARNESS_HOME / "skills" / "ha-init" / "run.py"
+
+
+@pytest.fixture(scope="module")
+def ha_init_module() -> ModuleType:
+    """repo 의 ha-init/run.py 를 모듈로 로드 (_axis_warnings 단위 테스트용)."""
+    loader = SourceFileLoader("ha_init_run_axes", str(_REPO_RUN_PY))
+    spec = importlib.util.spec_from_loader("ha_init_run_axes", loader)
+    assert spec is not None
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["ha_init_run_axes"] = mod
+    loader.exec_module(mod)
+    return mod
+
+
+def _axes(**kw):
+    base = dict(
+        user_scale="small", data_sensitivity="none", team_size="solo",
+        availability="standard", monetization="none", lifecycle="mvp",
+    )
+    base.update(kw)
+    return SimpleNamespace(**base)
+
+
+def test_axis_warning_payment_without_sensitivity(ha_init_module) -> None:
+    warnings = ha_init_module._axis_warnings(_axes(monetization="payment"))
+    assert len(warnings) == 1
+    assert "data_sensitivity" in warnings[0]
+
+
+def test_axis_warning_high_availability_poc(ha_init_module) -> None:
+    warnings = ha_init_module._axis_warnings(
+        _axes(availability="high", lifecycle="poc")
+    )
+    assert len(warnings) == 1
+
+
+def test_axis_no_warning_for_consistent_answers(ha_init_module) -> None:
+    assert ha_init_module._axis_warnings(_axes()) == []
+    assert ha_init_module._axis_warnings(
+        _axes(monetization="payment", data_sensitivity="payment")
+    ) == []

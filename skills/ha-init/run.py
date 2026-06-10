@@ -123,6 +123,28 @@ def cmd_detect(args: argparse.Namespace) -> int:
 # ── write 서브커맨드 ──────────────────────────────────────────────────
 
 
+def _axis_warnings(axes) -> list[str]:
+    """6축 답변 간 모순 감지 (design backlog D) — advisory.
+
+    모순 조합이 그대로 통과하면 보안 섹션(threat_model/audit_log)이 비활성된 채
+    결제 앱이 설계되는 식의 구멍이 생긴다. 차단하지 않고 경고 — SKILL 이
+    사용자에게 재질문하도록 안내한다.
+    """
+    warnings: list[str] = []
+    if axes.monetization in ("payment", "subscription") and axes.data_sensitivity == "none":
+        warnings.append(
+            f"monetization={axes.monetization} 인데 data_sensitivity=none — "
+            "결제/구독 정보는 최소 pii 취급 권장. 그대로 두면 threat_model/audit_log "
+            "등 보안 섹션이 비활성될 수 있습니다."
+        )
+    if axes.availability == "high" and axes.lifecycle == "poc":
+        warnings.append(
+            "availability=high 인데 lifecycle=poc — PoC 에 99.9%+ 가용성 요구는 "
+            "모순일 수 있습니다 (runbook/slo 섹션 과활성)."
+        )
+    return warnings
+
+
 def cmd_write(args: argparse.Namespace) -> int:
     project = Path(args.project).resolve()
     if not project.exists():
@@ -188,6 +210,10 @@ def cmd_write(args: argparse.Namespace) -> int:
         monetization=args.monetization,
         lifecycle=args.lifecycle,
     )
+
+    axis_warnings = _axis_warnings(axes)
+    for w in axis_warnings:
+        print(f"[WARN] 6축 모순: {w}", file=sys.stderr)
 
     # included 결정 — 명시 vs auto (Phase 2-b-4)
     included_raw = args.included.strip()
@@ -359,6 +385,7 @@ def cmd_write(args: argparse.Namespace) -> int:
         "project": str(project),
         "skeleton_path": str(out_skeleton),
         "plan_path": str(out_plan),
+        "axis_warnings": axis_warnings,
         "included_sections": ordered_included,
         "profiles": [
             {
