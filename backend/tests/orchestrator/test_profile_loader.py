@@ -244,8 +244,14 @@ def test_cyclic_extends_raises(tmp_path: Path) -> None:
         loader.load("a")
 
 
-def test_missing_extends_parent_falls_through_to_base(tmp_path: Path) -> None:
-    """extends 가 존재하지 않는 부모를 가리키면 조용히 _base로 폴백."""
+def test_missing_extends_parent_falls_through_to_base(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """extends 가 존재하지 않는 부모를 가리키면 _base 로 폴백 + stderr 경고.
+
+    폴백 자체는 유지하되 조용히 넘어가면 부모의 whitelist/toolchain 누락이
+    다운스트림 보안 검사 false-negative 로 이어진다 (review H3) — 경고 필수.
+    """
     harness = tmp_path / "harness"
     _write_base(harness / "profiles", runtime=["base_only"])
     _write_profile(
@@ -259,6 +265,9 @@ def test_missing_extends_parent_falls_through_to_base(tmp_path: Path) -> None:
     p = loader.load("orphan")
     assert "base_only" in p.whitelist.runtime
     assert "orphan_dep" in p.whitelist.runtime
+    err = capsys.readouterr().err
+    assert "[WARN]" in err
+    assert "ghost" in err
 
 
 # ── components 병합 ───────────────────────────────────────────────────

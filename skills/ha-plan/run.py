@@ -26,7 +26,11 @@ from utils import (  # noqa: E402
 # These are available because _ha_shared/utils.py already inserts backend/ into sys.path.
 from src.orchestrator.agent_matching import match_task_to_agent  # noqa: E402
 from src.orchestrator.config import load_agents_config  # noqa: E402
-from src.orchestrator.profile_loader import ProfileLoader, find_consistency_violations  # noqa: E402
+from src.orchestrator.profile_loader import (  # noqa: E402
+    ProfileLoader,
+    ProfileNotFoundError,
+    find_consistency_violations,
+)
 from src.orchestrator.skeleton_hash import check_skeleton_hash  # noqa: E402
 from src.orchestrator.tasks_schema import SchemaViolation, validate_tasks_md  # noqa: E402
 
@@ -241,7 +245,10 @@ def cmd_commit(args: argparse.Namespace) -> int:
         profiles = get_active_profiles(plan, plan_path.parent.parent)
         loader = ProfileLoader(project_dir=plan_path.parent.parent)
         active_has_keys = loader.compute_has_keys(profiles, plan.scale_axes)
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, ValueError, KeyError, ProfileNotFoundError) as exc:
+        # Expected load failures only — anything else must propagate. A blind
+        # except here made the agent-mismatch gate pass vacuously on corrupt
+        # agents.yaml (review H4: fail-open).
         info(f"[WARN] agent mismatch 검증 건너뜀 — 프로파일 로드 실패: {exc}")
         active_has_keys = frozenset()
         profiles = []
@@ -321,17 +328,28 @@ def cmd_commit(args: argparse.Namespace) -> int:
         f"생성: {plan.last_activity}\n\n"
         f"{args.tasks_content.strip()}\n"
     )
-    tasks_path.write_text(tasks_md, encoding="utf-8")
 
-    # skeleton 의 tasks 섹션 동기화
-    skel_text = skel_path.read_text(encoding="utf-8")
+    # skeleton 의 tasks 섹션 동기화 — read first so a missing/corrupt skeleton
+    # aborts before tasks.md is written (review H1: no partial state).
+    try:
+        skel_text = skel_path.read_text(encoding="utf-8")
+    except OSError as e:
+        info(f"[FAIL] skeleton.md 읽기 실패 — commit 중단: {e}")
+        return 1
+    # Lambda replacement: tasks_content is LLM-generated and may contain
+    # literal "\1"/"\g<...>" sequences that re.sub would treat as group refs.
     new_skel = re.sub(
         r"(## \d+\. 태스크 분해\n)(.*?)(?=^## \d+\.|\Z)",
-        rf"\1\n{args.tasks_content.strip()}\n\n",
+        lambda m: f"{m.group(1)}\n{args.tasks_content.strip()}\n\n",
         skel_text, count=1, flags=re.DOTALL | re.MULTILINE,
     )
-    if new_skel != skel_text:
-        skel_path.write_text(new_skel, encoding="utf-8")
+    try:
+        tasks_path.write_text(tasks_md, encoding="utf-8")
+        if new_skel != skel_text:
+            skel_path.write_text(new_skel, encoding="utf-8")
+    except OSError as e:
+        info(f"[FAIL] tasks.md/skeleton.md 쓰기 실패 — 상태 전이 중단: {e}")
+        return 1
 
     # 상태 전이
     transition(plan, "planned", completed_step="ha-plan")

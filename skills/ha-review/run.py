@@ -454,9 +454,10 @@ def _extract_diff(project: Path) -> str:
         out = subprocess.run(
             ["git", "diff", "main...HEAD"], cwd=str(project),
             capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=60,
         )
         diff = out.stdout if out.returncode == 0 else ""
-    except FileNotFoundError:
+    except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
     if not diff:
@@ -464,9 +465,10 @@ def _extract_diff(project: Path) -> str:
             out = subprocess.run(
                 ["git", "diff", "HEAD"], cwd=str(project),
                 capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=60,
             )
             diff = out.stdout
-        except FileNotFoundError:
+        except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
 
     return diff

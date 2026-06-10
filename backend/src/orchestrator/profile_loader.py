@@ -14,6 +14,7 @@ See design doc §3 (profile system spec) and §11 (migration plan).
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -262,7 +263,15 @@ class ProfileLoader:
             try:
                 parent_path = self._resolve_profile_path(parent_id)
             except ProfileNotFoundError:
-                # Parent not found — break to _base
+                # Parent not found — fall back to _base, but loudly: silently
+                # dropping the parent strips its whitelist/toolchain and causes
+                # false-negative security checks downstream (review H3).
+                print(
+                    f"[WARN] profile '{cur.get('id', '?')}' extends '{parent_id}' "
+                    "— 부모 프로파일을 찾지 못해 _base 로 폴백합니다. "
+                    "부모의 whitelist/toolchain 이 누락된 상태입니다.",
+                    file=sys.stderr,
+                )
                 break
             parent_data, _ = self._parse_file(parent_path)
             chain.append(parent_data)

@@ -285,11 +285,17 @@ def cmd_write(args: argparse.Namespace) -> int:
         return 1
 
     out_skeleton = docs_dir / "skeleton.md"
-    if out_skeleton.exists() and not args.overwrite:
-        backup = docs_dir / f".backup-skeleton-{_now_tag()}.md"
-        backup.write_text(out_skeleton.read_text(encoding="utf-8"), encoding="utf-8")
-        print(f"[backup] 기존 skeleton.md → {backup.name}", file=sys.stderr)
-    out_skeleton.write_text(skeleton_text, encoding="utf-8")
+    try:
+        if out_skeleton.exists() and not args.overwrite:
+            backup = docs_dir / f".backup-skeleton-{_now_tag()}.md"
+            backup.write_text(out_skeleton.read_text(encoding="utf-8"), encoding="utf-8")
+            print(f"[backup] 기존 skeleton.md → {backup.name}", file=sys.stderr)
+        out_skeleton.write_text(skeleton_text, encoding="utf-8")
+    except OSError as e:
+        # Abort before plan creation — a plan must never reference a skeleton
+        # that was not actually written (review H2).
+        print(f"[FAIL] skeleton.md 쓰기 실패 — plan 생성 중단: {e}", file=sys.stderr)
+        return 1
 
     # plan 작성 (axes 는 위에서 이미 만들어짐)
     pm = PlanManager()
@@ -339,10 +345,14 @@ def cmd_write(args: argparse.Namespace) -> int:
     )
 
     out_plan = docs_dir / "harness-plan.md"
-    if out_plan.exists() and not args.overwrite:
-        backup = docs_dir / f".backup-harness-plan-{_now_tag()}.md"
-        backup.write_text(out_plan.read_text(encoding="utf-8"), encoding="utf-8")
-        print(f"[backup] 기존 harness-plan.md → {backup.name}", file=sys.stderr)
+    try:
+        if out_plan.exists() and not args.overwrite:
+            backup = docs_dir / f".backup-harness-plan-{_now_tag()}.md"
+            backup.write_text(out_plan.read_text(encoding="utf-8"), encoding="utf-8")
+            print(f"[backup] 기존 harness-plan.md → {backup.name}", file=sys.stderr)
+    except OSError as e:
+        print(f"[FAIL] harness-plan.md 백업 실패 — plan 저장 중단: {e}", file=sys.stderr)
+        return 1
     pm.save(plan, out_plan)
 
     print(json.dumps({
