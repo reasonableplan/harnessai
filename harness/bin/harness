@@ -71,6 +71,8 @@ STANDARD_SECTION_IDS = {
     "test_strategy", "user_journey", "authorization_matrix", "ci_cd", "external_deps",
     # 모바일 (3)
     "mobile.navigation", "mobile.build_config", "mobile.lifecycle",
+    # 웹/환경 (3, v0.7.0) — context.SECTION_TITLES 와 동기 유지
+    "environments", "error_ux", "rate_limiting",
 }
 
 ALLOWED_GSTACK_MODES = {"auto", "manual", "prompt"}
@@ -1367,6 +1369,8 @@ def validate_all(report: Report) -> None:
     fragments_dir = HARNESS_ROOT / "templates" / "skeleton"
     if fragments_dir.exists():
         for f in sorted(fragments_dir.glob("*.md")):
+            if f.name.startswith("_"):
+                continue  # `_` prefix = fragment 아닌 메타 문서 (_README.md 등)
             validate_fragment(f, report)
     else:
         report.error("templates/skeleton/", "디렉토리 없음")
