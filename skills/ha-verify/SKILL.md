@@ -38,6 +38,15 @@ python ~/.claude/harness/bin/harness integrity --project "$PROJECT_ROOT"
 - **실패 (exit ≠ 0) 시 중단** — `/ha-design` 으로 복귀해 skeleton 보완 필요
 - skeleton.md 가 없으면 WARN 만 하고 통과 (프로젝트 초기 상태)
 
+### 1.7. 가짜 FAIL 가드 — `test_dir_warning`
+
+`prepare` 출력의 각 profile 에 `test_dir_warning` 이 있으면 **toolchain 을 그대로 실행하지 말 것**:
+toolchain.test 가 가리키는 테스트 디렉토리가 cwd 에 없다 (예: 루트에 `tests/` 를 둔 프로젝트가
+profile path `backend/` 로 오매칭). 그대로 돌리면 'no tests ran' 가짜 FAIL 이 verify_history 에 남는다.
+- 조치: `harness-plan.md` 의 `profiles[].path` 를 실제 코드 위치로 수정 후 prepare 재실행,
+  또는 경고의 힌트 (상위 경로) 가 맞으면 그 cwd 에서 실행.
+- 가짜 FAIL 이 이미 기록됐다면: 환경 문제이므로 후속 record 는 `--no-rework` 로.
+
 ### 2. 명령 실행 (Bash)
 프로파일 순서대로:
 ```bash

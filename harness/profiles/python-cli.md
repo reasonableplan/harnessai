@@ -6,7 +6,10 @@ extends: _base
 version: 1
 maintainer: harness-core
 
-paths: [".", "backend/", "cli/", "packages/cli/", "apps/cli/"]
+# NOTE: "backend/" 제외 — CLI 가 backend/ 에서 매칭되면 plan 의 profile path 가
+# backend/ 로 기록되고 ha-verify cwd 가 어긋나 (루트 tests/ 프로젝트에서) 가짜
+# FAIL 이 verify_history 에 남는다. backend/ 는 서버 프로파일 (fastapi/nestjs) 영역.
+paths: [".", "cli/", "packages/cli/", "apps/cli/", "tools/"]
 detect:
   files: [pyproject.toml]
   contains_any:

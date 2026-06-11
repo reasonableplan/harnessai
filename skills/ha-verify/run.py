@@ -164,6 +164,12 @@ def cmd_prepare(args: argparse.Namespace) -> int:
                 },
                 "guideline_paths": [str(g) for g in resolve_guideline_paths(p.id)],
                 "platform_warnings": _check_platform_warnings(p.id, current_platform),
+                "test_dir_warning": _missing_test_dir_warning(
+                    (project / plan.profiles[i].path)
+                    if i < len(plan.profiles) and plan.profiles[i].path != "."
+                    else project,
+                    p.toolchain.test,
+                ),
             }
             for i, p in enumerate(profiles)
         ],
@@ -178,8 +184,39 @@ def cmd_prepare(args: argparse.Namespace) -> int:
             "skeleton_missing": hash_check.skeleton_missing,
         },
     }
+    for prof in output["profiles"]:
+        if prof.get("test_dir_warning"):
+            info(f"[WARN] {prof['id']}: {prof['test_dir_warning']}")
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0
+
+
+def _missing_test_dir_warning(cwd: Path, test_cmd: str | None) -> str | None:
+    """toolchain.test 가 가리키는 테스트 디렉토리가 cwd 에 없으면 경고 문자열.
+
+    profile 의 detect path 가 잘못 매칭되면 (예: 루트에 tests/ 를 둔 CLI 프로젝트가
+    backend/ 에서 매칭) cwd 에 tests/ 가 없어 'no tests ran' 류 **가짜 FAIL** 이
+    verify_history 에 남는다 — 실행 전에 결정론으로 표면화한다.
+    """
+    if not test_cmd:
+        return None
+    m = re.search(r"(?:^|[\s=])((?:[\w.-]+/)*tests?)/", test_cmd)
+    if m is None:
+        return None
+    rel = m.group(1)
+    if (cwd / rel).exists():
+        return None
+    parent_candidate = cwd.parent / rel
+    hint = (
+        f" (상위 {parent_candidate} 에는 존재 — plan 의 profile path 오매칭 가능성)"
+        if parent_candidate.exists()
+        else ""
+    )
+    return (
+        f"toolchain.test 의 '{rel}/' 디렉토리가 cwd({cwd}) 에 없습니다{hint}. "
+        "그대로 실행하면 가짜 FAIL 이 verify_history 에 남습니다 — "
+        "harness-plan.md 의 profiles[].path 를 수정하거나 올바른 cwd 에서 실행 후 record 하세요."
+    )
 
 
 def cmd_record(args: argparse.Namespace) -> int:
