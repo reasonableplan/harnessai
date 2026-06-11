@@ -303,27 +303,8 @@ python ~/.claude/skills/ha-log/run.py append \
 
 ## 모바일 프로젝트 사용 예시 (Flutter)
 
-**4단계 — `/ha-build` 로 태스크 구현**:
-
-- `/ha-plan` 완료 후 `tasks.md` 의 태스크를 순서대로 실행
-- Flutter 태스크 실행 예시:
-  ```bash
-  python ~/.claude/skills/ha-build/run.py prepare --task T-001
-  ```
-- `guideline_paths` 의 flutter 가이드라인 4개 읽은 후 구현 시작
-- 에이전트: `mobile_coder_flutter` — go_router + Riverpod + drift 컨벤션 준수
-
-**react-native-expo 의 경우**:
-- 에이전트: `mobile_coder_rn`
-- Expo SDK API 우선 사용 (react-native 직접 API 최소화)
-- `expo run:android` / `expo run:ios` 로 로컬 테스트
-
-**android-kotlin 의 경우**:
-- 에이전트: `mobile_coder_android`
-- MVVM + Hilt DI + Compose UI 패턴 준수
-- `./gradlew assembleDebug` 로 빌드 확인
-
-**ios-swift 의 경우**:
-- 에이전트: `mobile_coder_ios`
-- SwiftUI + Combine / async-await 패턴
-- Windows host 에서는 `swift build` dry-run 만 가능 (macOS CI 에서 전체 빌드)
+에이전트 매핑: flutter→`mobile_coder_flutter` (go_router+Riverpod+drift),
+react-native-expo→`mobile_coder_rn` (Expo SDK 우선, android/iOS 단일 T-NNN),
+android-kotlin→`mobile_coder_android` (MVVM+Hilt+Compose),
+ios-swift→`mobile_coder_ios` (SwiftUI — Windows 호스트는 `swift build` dry-run 만,
+전체 빌드는 macOS CI). guideline_paths 4파일 읽은 후 구현 시작.

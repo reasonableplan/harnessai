@@ -183,19 +183,14 @@ skeleton 에 `mobile.navigation` / `mobile.lifecycle` 섹션이 활성화되어 
 
 > Architect가 요청을 수용하면 다음 라운드에 `## Design Verdict: ACCEPT`로 응답한다.
 
-## 체크리스트 — 출력 전 확인
-- [ ] 모든 화면에 경로(route)가 정의되어 있는가?
-- [ ] 사용자 흐름에서 에러 케이스가 포함되어 있는가?
-- [ ] 상태 관리 전략이 conventions 와 일치하는가? (예: "Zustand only" 이면 TanStack Query 제안 금지)
-- [ ] 컴포넌트 트리에서 shadcn 기존 컴포넌트를 활용하고 있는가?
-- [ ] 디자인 가이드에 색상, 폰트, 반응형 기준이 정의되어 있는가?
-- [ ] Architect의 API 스키마와 화면의 데이터가 매핑되는가?
-- [ ] **각 화면의 route path + 레이아웃 + 인증 요구 + 사용 API + 구독 store 가 완비되었는가?**
-- [ ] **각 컴포넌트의 파일 경로 + props 타입 + 위치(per-feature vs shared) 가 완비되었는가?**
-- [ ] **각 store 의 state 필드 + action 시그니처 전체 목록이 명시되었는가?**
-- [ ] **"알아서", "적절히" 같은 모호한 표현이 없는가?**
-- [ ] **(react-vite / react-next 프로파일) 프론트엔드 디렉토리 구조 + 파일명 규칙이 skeleton 에 명시되었는가?**
-- [ ] **(react-vite / react-next 프로파일) 주요 파일 경로 예시 (containers/, shared/api/, layouts/ 등) 가 skeleton 에 기록되었는가?**
+## 출력 전 인변량 6 — 하나라도 어기면 reject
+
+1. **화면 완비**: 모든 화면 = route + 레이아웃 + 인증 요구 + 사용 API(Architect 스키마와 매핑) + 구독 store + 에러 케이스 흐름.
+2. **컴포넌트 완비**: 파일 경로 + props 타입 + 위치(per-feature vs shared) — shadcn 기존 컴포넌트 재사용 우선.
+3. **store 완비**: state 필드 + action 시그니처 전체 목록.
+4. **conventions 모순 0**: 상태 전략/UI 베이스가 conventions 와 충돌 금지 ("Zustand only" 면 TanStack 제안 금지).
+5. **디자인 가이드**: 색상·폰트·반응형 기준 정의 (디자인 레퍼런스 기반 — 직접 창작 금지).
+6. **(react 계열)** 디렉토리 구조 + 파일명 규칙 + 경로 예시 skeleton 명시. "알아서/적절히" 0회.
 
 
 ## 핸드오프 노트 (섹션 작성 후 — 사용자에게, skeleton 본문 밖에)

@@ -316,25 +316,8 @@ python ~/.claude/skills/ha-init/run.py write \
 
 ## 모바일 프로젝트 사용 예시 (Flutter)
 
-**1단계** — 빈 디렉토리에 `pubspec.yaml` 생성:
-```yaml
-name: my_flutter_app
-flutter:
-  sdk: flutter
-```
-
-**2단계** — `/ha-init` 호출:
-- `detect` 출력 JSON 의 `is_mobile: true` 확인
-- `guideline_paths` 4개 (navigation/state/storage/style) 모두 읽기
-- stderr 에 "[INFO] 모바일 프로젝트 감지: flutter" 안내 확인
-- 6축 답변 시 `data_sensitivity=pii` 면 audit_log/threat_model 자동 활성
-
-**react-native-expo 의 경우**:
-- `package.json` 에 `"expo"` 의존성 있으면 자동 감지
-- `mobile_coder_rn` 에이전트 사용 안내 확인
-- android / iOS 양쪽 빌드 고려해 `team_size` 답변 시 반영
-
-**android-kotlin / ios-swift 의 경우**:
-- `build.gradle.kts` / `Package.swift` 마커로 자동 감지
-- JAVA_HOME (android) / Xcode (ios) 사전 설치 필요
-- `platform_warnings` 출력으로 누락 도구 확인 가능 (`/ha-verify` 단계)
+detect 가 pubspec.yaml(flutter) / package.json "expo"(react-native-expo) /
+build.gradle.kts(android-kotlin) / Package.swift(ios-swift) 마커로 자동 감지 —
+`is_mobile: true` 확인 후 `guideline_paths` 4파일을 모두 읽고 진행.
+data_sensitivity=pii 면 audit_log/threat_model 자동 활성. android 는 JAVA_HOME,
+ios 는 Xcode 필요 (`platform_warnings` 로 누락 확인 — /ha-verify 단계).

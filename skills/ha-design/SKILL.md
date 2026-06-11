@@ -23,6 +23,20 @@ Claude 가 직접 Architect + Designer 두 역할을 순차로 수행 (subproces
 **출력**: `docs/skeleton.md` (채워진 상태)
 **다음**: `/ha-plan`
 
+## 실행 진행표 — 위에서 아래로, 단계 누락 금지
+
+| # | 단계 | 발동 조건 |
+|---|------|----------|
+| 1 | prepare 실행 → 컨텍스트/역할 프롬프트/shared-lessons 로드 (§1–2) | 항상 |
+| 2 | consistency_violations 사용자 승인 (§2.5) | 위반 있을 때 |
+| 3 | **Intent Echo** — 이해 재서술 + 모호점 1–3 질문 (§2.7 도입) | LOCKED 인터뷰 전 항상 |
+| 4 | HITL 인터뷰: 후보 3 → 사용자 선택 → **수용 기준 GWT** (§2.7 A–D) | locked_section_ids 있으면 |
+| 5 | 섹션별 채우기 + 보안 체크 (§3) | 항상 |
+| 6 | 사용자 게이트 — 워크스루 동반 (§3.5 표 참조) | 대상 섹션 완료 즉시 |
+| 7 | Designer↔Architect 충돌 검토 ≤3라운드 (§4) | view.* 활성 시 |
+| 8 | **commit 전 점검** — 모호어 스캔 + 적대적 자가비판 (§4.5) | 항상 |
+| 9 | commit + freeze (§5) → 다음 안내 + worklog (§6) | 항상 |
+
 ## 실행 순서
 
 ### 1. 사전 조건 + 컨텍스트 로드
@@ -220,144 +234,25 @@ LOCKED 섹션 채울 때마다:
 
 ### 3.5. 사용자 확인 gate (Human-in-the-Loop)
 
-다음 섹션은 완료 즉시 **AskUserQuestion 으로 사용자 확인을 받는다.**
+대상 섹션 완료 **즉시** AskUserQuestion. 공통 절차:
+1. 아래 표의 "보여줄 것" 제시 + **행동 워크스루** — 핵심 흐름 1–2개를 사용 장면 서사로
+   ("앱을 열면 <~>가 보이고, <~>를 누르면 <~>가 일어난다") — 구조 표 승인 ≠ 행동 확인이므로.
+2. 선택지: `승인` / `수정 요청` (Other 로 내용). 수정 요청 시 수정 후 재확인 (최대 2회 —
+   초과 시 해당 섹션 맨 아래 `<!-- TODO: ... -->` 기록 후 진행. `tasks`/`notes` 에는 금지).
+3. 게이트 결정 (승인/수정 + 이유) 은 ha-log 1줄 기록 — /ha-redesign 의 보존/번복 근거.
 
-**행동 워크스루 (구조 승인 → 사용 장면 승인)**: 게이트에서 표/다이어그램만 보여주지 말고,
-핵심 흐름 1~2개를 **사용 장면 서사**로 함께 제시 — "앱을 열면 <~>가 보이고, <~>를 누르면
-<~>가 일어나며, 실패하면 <~>로 표시됩니다." 사용자는 구조 표를 승인하며 동작을 머릿속으로
-상상하는데, 그 상상이 설계자의 의도와 다를 수 있다 — 서사는 불일치를 즉시 드러낸다.
+| 섹션 (included 일 때만) | 보여줄 것 | 질문 |
+|---|---|---|
+| `persistence` | Mermaid ER + 테이블/관계 요약 | "DB 스키마가 맞습니까?" |
+| `auth` | 방식·토큰 수명·저장 위치 (+FE/모바일: silent refresh·만료 UX·탭 동기화) | "인증/세션 전략이 맞습니까?" |
+| `interface.http` | 엔드포인트 표 (+rate limit 주요값) | "API 목록이 맞습니까? 빠진 것은?" |
+| `environments` | 환경 표 + CORS origin | "환경 분리 설정이 맞습니까?" |
+| `view.screens` | 화면 목록 + 라우트 + 접근 권한 | "화면 구조가 맞습니까?" |
+| `error_ux` | 유형별 표시 + retry + 바운더리 | "에러 UX 전략이 맞습니까?" |
+| `mobile.navigation` | 화면 + 탭/스택 + 딥링크 | "앱 화면 구조가 맞습니까?" |
+| `mobile.lifecycle` | 권한 매트릭스 + 상태 전환 | "권한/상태 전략이 맞습니까?" |
 
-**게이트 결정 기록**: 게이트에서 내린 선택 (승인/수정 + 이유) 은 ha-log 로 1줄 기록 —
-/ha-redesign 의 보존/번복 판단 근거가 된다.
-사용자가 "수정 요청" 선택 시 → 수정 후 재확인 (최대 2회). 2회 초과 시 해당 섹션 맨 아래에 `<!-- TODO: <미결 내용> -->` 주석으로 기록 후 진행. (`tasks`/`notes` 섹션에는 절대 쓰지 말 것)
-
-#### 백엔드 gate
-
-**`persistence` 완료 후** (included_sections 에 있을 때만 적용)
-```
-[확인 내용]
-- Mermaid ER 다이어그램 (작성한 것 그대로)
-- 테이블 수 / 주요 관계 요약
-
-[질문]
-"DB 스키마가 맞습니까? 컬럼이나 관계에서 수정할 부분이 있으면 알려주세요."
-
-[선택지]
-- 승인 — 다음 섹션으로 진행
-- 수정 요청 (Other 로 수정 내용 입력)
-```
-
-**`auth` 완료 후** (included_sections 에 있을 때만 적용)
-```
-[확인 내용]
-- 인증 방식 (JWT / 세션쿠키 / OAuth)
-- Access token 수명 + 저장 위치
-
-[프론트엔드/모바일 프로파일이 포함된 경우만 추가 확인]
-- Silent refresh 전략 (방식 + 동시 요청 처리)
-- 세션 만료 UX (만료 시 동작)
-- 탭 간 동기화 여부 (웹 only)
-
-[질문]
-"인증 방식과 세션 관리 전략이 맞습니까?"
-(백엔드 단독 프로젝트면 silent refresh / 탭 동기화 항목 생략)
-
-[선택지]
-- 승인
-- 수정 요청 (Other 로 수정 내용 입력)
-```
-
-**`interface.http` 완료 후** (included_sections 에 있을 때만 적용)
-```
-[확인 내용]
-- API 엔드포인트 표 (Method / Path / 인증 여부 / 간략 설명)
-- rate_limiting 섹션이 있으면 주요 제한값 함께 표시
-
-[질문]
-"API 목록이 맞습니까? 빠진 엔드포인트나 수정할 것이 있으면 알려주세요."
-
-[선택지]
-- 승인
-- 수정 요청 (Other 로 수정 내용 입력)
-```
-
-**`environments` 완료 후** (included_sections 에 있을 때만 적용)
-```
-[확인 내용]
-- 환경 목록 (dev / staging / prod)
-- 환경별 주요 설정 차이 표
-- CORS 허용 origin
-
-[질문]
-"환경 분리 설정이 맞습니까? 수정할 부분이 있으면 알려주세요."
-
-[선택지]
-- 승인
-- 수정 요청 (Other 로 수정 내용 입력)
-```
-
-#### 프론트엔드 gate
-
-**`view.screens` 완료 후** (included_sections 에 있을 때만 적용)
-```
-[확인 내용]
-- 화면 목록 + 라우트 구조
-- 각 화면의 접근 권한 (public / 인증 필요)
-
-[질문]
-"화면 목록과 라우트 구조가 맞습니까? 빠진 화면이나 수정할 것이 있으면 알려주세요."
-
-[선택지]
-- 승인
-- 수정 요청 (Other 로 수정 내용 입력)
-```
-
-**`error_ux` 완료 후** (included_sections 에 있을 때만 적용)
-```
-[확인 내용]
-- 에러 유형별 표시 방식 표
-- retry 전략
-- 에러 바운더리 범위
-
-[질문]
-"에러 처리 UX 전략이 맞습니까? 특정 에러를 다르게 처리할 것이 있으면 알려주세요."
-
-[선택지]
-- 승인
-- 수정 요청 (Other 로 수정 내용 입력)
-```
-
-#### 모바일 gate
-
-**`mobile.navigation` 완료 후** (included_sections 에 있을 때만 적용)
-```
-[확인 내용]
-- 화면 목록 + 탭/스택 구조
-- 딥링크 처리 여부
-
-[질문]
-"앱 화면 구조가 맞습니까? 수정할 부분이 있으면 알려주세요."
-
-[선택지]
-- 승인
-- 수정 요청 (Other 로 수정 내용 입력)
-```
-
-**`mobile.lifecycle` 완료 후** (included_sections 에 있을 때만 적용)
-```
-[확인 내용]
-- 권한 매트릭스 (권한명 / 사용처 / 요청 시점)
-- 앱 상태 전환 시 동작
-
-[질문]
-"앱 권한 요청과 상태 관리 전략이 맞습니까?"
-
-[선택지]
-- 승인
-- 수정 요청 (Other 로 수정 내용 입력)
-```
-
-gate 가 없는 섹션 (`errors`, `view.components`, `state.flow`, `core.logic`, `configuration`, `observability`, `deployment`) 은 자율 설계 후 바로 다음 섹션으로 진행.
+gate 없는 섹션 (`errors`, `view.components`, `state.flow`, `core.logic`, `configuration`, `observability`, `deployment`) 은 자율 설계 후 바로 진행.
 
 ---
 
@@ -375,23 +270,16 @@ Designer 섹션 (view.*) 작성 후, 그 화면이 요구하는 데이터/액션
 - commit 진행 + 다음 단계 안내에서 사용자에게 명시 ("미결 N개: …")
 - **에스컬레이션하지 않고** best-effort 로 진행 — 완성도보다 전진 우선
 
-### 4.5. 모호어 스캔 (사용자→AI 방향의 모호함 금지)
+### 4.5. commit 전 점검 — 모호어 스캔 + 적대적 자가비판
 
-commit 전에 requirements / 비즈니스 규칙 / core.logic 본문에서 미정의어를 스캔:
-`알아서 / 적절히 / 자동으로 / 등 / 필요시 / 적당히 / 나중에`
-발견 시 각각을 **구체 질문으로 변환**해 사용자에게 — "'자동으로 정렬'의 기준은?
-(최신순 / 이름순 / 사용빈도순)". Architect→Coder 방향의 모호함 금지 표와 같은 원칙을
-사용자 입력 방향에도 적용한다 — 미정의어는 코더의 추정이 되고, 추정이 곧 "의도와 다른 동작"이다.
+**① 모호어 스캔**: requirements / 비즈니스 규칙 / core.logic 본문에서
+`알아서 / 적절히 / 자동으로 / 등 / 필요시 / 적당히 / 나중에` 검색 → 발견 시 각각을
+**구체 질문으로 변환**해 사용자에게 ("'자동으로 정렬' 기준은? 최신순/이름순/빈도순").
+미정의어 = 코더의 추정 = "의도와 다른 동작". (Architect→Coder 모호함 금지의 사용자 방향 대칭.)
 
-### 4.7. 적대적 자가비판 (commit 전 1패스)
-
-commit 직전, 설계 전체를 적대적으로 자문:
-1. **"이 설계가 운영에서 깨지는 시나리오 3개"** 를 구체적으로 산출
-   (동시성 / 빈 데이터 / 권한 경계 / 외부 API 실패 / 세션 만료 중 작업 등)
-2. 각 시나리오마다 — skeleton 의 **어느 섹션이 이를 막는지** 확인
-3. 못 막으면: 해당 섹션 보완 또는 `<!-- TODO: ... -->` 인라인 기록 + 사용자에게 보고
-
-> 근거: 적대적 검증은 페르소나 기법 중 유일하게 효과가 검증된 패턴 (+13%) — 설계 게이트화.
+**② 적대적 자가비판**: "이 설계가 운영에서 깨지는 시나리오 3개" 를 구체 산출
+(동시성 / 빈 데이터 / 권한 경계 / 외부 API 실패 / 세션 만료 중 작업) → 각각
+**skeleton 의 어느 섹션이 막는지** 확인 → 못 막으면 섹션 보완 또는 `<!-- TODO -->` 기록 + 사용자 보고.
 
 ### 5. 저장 + 상태 전이
 
@@ -497,23 +385,7 @@ python ~/.claude/skills/ha-log/run.py append \
 
 ## 모바일 프로젝트 사용 예시 (Flutter)
 
-**2단계 — `/ha-design` 에서 skeleton 채우기**:
-
-- `/ha-init` 완료 후 `docs/skeleton.md` (빈 템플릿) 확인
-- `guideline_paths` 의 flutter/navigation.md, state.md, storage.md, style.md 모두 읽기
-- skeleton 의 `mobile.navigation` 섹션: go_router 기반 라우팅 구조 채움
-- skeleton 의 `state.flow` 섹션: Riverpod Provider 계층 + 상태 흐름 채움
-- skeleton 의 `persistence` 섹션 (data_sensitivity=pii 시 자동 포함): drift DB 스키마 + flutter_secure_storage 토큰 저장 방법 채움
-
-**react-native-expo 의 경우**:
-- `mobile.navigation`: Expo Router (파일 기반 라우팅) 구조
-- `state.flow`: Zustand store 설계
-- `persistence`: SecureStore (토큰) + AsyncStorage (비민감 캐시) 분리
-
-**android-kotlin 의 경우**:
-- `mobile.navigation`: Navigation Compose + NavGraph
-- `state.flow`: ViewModel + StateFlow (MVVM)
-
-**ios-swift 의 경우**:
-- `mobile.navigation`: NavigationStack (SwiftUI)
-- `state.flow`: @StateObject / @ObservableObject 패턴
+guideline_paths 4파일 (navigation/state/storage/style) 을 먼저 읽고 채운다 —
+flutter: go_router + Riverpod + drift / react-native-expo: Expo Router + Zustand + SecureStore /
+android-kotlin: Navigation Compose + StateFlow / ios-swift: NavigationStack + @Observable.
+`persistence` 는 시크릿 저장소 분리 (secure storage) 를 명시.

@@ -186,26 +186,15 @@ Designer가 `<design_conflicts>` 블록으로 API 추가 요청을 보내면:
 3. 타당하지 않으면 이유를 명시하고 대안을 제시한다
 4. 변경사항을 포함해 전체 설계를 다시 출력한다
 
-## 체크리스트 — 출력 전 확인
-- [ ] 모든 API 엔드포인트에 Request/Response 타입이 정의되어 있는가?
-- [ ] `persistence` 섹션에 Mermaid ER 다이어그램이 포함되어 있는가? (테이블 정의 앞)
-- [ ] DB 테이블 간 관계가 명확한가? (1:N, N:M 등)
-- [ ] 상태 전이 규칙이 모든 경우를 커버하는가?
-- [ ] 에러 코드가 모든 실패 케이스를 커버하는가?
-- [ ] camelCase/snake_case 규칙이 일관적인가?
-- [ ] 인증 흐름 (JWT access/refresh)이 정의되어 있는가?
-- [ ] **`auth` 섹션: silent refresh 전략 + 세션 만료 UX + 탭 동기화 여부 명시되었는가?**
-- [ ] **각 테이블의 모든 컬럼 (타입/NULL/UNIQUE/기본값/인덱스) 이 완비되었는가?**
-- [ ] **Enum 컬럼의 전체 값 리스트가 명시되었는가?**
-- [ ] **모든 FK 에 ondelete 정책이 명시되었는가?**
-- [ ] **인덱스 대상 컬럼이 구체 이름으로 나열되었는가? ("적절한" 금지)**
-- [ ] **"알아서", "적절히" 같은 모호한 표현이 없는가?**
-- [ ] **(fastapi 프로파일) 백엔드 레이아웃 (src/ vs flat) 결정 후 skeleton 에 명시되었는가?**
-- [ ] **(fastapi 프로파일) 주요 파일 경로 예시 (models/, api/endpoints/, services/ 등) 가 skeleton 에 기록되었는가?**
-- [ ] **(rate_limiting 섹션 있을 시) RATE_LIMIT_001 에러 코드가 errors 섹션에 추가되었는가?**
-- [ ] **(error_ux 섹션 있을 시) 백엔드 에러 코드 전체가 UI 동작과 1:1 매핑되었는가?**
-- [ ] **(environments 섹션 있을 시) prod CORS 에 와일드카드(`*`) 없는가?**
-- [ ] **각 gate 섹션 완료 후 사용자 확인 AskUserQuestion 을 실행했는가?**
+## 출력 전 인변량 7 — 하나라도 어기면 reject
+
+1. **DB 완비**: 모든 테이블 = 전 컬럼(타입/NULL/UNIQUE/기본값/인덱스) + FK ondelete + Enum 전체 값 + Mermaid ER(테이블 정의 앞).
+2. **API 완비**: 모든 엔드포인트 = Request/Response 스키마 + 에러 코드 매핑. 응답 camelCase / 내부 snake_case 일관.
+3. **auth 완비**: JWT access/refresh 흐름 + silent refresh 전략 + 세션 만료 UX + 탭 동기화 여부.
+4. **Exhaustive**: 상태 전이·에러 코드가 모든 케이스 커버 (error_ux 활성 시 코드↔UI 1:1, rate_limiting 활성 시 RATE_LIMIT_001 을 errors 에).
+5. **모호어 0**: "알아서/적절히/적절한" 0회 — Coder 가 추가 판단 없이 구현 가능한 수준.
+6. **(fastapi)** 레이아웃(src/ vs flat) + 주요 파일 경로 예시 skeleton 명시 / **(environments)** prod CORS 와일드카드 금지.
+7. **게이트 섹션마다 AskUserQuestion 완료** 후 다음 섹션 진행.
 
 
 ## 핸드오프 노트 (섹션 작성 후 — 사용자에게, skeleton 본문 밖에)

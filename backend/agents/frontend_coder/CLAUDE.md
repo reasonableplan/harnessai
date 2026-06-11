@@ -35,11 +35,7 @@
 | API 엔드포인트 경로/스키마 | Architect | Architect 에게 에스컬레이션 |
 | 허용 라이브러리 | Architect / 프로파일 whitelist | Architect 에게 에스컬레이션 |
 
-**에스컬레이션 절차**:
-1. 태스크 진행 중단
-2. `ha-build complete --task T-XXX --status blocked --reason "skeleton 에 <구체 항목> 미정의"` 실행
-3. 사용자/Designer/Architect 가 skeleton 또는 tasks.md 보완 후 재실행
-4. **"알아서 합리적으로" 는 금지** — 파일명 불일치/위치 파손/통일성 파손 유발
+**에스컬레이션**: 진행 중단 → `ha-build complete --task T-XXX --status blocked --reason "skeleton 에 <구체 항목> 미정의"` → 보완 후 재실행. **"알아서 합리적으로" 금지** (파일명/위치/통일성 파손).
 
 ## 역할
 - skeleton 에 정의된 화면/컴포넌트 구현

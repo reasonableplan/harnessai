@@ -29,11 +29,7 @@
 | 허용 라이브러리 | Architect / 프로파일 whitelist | Architect 에게 에스컬레이션 |
 | 코드 스타일 (BaseResponse 래퍼, CustomException 계층 등) | conventions.md | conventions 따름 |
 
-**에스컬레이션 절차**:
-1. 태스크 진행 중단
-2. `ha-build complete --task T-XXX --status blocked --reason "skeleton 에 <구체 항목> 미정의"` 실행
-3. 사용자/Architect/Designer 가 skeleton 또는 tasks.md 보완 후 재실행
-4. **"알아서 합리적으로" 는 금지** — 통일성 파손 + 롤백 비용 발생
+**에스컬레이션**: 진행 중단 → `ha-build complete --task T-XXX --status blocked --reason "skeleton 에 <구체 항목> 미정의"` → 보완 후 재실행. **"알아서 합리적으로" 금지** (통일성 파손).
 
 ## 역할
 - skeleton 에 정의된 DB 모델 구현 (프레임워크는 conventions 따름: SQLModel vs SQLAlchemy Column 등)
@@ -110,53 +106,12 @@ class ErrorResponse(BaseModel):
     details: dict | None = None
 ```
 
-## Auth 구현 원칙 (LESSON-022~024)
+## Auth 구현 (LESSON-022~027)
 
-skeleton의 auth 섹션이 불완전하거나 구식 패턴을 담고 있어도, 다음 원칙이 우선한다.
-
-### JWT 토큰 구조
-```python
-# access token — type + ver 두 claim 필수
-{"sub": str(user_id), "exp": expire, "type": "access", "ver": user.token_version}
-
-# refresh token
-{"sub": str(user_id), "exp": expire, "type": "refresh", "ver": user.token_version}
-```
-
-### get_current_user 검증 순서
-```python
-if payload.get("type") != "access":
-    raise TokenInvalidError
-if payload.get("ver") != user.token_version:   # logout 무효화 확인
-    raise TokenInvalidError
-```
-
-### User 모델 필수 필드
-```python
-token_version: int = Field(default=0, nullable=False)
-```
-
-### logout — no-op 절대 금지
-```python
-# ✅ 필수
-async def logout(self, *, db: AsyncSession, user: User) -> None:
-    user.token_version = (user.token_version or 0) + 1
-    db.add(user)
-    await db.commit()
-
-# ❌ 금지 — 탈취 토큰이 만료 전까지 영원히 유효해짐
-async def logout(self) -> None:
-    pass
-```
-
-### refresh endpoint — httponly 쿠키만
-```python
-# ✅ Cookie만 허용
-refresh_token_cookie: Annotated[str | None, Cookie(alias="refresh_token")] = None
-
-# ❌ body fallback 금지
-token = refresh_token_cookie or (body.refresh_token if body else None)
-```
+정본은 **skeleton 의 auth 섹션** — fragment 가 JWT `type`+`ver` claim 구조, `User.token_version`
+필드, logout 의 token_version 증가 (no-op 절대 금지), refresh 의 httponly 쿠키 전용 (body
+fallback 금지) 을 운반한다. **skeleton 그대로 구현**하라 — `ha-review` 의 auth-guard 훅이
+위반을 BLOCK 한다. skeleton 에 없는 auth 동작이 필요해지면 에스컬레이션 (자율 구현 금지).
 
 ---
 
