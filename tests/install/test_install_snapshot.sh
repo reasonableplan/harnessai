@@ -46,7 +46,8 @@ TOTAL_FILES=$(count_field "files" "$OUTPUT")
 assert "manifest exists" "[ -f '$MANIFEST' ]"
 assert "manifest is valid JSON" "python3 -m json.tool '$MANIFEST' >/dev/null 2>&1"
 assert "harness/bin/harness copied" "[ -f '$TARGET/harness/bin/harness' ]"
-assert "all 7 ha-* skills copied" "[ \$(ls -d '$TARGET'/skills/ha-* | wc -l) -eq 7 ]"
+EXPECTED_SKILLS=$(ls -d "$REPO_ROOT"/skills/ha-* | wc -l | tr -d ' ')
+assert "all $EXPECTED_SKILLS ha-* skills copied" "[ \$(ls -d '$TARGET'/skills/ha-* | wc -l) -eq $EXPECTED_SKILLS ]"
 assert "_ha_shared copied" "[ -f '$TARGET/skills/_ha_shared/utils.py' ]"
 assert "installed harness validate passes" "python3 '$TARGET/harness/bin/harness' validate >/dev/null 2>&1"
 assert "file count ≥ 40 (sanity)" "[ '$TOTAL_FILES' -ge 40 ]"
