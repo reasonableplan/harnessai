@@ -8,9 +8,9 @@ cmd_migrate_plan 의 핵심 로직 (plan 로드 → compute_active_sections → 
 
 from __future__ import annotations
 
-import json
+import contextlib
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from textwrap import dedent
 
@@ -29,9 +29,10 @@ from src.orchestrator.profile_loader import (
 )
 from src.orchestrator.skeleton_stale import (
     mark_skeleton_stale as do_mark_skeleton_stale,
+)
+from src.orchestrator.skeleton_stale import (
     preview_skeleton_stale as do_preview_skeleton_stale,
 )
-
 
 # ── 픽스처 헬퍼 ──────────────────────────────────────────────────────────
 
@@ -204,14 +205,10 @@ def run_migrate_logic(
 
     profiles = []
     for prof_ref in plan.profiles:
-        try:
+        with contextlib.suppress(Exception):
             profiles.append(loader.load(prof_ref.id))
-        except Exception:
-            pass
 
-    new_active, new_trace = loader.compute_active_sections(
-        plan.scale_axes, profiles, fragments_dir
-    )
+    new_active, new_trace = loader.compute_active_sections(plan.scale_axes, profiles, fragments_dir)
 
     current_included = set(plan.skeleton_sections.included)
     new_active_set = set(new_active)
@@ -265,7 +262,7 @@ def run_migrate_logic(
     # --apply: 백업 → plan 갱신 → 저장
     backup_path: str | None = None
     if not no_backup:
-        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         backup_name = f".backup-pre-migrate-{ts}.md"
         backup_file = plan_path.parent / backup_name
         backup_file.write_text(plan_path.read_text(encoding="utf-8"), encoding="utf-8")
@@ -286,7 +283,7 @@ def run_migrate_logic(
     if mark_skeleton_stale and removed_sections:
         skeleton_path = plan_path.parent / "skeleton.md"
         if skeleton_path.exists():
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             marked_ids, skel_backup = do_mark_skeleton_stale(
                 skeleton_path,
                 removed_sections,
@@ -721,9 +718,7 @@ def test_migrate_apply_with_mark_skeleton_stale_inserts_markers(
 
     # §2 HTTP API 헤딩 바로 다음 줄에 STALE 마커가 있어야 함
     lines = new_content.splitlines()
-    http_heading_idx = next(
-        i for i, ln in enumerate(lines) if re.match(r"^## 2\. HTTP API", ln)
-    )
+    http_heading_idx = next(i for i, ln in enumerate(lines) if re.match(r"^## 2\. HTTP API", ln))
     assert lines[http_heading_idx + 1].startswith("<!-- STALE:"), (
         f"STALE 마커가 헤딩 바로 다음 줄에 있어야 함. 실제: {lines[http_heading_idx + 1]!r}"
     )
@@ -819,6 +814,9 @@ def test_migrate_mark_skeleton_stale_idempotent(tmp_path: Path) -> None:
         no_backup=True,
         mark_skeleton_stale=True,
     )
+    # 2회차는 새로 마킹할 섹션이 없어야 멱등 (주석의 주장을 실제로 단언)
+    assert result2["skeleton_marked_sections"] == []
+
     content_after_second = (docs_dir / "skeleton.md").read_text(encoding="utf-8")
     stale_count_after_second = content_after_second.count("<!-- STALE:")
 

@@ -53,9 +53,7 @@ def test_every_fragment_name_matches_section_titles() -> None:
         )
 
 
-_BODY_HEADING_RE = re.compile(
-    r"^## \{\{section_number\}\}\.\s+(.+?)\s*$", re.MULTILINE
-)
+_BODY_HEADING_RE = re.compile(r"^## \{\{section_number\}\}\.\s+(.+?)\s*$", re.MULTILINE)
 
 
 def test_every_fragment_body_heading_matches_name() -> None:

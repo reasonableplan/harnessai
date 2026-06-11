@@ -57,7 +57,8 @@ def _args(rework: str, force: bool = False) -> SimpleNamespace:
 def _run_record(ha_verify, plan, args) -> int:
     with (
         patch.object(
-            ha_verify, "load_plan",
+            ha_verify,
+            "load_plan",
             return_value=(plan, Path("/fake/harness-plan.md"), Path("/fake")),
         ),
         patch.object(ha_verify, "assert_state"),
@@ -123,9 +124,7 @@ def test_missing_test_dir_warns_with_parent_hint(ha_verify, tmp_path) -> None:
 
 def test_existing_test_dir_no_warning(ha_verify, tmp_path) -> None:
     (tmp_path / "tests").mkdir()
-    assert ha_verify._missing_test_dir_warning(
-        tmp_path, "uv run pytest tests/ --rootdir=."
-    ) is None
+    assert ha_verify._missing_test_dir_warning(tmp_path, "uv run pytest tests/ --rootdir=.") is None
 
 
 def test_no_test_path_in_command_no_warning(ha_verify, tmp_path) -> None:

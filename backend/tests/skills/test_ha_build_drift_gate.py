@@ -69,9 +69,7 @@ def _patch_prepare(ha_build, monkeypatch, plan, tmp_path: Path) -> None:
 # ── skeleton drift 게이트 ────────────────────────────────────────────
 
 
-def test_prepare_blocks_on_skeleton_hash_mismatch(
-    ha_build, tmp_path, monkeypatch, capsys
-) -> None:
+def test_prepare_blocks_on_skeleton_hash_mismatch(ha_build, tmp_path, monkeypatch, capsys) -> None:
     """freeze 이후 외부 수정 (hash mismatch) → prepare BLOCK."""
     (tmp_path / "skeleton.md").write_text("## 1. 개요\n수정된 내용\n", encoding="utf-8")
     plan = _make_plan(skeleton_hash="deadbeef" * 8)  # 실제 hash 와 불일치
@@ -85,9 +83,7 @@ def test_prepare_blocks_on_skeleton_hash_mismatch(
     assert "hash mismatch" in (cap.out + cap.err)
 
 
-def test_prepare_proceeds_with_accept_flag(
-    ha_build, tmp_path, monkeypatch, capsys
-) -> None:
+def test_prepare_proceeds_with_accept_flag(ha_build, tmp_path, monkeypatch, capsys) -> None:
     """--accept-skeleton-drift → WARN 만 출력하고 게이트 통과."""
     (tmp_path / "skeleton.md").write_text("## 1. 개요\n수정된 내용\n", encoding="utf-8")
     plan = _make_plan(skeleton_hash="deadbeef" * 8)
@@ -104,9 +100,7 @@ def test_prepare_proceeds_with_accept_flag(
     assert "tasks.md 없음" in combined
 
 
-def test_prepare_skips_gate_for_legacy_plan(
-    ha_build, tmp_path, monkeypatch, capsys
-) -> None:
+def test_prepare_skips_gate_for_legacy_plan(ha_build, tmp_path, monkeypatch, capsys) -> None:
     """legacy plan (skeleton_hash 없음) → 비교 불가, 게이트 skip."""
     (tmp_path / "skeleton.md").write_text("## 1. 개요\n내용\n", encoding="utf-8")
     plan = _make_plan(skeleton_hash=None)
@@ -128,9 +122,7 @@ _TASKS_TABLE_HEADER = (
 )
 
 
-def test_built_transition_reports_skipped_tasks(
-    ha_build, tmp_path, monkeypatch, capsys
-) -> None:
+def test_built_transition_reports_skipped_tasks(ha_build, tmp_path, monkeypatch, capsys) -> None:
     """built 전이 시 skipped 태스크 목록이 경고 + 출력 JSON 에 노출된다."""
     plan = _make_plan(skeleton_hash=None)
     plan.pipeline.current_step = "building"
@@ -147,9 +139,11 @@ def test_built_transition_reports_skipped_tasks(
     monkeypatch.setattr(ha_build, "load_plan", lambda: (plan, plan_path, tmp_path))
     monkeypatch.setattr(ha_build, "save_plan", lambda p, pp: None)
     monkeypatch.setattr(ha_build, "validate_task_id", lambda tid: None)
-    monkeypatch.setattr(ha_build, "transition", lambda p, target, completed_step=None: setattr(
-        p.pipeline, "current_step", target
-    ))
+    monkeypatch.setattr(
+        ha_build,
+        "transition",
+        lambda p, target, completed_step=None: setattr(p.pipeline, "current_step", target),
+    )
 
     args = SimpleNamespace(
         task="T-001",

@@ -42,7 +42,8 @@ def test_mark_transitions_reviewed_to_shipped(ha_ship, capsys) -> None:
 
     with (
         patch.object(
-            ha_ship, "load_plan",
+            ha_ship,
+            "load_plan",
             return_value=(plan, Path("/fake/harness-plan.md"), Path("/fake")),
         ),
         patch.object(ha_ship, "assert_state") as mock_assert,

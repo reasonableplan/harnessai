@@ -54,14 +54,18 @@ def _patch_get_active_profiles(
 
 def _make_subprocess_mock(fail_cmds: set[str]):
     """지정 명령은 rc=1, 나머지는 rc=0 반환하는 subprocess.run 대체."""
+
     def _run(cmd, **kwargs):
         rc = 1 if cmd in fail_cmds else 0
         return CompletedProcess(args=cmd, returncode=rc, stdout=b"", stderr=b"")
+
     return _run
 
 
 def test_toolchain_gate_passes_when_all_commands_succeed(ha_build, tmp_path, monkeypatch) -> None:
-    _patch_get_active_profiles(ha_build, "python-cli", "cmd-test", "cmd-lint", "cmd-type", monkeypatch)
+    _patch_get_active_profiles(
+        ha_build, "python-cli", "cmd-test", "cmd-lint", "cmd-type", monkeypatch
+    )
     monkeypatch.setattr("subprocess.run", _make_subprocess_mock(set()))
     plan = _make_plan("python-cli", ".", "cmd-test", "cmd-lint", "cmd-type")
     failures = ha_build._run_toolchain_gate(tmp_path, plan)
@@ -69,7 +73,9 @@ def test_toolchain_gate_passes_when_all_commands_succeed(ha_build, tmp_path, mon
 
 
 def test_toolchain_gate_reports_failing_test(ha_build, tmp_path, monkeypatch) -> None:
-    _patch_get_active_profiles(ha_build, "python-cli", "cmd-test", "cmd-lint", "cmd-type", monkeypatch)
+    _patch_get_active_profiles(
+        ha_build, "python-cli", "cmd-test", "cmd-lint", "cmd-type", monkeypatch
+    )
     monkeypatch.setattr("subprocess.run", _make_subprocess_mock({"cmd-test"}))
     plan = _make_plan("python-cli", ".", "cmd-test", "cmd-lint", "cmd-type")
     failures = ha_build._run_toolchain_gate(tmp_path, plan)
@@ -182,9 +188,11 @@ def test_detect_no_tests_signal_zero_passed_with_failures_false(ha_build) -> Non
 
 def _make_subprocess_mock_with_output(stdout_map: dict[str, str]):
     """명령별 stdout 을 반환하는 subprocess.run 대체 (항상 rc=0)."""
+
     def _run(cmd, **kwargs):
         stdout = stdout_map.get(cmd, "all good")
         return CompletedProcess(args=cmd, returncode=0, stdout=stdout, stderr="")
+
     return _run
 
 
@@ -205,7 +213,9 @@ def test_toolchain_gate_warns_on_no_tests_signal(ha_build, tmp_path, monkeypatch
     assert "LESSON-021 강화" in captured.out or "LESSON-021 강화" in captured.err
 
 
-def test_toolchain_gate_no_warn_on_normal_test_output(ha_build, tmp_path, monkeypatch, capsys) -> None:
+def test_toolchain_gate_no_warn_on_normal_test_output(
+    ha_build, tmp_path, monkeypatch, capsys
+) -> None:
     """정상 test 출력 → WARN 없음, failures 비어있음."""
     _patch_get_active_profiles(ha_build, "python-cli", "cmd-test", "cmd-lint", None, monkeypatch)
     mock = _make_subprocess_mock_with_output({"cmd-test": "42 passed in 1.23s"})

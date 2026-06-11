@@ -970,7 +970,9 @@ def _make_tasks_md(tmp_path: Path, rows: list[tuple[str, str]]) -> Path:
         "|-------|----------------|---------|-------------------|------------|\n",
     ]
     for tid, status in rows:
-        lines.append(f"| {tid:<5} | backend_coder  |         | some work         | {status:<10} |\n")
+        lines.append(
+            f"| {tid:<5} | backend_coder  |         | some work         | {status:<10} |\n"
+        )
     path = tmp_path / "tasks.md"
     path.write_text("".join(lines), encoding="utf-8")
     return path
@@ -991,10 +993,15 @@ def test_mark_for_rebuild_transitions_done_tasks(tmp_path: Path) -> None:
     assert "needs_rebuild" in text
     # T-001, T-003 → needs_rebuild; T-002 → pending 유지
     import re
-    rows = {m.group(1): m.group(5).strip() for m in
-            __import__("re").finditer(
-                r"^\|\s*(T-\d+)\s*\|\s*(\w+)\s*\|\s*([^|]*)\|\s*([^|]*)\|\s*([^|]+)\|\s*$",
-                text, re.MULTILINE)}
+
+    rows = {
+        m.group(1): m.group(5).strip()
+        for m in __import__("re").finditer(
+            r"^\|\s*(T-\d+)\s*\|\s*(\w+)\s*\|\s*([^|]*)\|\s*([^|]*)\|\s*([^|]+)\|\s*$",
+            text,
+            re.MULTILINE,
+        )
+    }
     assert rows["T-001"] == "needs_rebuild"
     assert rows["T-002"] == "pending"
     assert rows["T-003"] == "needs_rebuild"

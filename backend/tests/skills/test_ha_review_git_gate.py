@@ -14,8 +14,6 @@ Fix: cmd_prepare 시작부에서 git rev-parse --git-dir 로 git repo 게이트 
 from __future__ import annotations
 
 import importlib.util
-import json
-import subprocess
 import sys
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
@@ -66,9 +64,11 @@ def test_check_git_repo_exits_2_when_git_not_installed(
     ha_review: ModuleType, tmp_path: Path
 ) -> None:
     """git 명령 미설치 (FileNotFoundError) → SystemExit(2)."""
-    with patch("subprocess.run", side_effect=FileNotFoundError("git not found")):
-        with pytest.raises(SystemExit) as exc_info:
-            ha_review._check_git_repo(tmp_path)
+    with (
+        patch("subprocess.run", side_effect=FileNotFoundError("git not found")),
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        ha_review._check_git_repo(tmp_path)
     assert exc_info.value.code == 2
 
 
@@ -76,9 +76,11 @@ def test_check_git_repo_git_not_installed_message(
     ha_review: ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture
 ) -> None:
     """git 미설치 시 에러 메시지에 '미설치' 포함."""
-    with patch("subprocess.run", side_effect=FileNotFoundError("git not found")):
-        with pytest.raises(SystemExit):
-            ha_review._check_git_repo(tmp_path)
+    with (
+        patch("subprocess.run", side_effect=FileNotFoundError("git not found")),
+        pytest.raises(SystemExit),
+    ):
+        ha_review._check_git_repo(tmp_path)
     captured = capsys.readouterr()
     assert "미설치" in captured.err or "미설치" in captured.out
 
@@ -92,9 +94,7 @@ def test_check_git_repo_passes_in_git_repo(ha_review: ModuleType) -> None:
 # ── cmd_prepare 통합: not-git 이면 gate 에서 막힘 ─────────────────────
 
 
-def test_cmd_prepare_blocked_on_non_git_project(
-    ha_review: ModuleType, tmp_path: Path
-) -> None:
+def test_cmd_prepare_blocked_on_non_git_project(ha_review: ModuleType, tmp_path: Path) -> None:
     """not-git 프로젝트에서 cmd_prepare → exit 2 (gate before any diff logic)."""
     # harness-plan.md + minimal project 구조
     docs = tmp_path / "docs"
@@ -121,7 +121,9 @@ redesign_history: []
     mock_plan.profiles = []
 
     with (
-        patch.object(ha_review, "load_plan", return_value=(mock_plan, docs / "harness-plan.md", tmp_path)),
+        patch.object(
+            ha_review, "load_plan", return_value=(mock_plan, docs / "harness-plan.md", tmp_path)
+        ),
         patch.object(ha_review, "assert_state"),  # state assertion 통과
         pytest.raises(SystemExit) as exc_info,
     ):

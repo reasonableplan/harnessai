@@ -51,6 +51,7 @@ def _make_args(
     lessons_path: str,
 ) -> object:
     """argparse.Namespace 와 동일한 duck-type 객체."""
+
     class _Args:
         pass
 
@@ -85,6 +86,7 @@ def test_extract_lesson_appends_to_pending_section(
         captured_output.append(data)
 
     import builtins
+
     original_print = builtins.print
     builtins.print = fake_print  # type: ignore[assignment]
     try:
@@ -143,6 +145,7 @@ def test_extract_lesson_appends_to_existing_pending(
         captured_output.append(data)
 
     import builtins
+
     original_print = builtins.print
     builtins.print = fake_print  # type: ignore[assignment]
     try:
@@ -174,17 +177,12 @@ def test_extract_lesson_appends_to_existing_pending(
 # ── 테스트 3: ID 자동 증가 (max+1) ──────────────────────────────────
 
 
-def test_extract_lesson_id_auto_increments(
-    ha_review: ModuleType, tmp_path: Path
-) -> None:
+def test_extract_lesson_id_auto_increments(ha_review: ModuleType, tmp_path: Path) -> None:
     """기존 LESSON-001 ~ LESSON-014 있는 파일 → 새 LESSON-015 부여."""
     lines = ["# Shared Lessons\n\n"]
     for i in range(1, 15):
         lines.append(
-            f"## LESSON-{i:03d}: 레슨 {i}\n\n"
-            "**문제**: 문제.\n\n"
-            "**규칙**: 규칙.\n\n"
-            "---\n\n"
+            f"## LESSON-{i:03d}: 레슨 {i}\n\n**문제**: 문제.\n\n**규칙**: 규칙.\n\n---\n\n"
         )
     initial = "".join(lines)
     lessons_path = _make_lessons_file(tmp_path, initial)
@@ -195,6 +193,7 @@ def test_extract_lesson_id_auto_increments(
         captured_output.append(data)
 
     import builtins
+
     original_print = builtins.print
     builtins.print = fake_print  # type: ignore[assignment]
     try:
@@ -219,9 +218,7 @@ def test_extract_lesson_id_auto_increments(
 # ── 테스트 4: 중복 제목 → SKIP ───────────────────────────────────────
 
 
-def test_extract_lesson_skips_duplicate_title(
-    ha_review: ModuleType, tmp_path: Path
-) -> None:
+def test_extract_lesson_skips_duplicate_title(ha_review: ModuleType, tmp_path: Path) -> None:
     """기존 LESSON 제목과 동일 (lowercase) 추출 → SKIP, exit 0, skipped: true."""
     initial = (
         "# Shared Lessons\n\n"
@@ -238,6 +235,7 @@ def test_extract_lesson_skips_duplicate_title(
         captured_output.append(data)
 
     import builtins
+
     original_print = builtins.print
     builtins.print = fake_print  # type: ignore[assignment]
     try:
@@ -269,9 +267,7 @@ def test_extract_lesson_skips_duplicate_title(
 # ── 테스트 5: --evidence 포함 시 근거 필드 추가 ───────────────────────
 
 
-def test_extract_lesson_includes_evidence(
-    ha_review: ModuleType, tmp_path: Path
-) -> None:
+def test_extract_lesson_includes_evidence(ha_review: ModuleType, tmp_path: Path) -> None:
     """--evidence 박으면 LESSON 블록에 **근거**: 추가."""
     initial = (
         "# Shared Lessons\n\n"
@@ -288,6 +284,7 @@ def test_extract_lesson_includes_evidence(
         captured_output.append(data)
 
     import builtins
+
     original_print = builtins.print
     builtins.print = fake_print  # type: ignore[assignment]
     try:

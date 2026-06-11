@@ -19,7 +19,6 @@ from src.orchestrator.profile_loader import (
     ProfileNotFoundError,
     SkeletonSections,
     Toolchain,
-    UnknownLessonReference,
     Whitelist,
     derive_axes_capabilities,
     extract_known_lessons,
@@ -650,6 +649,7 @@ def test_compute_active_sections_invalid_expression_raises(
     이제 ExpressionParseError 를 raise 하여 fragment 작성 버그를 즉시 노출.
     """
     from src.orchestrator.scale_expression import ExpressionParseError as _PE
+
     fragments_dir = tmp_path / "skeleton"
     _write_fragment(fragments_dir, "broken", "this is not a valid expression !!")
     loader = ProfileLoader()
@@ -806,9 +806,7 @@ def test_detect_react_native_expo_matches_with_expo_dependency(tmp_path: Path) -
         ],
     )
 
-    (project / "package.json").write_text(
-        '{"dependencies": {"expo": "~52.0.0"}}', encoding="utf-8"
-    )
+    (project / "package.json").write_text('{"dependencies": {"expo": "~52.0.0"}}', encoding="utf-8")
     loader = ProfileLoader(harness_dir=harness, project_dir=project)
     matches = loader.detect()
     assert len(matches) == 1
@@ -1186,9 +1184,7 @@ def test_compute_has_keys_required_triggers_for_backend() -> None:
         "precondition: fastapi should list interface.http in required"
     )
     keys = loader.compute_has_keys([profile])
-    assert "http_server" in keys, (
-        "fastapi required interface.http must trigger has.http_server"
-    )
+    assert "http_server" in keys, "fastapi required interface.http must trigger has.http_server"
 
 
 def test_compute_active_sections_mobile_only_excludes_rate_limiting(tmp_path: Path) -> None:
@@ -1258,7 +1254,9 @@ def test_compute_active_sections_paired_includes_rate_limiting(tmp_path: Path) -
         monetization="none",
         lifecycle="mvp",
     )
-    active, _trace = loader.compute_active_sections(axes, [fastapi_profile, rne_profile], fragments_dir)
+    active, _trace = loader.compute_active_sections(
+        axes, [fastapi_profile, rne_profile], fragments_dir
+    )
     assert "rate_limiting" in active, (
         "rate_limiting must activate in paired fastapi+react-native-expo mode — "
         "fastapi required interface.http triggers has.http_server"
@@ -1275,6 +1273,7 @@ def test_compute_active_sections_parse_error_raises_with_frag_id(
     실제 어느 fragment 가 문제인지 즉시 파악 가능.
     """
     from src.orchestrator.scale_expression import ExpressionParseError as _PE
+
     fragments_dir = tmp_path / "skeleton"
     frag_id = "broken_fragment"
     _write_fragment(fragments_dir, frag_id, "this is not valid syntax @#$")
@@ -1339,7 +1338,9 @@ def test_compute_active_sections_paired_trace_has_both_triggers(tmp_path: Path) 
     # fastapi profile provides http_server capability
     fastapi_profile = _make_profile(profile_id="fastapi", provides_capabilities=["http_server"])
     # mobile profile — no http_server capability
-    rne_profile = _make_profile(profile_id="react-native-expo", provides_capabilities=["ui", "navigation"])
+    rne_profile = _make_profile(
+        profile_id="react-native-expo", provides_capabilities=["ui", "navigation"]
+    )
     loader = ProfileLoader()
     axes = ScaleAxes(user_scale="medium")
 
@@ -1347,7 +1348,9 @@ def test_compute_active_sections_paired_trace_has_both_triggers(tmp_path: Path) 
         axes, [fastapi_profile, rne_profile], fragments_dir
     )
 
-    assert "rate_limiting" in active, "has.http_server 조건이 충족되어 rate_limiting 이 활성되어야 함"
+    assert "rate_limiting" in active, (
+        "has.http_server 조건이 충족되어 rate_limiting 이 활성되어야 함"
+    )
     assert trace["rate_limiting"] == rate_limiting_expr, (
         f"trace['rate_limiting'] == {rate_limiting_expr!r} 이어야 함, 실제: {trace['rate_limiting']!r}"
     )
@@ -1356,7 +1359,9 @@ def test_compute_active_sections_paired_trace_has_both_triggers(tmp_path: Path) 
 # ── find_consistency_violations 테스트 ────────────────────────────────
 
 
-from src.orchestrator.profile_loader import ConsistencyViolation, find_consistency_violations  # noqa: E402
+from src.orchestrator.profile_loader import (  # noqa: E402
+    find_consistency_violations,
+)
 
 
 def test_find_violations_mobile_only_with_interface_http() -> None:
@@ -1397,7 +1402,9 @@ def test_find_violations_unmapped_atom_skipped() -> None:
 
     violations = find_consistency_violations(trace, [rne_profile])
 
-    assert violations == [], f"unmapped atom 은 signal 아님 — violation 없어야 함, 실제: {violations}"
+    assert violations == [], (
+        f"unmapped atom 은 signal 아님 — violation 없어야 함, 실제: {violations}"
+    )
 
 
 def test_find_violations_multiple_atoms_or_expression() -> None:
@@ -1476,9 +1483,7 @@ def test_find_violations_electron_provides_ipc() -> None:
 
     violations = find_consistency_violations(trace, [electron_profile])
 
-    assert violations == [], (
-        f"electron 은 ipc 제공자 — violation 없어야 함, 실제: {violations}"
-    )
+    assert violations == [], f"electron 은 ipc 제공자 — violation 없어야 함, 실제: {violations}"
 
 
 def test_find_violations_electron_in_expected_providers_for_ipc() -> None:
@@ -1505,7 +1510,9 @@ def test_find_violations_external_capabilities_excludes_violation() -> None:
 
     # Without external_capabilities — violation expected
     violations_without = find_consistency_violations(trace, [rne_profile])
-    assert len(violations_without) == 1, f"사전 조건 실패: violation 1개 기대, 실제: {violations_without}"
+    assert len(violations_without) == 1, (
+        f"사전 조건 실패: violation 1개 기대, 실제: {violations_without}"
+    )
 
     # With external_capabilities=[http_server] — violation should disappear
     violations_with = find_consistency_violations(
@@ -1542,9 +1549,7 @@ def test_extract_known_lessons_parses_actual_file() -> None:
     결과가 빈 셋이 아니고 알려진 ID 가 포함돼야 함.
     결함 #D 회귀 방지: 파싱 패턴이 실제 파일 형식과 맞아야 false-negative 없음.
     """
-    lessons_path = (
-        Path(__file__).resolve().parents[2] / "docs" / "shared-lessons.md"
-    )
+    lessons_path = Path(__file__).resolve().parents[2] / "docs" / "shared-lessons.md"
     assert lessons_path.exists(), f"shared-lessons.md 없음: {lessons_path}"
 
     known = extract_known_lessons(lessons_path)
@@ -1738,7 +1743,15 @@ def test_compute_active_sections_chamberlain_case_mobile_only_with_pii(
 
     mock_rne = _make_profile(
         profile_id="mock-react-native-expo",
-        provides_capabilities=["ui", "navigation", "lifecycle", "build_config", "storage", "complex_state", "env_config"],
+        provides_capabilities=[
+            "ui",
+            "navigation",
+            "lifecycle",
+            "build_config",
+            "storage",
+            "complex_state",
+            "env_config",
+        ],
     )
     axes = ScaleAxes(
         user_scale="medium",
@@ -1774,7 +1787,15 @@ def test_compute_active_sections_paired_backend_mobile(tmp_path: Path) -> None:
     )
     mock_rne = _make_profile(
         profile_id="mock-rne",
-        provides_capabilities=["ui", "navigation", "lifecycle", "build_config", "storage", "complex_state", "env_config"],
+        provides_capabilities=[
+            "ui",
+            "navigation",
+            "lifecycle",
+            "build_config",
+            "storage",
+            "complex_state",
+            "env_config",
+        ],
     )
     axes = ScaleAxes(
         user_scale="medium",
@@ -1825,6 +1846,7 @@ def test_all_confirmed_profiles_declare_capabilities() -> None:
         profile_path = repo_harness / "profiles" / f"{profile_id}.md"
         if not profile_path.exists():
             import pytest
+
             pytest.skip(f"{profile_id}.md profile not yet installed")
 
         profile = loader.load(profile_id)
@@ -1854,14 +1876,14 @@ def test_fastapi_provides_http_server() -> None:
     repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
     if not (repo_harness / "profiles" / "fastapi.md").exists():
         import pytest
+
         pytest.skip("fastapi profile not yet installed")
 
     loader = ProfileLoader(harness_dir=repo_harness)
     profile = loader.load("fastapi")
 
     assert "http_server" in profile.provides_capabilities, (
-        f"fastapi.provides_capabilities = {profile.provides_capabilities!r} — "
-        "'http_server' 누락"
+        f"fastapi.provides_capabilities = {profile.provides_capabilities!r} — 'http_server' 누락"
     )
 
 
@@ -1870,6 +1892,7 @@ def test_react_native_expo_provides_mobile_capabilities() -> None:
     repo_harness = Path(__file__).parent.parent.parent.parent / "harness"
     if not (repo_harness / "profiles" / "react-native-expo.md").exists():
         import pytest
+
         pytest.skip("react-native-expo profile not yet installed")
 
     loader = ProfileLoader(harness_dir=repo_harness)
@@ -1896,9 +1919,11 @@ def test_chamberlain_case_end_to_end_with_real_profiles() -> None:
 
     if not (repo_harness / "profiles" / "react-native-expo.md").exists():
         import pytest
+
         pytest.skip("react-native-expo profile not yet installed")
     if not fragments_dir.exists():
         import pytest
+
         pytest.skip("harness skeleton fragments not yet installed")
 
     loader = ProfileLoader(harness_dir=repo_harness)
@@ -1916,12 +1941,9 @@ def test_chamberlain_case_end_to_end_with_real_profiles() -> None:
 
     # 비활성 기대: http_server 전용 섹션
     assert "interface.http" not in active_set, (
-        "mobile-only 에서 interface.http 비활성 기대 — "
-        f"활성된 섹션: {sorted(active_set)}"
+        f"mobile-only 에서 interface.http 비활성 기대 — 활성된 섹션: {sorted(active_set)}"
     )
-    assert "rate_limiting" not in active_set, (
-        "mobile-only 에서 rate_limiting 비활성 기대"
-    )
+    assert "rate_limiting" not in active_set, "mobile-only 에서 rate_limiting 비활성 기대"
 
     # 활성 기대: 모바일 코어 섹션
     for expected in ("mobile.navigation", "mobile.build_config", "mobile.lifecycle"):
@@ -1950,9 +1972,11 @@ def test_paired_fastapi_rne_includes_backend_sections() -> None:
     for fname in ("fastapi.md", "react-native-expo.md"):
         if not (repo_harness / "profiles" / fname).exists():
             import pytest
+
             pytest.skip(f"{fname} profile not yet installed")
     if not fragments_dir.exists():
         import pytest
+
         pytest.skip("harness skeleton fragments not yet installed")
 
     loader = ProfileLoader(harness_dir=repo_harness)
@@ -1972,12 +1996,9 @@ def test_paired_fastapi_rne_includes_backend_sections() -> None:
     active_set = set(active)
 
     assert "interface.http" in active_set, (
-        "fastapi http_server → interface.http 활성 기대 — "
-        f"활성된 섹션: {sorted(active_set)}"
+        f"fastapi http_server → interface.http 활성 기대 — 활성된 섹션: {sorted(active_set)}"
     )
-    assert "rate_limiting" in active_set, (
-        "fastapi http_server → rate_limiting 활성 기대"
-    )
+    assert "rate_limiting" in active_set, "fastapi http_server → rate_limiting 활성 기대"
 
 
 # ── Group 5 Step 1: SRP split backward-compat 회귀 ───────────────────────────
@@ -1986,23 +2007,22 @@ def test_paired_fastapi_rne_includes_backend_sections() -> None:
 def test_backward_compat_reexports_remain_available() -> None:
     """Group 5 Step 1 SRP split — old import paths still work."""
     # These should not raise ImportError
-    from src.orchestrator.profile_loader import (  # noqa: F401
-        derive_axes_capabilities,
-        ConsistencyViolation,
-        find_consistency_violations,
-        UnknownLessonReference,
-        extract_known_lessons,
-        find_unknown_lesson_references,
-    )
+    from src.orchestrator import capabilities as cap
+
+    # Identity — re-export must point to the same function (not a copy)
+    from src.orchestrator import profile_loader as pl
 
     # And the new direct imports
     from src.orchestrator.capabilities import derive_axes_capabilities as direct_d  # noqa: F401
     from src.orchestrator.consistency import find_consistency_violations as direct_c  # noqa: F401
     from src.orchestrator.lessons import extract_known_lessons as direct_l  # noqa: F401
+    from src.orchestrator.profile_loader import (  # noqa: F401
+        derive_axes_capabilities,
+        extract_known_lessons,
+        find_consistency_violations,
+        find_unknown_lesson_references,
+    )
 
-    # Identity — re-export must point to the same function (not a copy)
-    from src.orchestrator import profile_loader as pl
-    from src.orchestrator import capabilities as cap
     assert pl.derive_axes_capabilities is cap.derive_axes_capabilities
 
 
@@ -2019,6 +2039,7 @@ def test_slo_inactive_for_mobile_only_no_production_concerns() -> None:
     fragments_dir = repo_harness / "templates" / "skeleton"
     if not (repo_harness / "profiles" / "react-native-expo.md").exists():
         import pytest
+
         pytest.skip("react-native-expo profile not yet installed")
 
     loader = ProfileLoader(harness_dir=repo_harness)
@@ -2047,6 +2068,7 @@ def test_slo_active_for_backend_with_production_concerns() -> None:
     fragments_dir = repo_harness / "templates" / "skeleton"
     if not (repo_harness / "profiles" / "fastapi.md").exists():
         import pytest
+
         pytest.skip("fastapi profile not yet installed")
 
     loader = ProfileLoader(harness_dir=repo_harness)
@@ -2060,9 +2082,7 @@ def test_slo_active_for_backend_with_production_concerns() -> None:
         lifecycle="mvp",
     )
     active, _trace = loader.compute_active_sections(axes, [profile], fragments_dir)
-    assert "slo" in active, (
-        "fastapi (production_concerns) + medium → slo 활성 기대"
-    )
+    assert "slo" in active, "fastapi (production_concerns) + medium → slo 활성 기대"
 
 
 def test_runbook_inactive_for_mobile_only_even_high_availability() -> None:
@@ -2071,6 +2091,7 @@ def test_runbook_inactive_for_mobile_only_even_high_availability() -> None:
     fragments_dir = repo_harness / "templates" / "skeleton"
     if not (repo_harness / "profiles" / "react-native-expo.md").exists():
         import pytest
+
         pytest.skip("react-native-expo profile not yet installed")
 
     loader = ProfileLoader(harness_dir=repo_harness)

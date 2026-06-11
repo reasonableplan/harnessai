@@ -3,6 +3,7 @@
 대상: ~/.claude/harness/bin/check_locked.py
 전략: subprocess 로 스크립트 호출 + stdin JSON 전달 + exit code / stderr 검증.
 """
+
 from __future__ import annotations
 
 import json
@@ -10,8 +11,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-
-import pytest
 
 # check_locked.py 절대 경로
 HOOK_SCRIPT = Path.home() / ".claude" / "harness" / "bin" / "check_locked.py"

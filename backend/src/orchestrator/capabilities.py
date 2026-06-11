@@ -24,22 +24,24 @@ from src.orchestrator.plan_manager import ScaleAxes
 # NOTE: external_deps is intentionally listed here but has no entry in
 # _HAS_KEY_PROVIDERS — it is a documented gap awaiting a concrete provider.
 # ---------------------------------------------------------------------------
-KNOWN_CAPABILITY_ATOMS: frozenset[str] = frozenset({
-    "build_config",
-    "cli_entrypoint",
-    "complex_state",
-    "env_config",
-    "external_deps",      # gap: no profile provides this yet (intentional)
-    "http_server",
-    "ipc",
-    "lifecycle",
-    "navigation",
-    "production_concerns",
-    "sdk_surface",
-    "storage",
-    "ui",
-    "users",
-})
+KNOWN_CAPABILITY_ATOMS: frozenset[str] = frozenset(
+    {
+        "build_config",
+        "cli_entrypoint",
+        "complex_state",
+        "env_config",
+        "external_deps",  # gap: no profile provides this yet (intentional)
+        "http_server",
+        "ipc",
+        "lifecycle",
+        "navigation",
+        "production_concerns",
+        "sdk_surface",
+        "storage",
+        "ui",
+        "users",
+    }
+)
 
 
 def validate_capability_set(atoms: frozenset[str], context: str) -> None:

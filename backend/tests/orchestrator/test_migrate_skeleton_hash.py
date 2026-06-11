@@ -5,6 +5,7 @@ conftest 의 harness_module fixture 를 사용 (importlib 로 CLI 스크립트 �
 
 모든 픽스처는 tmp_path 기반 — 사용자 환경 비의존.
 """
+
 from __future__ import annotations
 
 import json
@@ -142,6 +143,7 @@ def _write_skeleton(docs_dir: Path, content: str = _SKELETON_CONTENT) -> Path:
 
 def _expected_hash(content: str) -> str:
     import hashlib
+
     normalized = content.encode("utf-8").replace(b"\r\n", b"\n").replace(b"\r", b"\n")
     return hashlib.sha256(normalized).hexdigest()
 
@@ -163,7 +165,9 @@ def test_dry_run_no_file_change(hmod: ModuleType, tmp_path: Path) -> None:
     assert plan_path.read_text(encoding="utf-8") == content_before
 
 
-def test_dry_run_output_contains_hash(hmod: ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+def test_dry_run_output_contains_hash(
+    hmod: ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
     """dry-run stdout 에 new_hash 가 포함되어야 한다."""
     docs = tmp_path / "docs"
     plan_path = _write_plan(docs)
@@ -184,7 +188,9 @@ def test_dry_run_output_contains_hash(hmod: ModuleType, tmp_path: Path, capsys: 
 # ── 테스트 2: --apply — hash 갱신 + backup 생성 ───────────────────────────
 
 
-def test_apply_updates_hash_in_plan(hmod: ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+def test_apply_updates_hash_in_plan(
+    hmod: ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
     """--apply 후 plan 파일에 skeleton_hash 가 기록되어야 한다."""
     docs = tmp_path / "docs"
     plan_path = _write_plan(docs)
@@ -204,7 +210,9 @@ def test_apply_updates_hash_in_plan(hmod: ModuleType, tmp_path: Path, capsys: py
     assert result["new_hash"] == expected
 
 
-def test_apply_creates_backup(hmod: ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+def test_apply_creates_backup(
+    hmod: ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
     """--apply 후 .harness-backup-*.md 백업 파일이 생성되어야 한다."""
     docs = tmp_path / "docs"
     plan_path = _write_plan(docs)
@@ -226,7 +234,9 @@ def test_apply_creates_backup(hmod: ModuleType, tmp_path: Path, capsys: pytest.C
     assert backup_file.read_text(encoding="utf-8") == original_content
 
 
-def test_apply_no_backup_flag(hmod: ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+def test_apply_no_backup_flag(
+    hmod: ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
     """--no-backup 시 백업 파일이 생성되지 않아야 한다."""
     docs = tmp_path / "docs"
     plan_path = _write_plan(docs)
@@ -248,7 +258,9 @@ def test_apply_no_backup_flag(hmod: ModuleType, tmp_path: Path, capsys: pytest.C
 # ── 테스트 3: 이미 hash 있는 plan → WARN + 종료, 미수정 ───────────────────
 
 
-def test_existing_hash_warns_and_no_change(hmod: ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+def test_existing_hash_warns_and_no_change(
+    hmod: ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
     """skeleton_hash 가 이미 있는 plan 은 WARN 을 내고 파일을 수정하지 않는다."""
     docs = tmp_path / "docs"
     plan_path = _write_plan(docs, content=_MINIMAL_PLAN_WITH_HASH)
@@ -298,7 +310,9 @@ def test_plan_missing_returns_error(hmod: ModuleType, tmp_path: Path) -> None:
 # ── 테스트 6: hash 는 CRLF/LF 정규화 후 계산 ─────────────────────────────
 
 
-def test_hash_normalizes_crlf(hmod: ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+def test_hash_normalizes_crlf(
+    hmod: ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
     """CRLF skeleton.md 와 LF skeleton.md 의 hash 가 동일해야 한다."""
     lf_content = "# Overview\n\nContent.\n"
     crlf_content = lf_content.replace("\n", "\r\n")

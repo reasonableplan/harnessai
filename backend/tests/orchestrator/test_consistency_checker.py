@@ -183,7 +183,9 @@ def test_run_all_empty_tasks_text_runs_check() -> None:
 
 def test_finding_dataclass_fields() -> None:
     """ConsistencyFinding 의 필수 필드 4개 모두 채워짐."""
-    skel = "## 13. 컴포넌트 트리\n<GameScreen>\n## 14. 상태 흐름\nplain\n## 15. 도메인 로직\nplain\n"
+    skel = (
+        "## 13. 컴포넌트 트리\n<GameScreen>\n## 14. 상태 흐름\nplain\n## 15. 도메인 로직\nplain\n"
+    )
     findings = check_isolated_components(skel)
     assert len(findings) == 1
     f = findings[0]
@@ -257,17 +259,12 @@ def test_screen_auth_blank_flagged_when_auth_active() -> None:
 
 
 def test_screen_auth_check_skips_without_auth_section() -> None:
-    skel = (
-        "## 13. 화면 목록\n| 경로 | 화면명 | Auth |\n|---|---|---|\n| `/x` | x |  |\n"
-    )
+    skel = "## 13. 화면 목록\n| 경로 | 화면명 | Auth |\n|---|---|---|\n| `/x` | x |  |\n"
     assert check_screen_auth_column(skel) == []
 
 
 def test_run_all_includes_design_checks() -> None:
     """run_all_checks 가 설계 검증 3종을 집계에 포함한다."""
-    skel = (
-        "## 5. 에러 핸들링\n| AUTH_001 | x |\n\n"
-        "## 6. 에러 처리 UX\n| ORPHAN_001 | toast |\n"
-    )
+    skel = "## 5. 에러 핸들링\n| AUTH_001 | x |\n\n## 6. 에러 처리 UX\n| ORPHAN_001 | toast |\n"
     targets = {f.target for f in run_all_checks(skeleton_text=skel)}
     assert "ORPHAN_001" in targets

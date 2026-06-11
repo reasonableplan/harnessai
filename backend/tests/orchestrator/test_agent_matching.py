@@ -11,13 +11,11 @@ import pytest
 import yaml
 
 from src.orchestrator.agent_matching import (
-    AgentMatchResult,
     find_best_agent_for_task,
     match_task_to_agent,
 )
 from src.orchestrator.config import AgentConfig, load_agents_config
 from src.orchestrator.profile_loader import _HAS_KEY_PROVIDERS
-
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -316,7 +314,11 @@ class TestAgentConfigLoadsRequiresFields:
         yaml_path = _make_full_agents_yaml(tmp_path)
         cfg = load_agents_config(yaml_path)
 
-        assert cfg.backend_coder.requires_capabilities == ["http_server", "cli_entrypoint", "sdk_surface"]
+        assert cfg.backend_coder.requires_capabilities == [
+            "http_server",
+            "cli_entrypoint",
+            "sdk_surface",
+        ]
         assert cfg.backend_coder.requires_profile_ids == []
         assert cfg.mobile_coder_rn.requires_capabilities == ["ui", "navigation"]
         assert cfg.mobile_coder_rn.requires_profile_ids == ["react-native-expo"]
@@ -335,11 +337,22 @@ class TestAgentConfigBackwardCompat:
             "model": "claude-sonnet-4-6",
             "prompt_path": "agents/test/CLAUDE.md",
         }
-        data = {name: base_agent for name in [
-            "architect", "designer", "orchestrator", "backend_coder",
-            "frontend_coder", "mobile_coder_rn", "mobile_coder_flutter",
-            "mobile_coder_android", "mobile_coder_ios", "reviewer", "qa",
-        ]}
+        data = {
+            name: base_agent
+            for name in [
+                "architect",
+                "designer",
+                "orchestrator",
+                "backend_coder",
+                "frontend_coder",
+                "mobile_coder_rn",
+                "mobile_coder_flutter",
+                "mobile_coder_android",
+                "mobile_coder_ios",
+                "reviewer",
+                "qa",
+            ]
+        }
         p = tmp_path / "agents.yaml"
         p.write_text(yaml.dump(data), encoding="utf-8")
 
@@ -387,19 +400,21 @@ class TestAllRequiredCapabilitiesAreValidAtoms:
     """
 
     # Full set of valid has.* atoms as of Group 1/3 Step 1.
-    VALID_ATOMS: frozenset[str] = frozenset({
-        # Provider-mapped atoms (from _HAS_KEY_PROVIDERS)
-        "http_server",
-        "cli_entrypoint",
-        "ipc",
-        "sdk_surface",
-        # Fragment-driven atoms (not provider-mapped but valid capability signals)
-        "ui",
-        "navigation",
-        "storage",
-        "users",
-        "build_config",
-    })
+    VALID_ATOMS: frozenset[str] = frozenset(
+        {
+            # Provider-mapped atoms (from _HAS_KEY_PROVIDERS)
+            "http_server",
+            "cli_entrypoint",
+            "ipc",
+            "sdk_surface",
+            # Fragment-driven atoms (not provider-mapped but valid capability signals)
+            "ui",
+            "navigation",
+            "storage",
+            "users",
+            "build_config",
+        }
+    )
 
     def test_all_requires_capabilities_are_valid_atoms(self) -> None:
         real_path = Path(__file__).parent.parent.parent / "agents.yaml"
@@ -416,8 +431,7 @@ class TestAllRequiredCapabilitiesAreValidAtoms:
                     invalid.append((agent_id, cap))
 
         assert not invalid, (
-            f"agents.yaml 에 알려지지 않은 capability atom 이 있습니다 "
-            f"(typo 가능성): {invalid}"
+            f"agents.yaml 에 알려지지 않은 capability atom 이 있습니다 (typo 가능성): {invalid}"
         )
 
     def test_provider_mapped_atoms_are_subset_of_valid_atoms(self) -> None:

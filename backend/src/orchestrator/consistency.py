@@ -49,7 +49,7 @@ class ConsistencyViolation:
 
     section_id: str
     trigger_expression: str  # the required_when expression
-    missing_atom: str        # the has.* atom that's unmet (e.g. "http_server")
+    missing_atom: str  # the has.* atom that's unmet (e.g. "http_server")
     expected_providers: tuple[str, ...]  # profile IDs that *could* provide it
 
 

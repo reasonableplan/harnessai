@@ -701,9 +701,7 @@ def _parse_eng_review_history(raw: list[Any]) -> list[EngReviewEntry]:
                 f"eng_review_history[{i}] must be a mapping, got {type(r).__name__}"
             )
         if "summary" not in r:
-            raise PlanSchemaError(
-                f"eng_review_history[{i}] missing required field 'summary'"
-            )
+            raise PlanSchemaError(f"eng_review_history[{i}] missing required field 'summary'")
         out.append(
             EngReviewEntry(
                 at=r.get("at", ""),
@@ -729,9 +727,7 @@ def _parse_redesign_history(raw: list[Any]) -> list[RedesignEntry]:
                 f"redesign_history[{i}] must be a mapping, got {type(r).__name__}"
             )
         if "decision" not in r:
-            raise PlanSchemaError(
-                f"redesign_history[{i}] missing required field 'decision'"
-            )
+            raise PlanSchemaError(f"redesign_history[{i}] missing required field 'decision'")
         out.append(
             RedesignEntry(
                 at=r.get("at", ""),
@@ -774,9 +770,7 @@ def _dict_to_plan(data: dict[str, Any], body: str) -> HarnessPlan:
         # external_capabilities: legacy plans without this key load as empty list (backward-compat).
         external_caps_raw = data.get("external_capabilities") or []
         external_capabilities = (
-            [str(c) for c in external_caps_raw]
-            if isinstance(external_caps_raw, list)
-            else []
+            [str(c) for c in external_caps_raw] if isinstance(external_caps_raw, list) else []
         )
         # frozen_status: legacy plans without this key load as "drafting" (backward-compat).
         frozen_status = str(data.get("frozen_status") or "drafting")

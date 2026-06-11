@@ -11,6 +11,7 @@ Centralising here ensures every consumer agrees on:
 - the skeleton.md section heading layout
 - the strict validation message a user can act on
 """
+
 from __future__ import annotations
 
 import re

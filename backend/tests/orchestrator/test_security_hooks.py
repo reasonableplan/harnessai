@@ -467,7 +467,9 @@ class TestAuthGuard:
             "    await db.commit()\n"
         )
         findings = check_auth_guard(code, is_frontend=False)
-        block_findings = [f for f in findings if f.severity == Severity.BLOCK and "logout" in f.message.lower()]
+        block_findings = [
+            f for f in findings if f.severity == Severity.BLOCK and "logout" in f.message.lower()
+        ]
         assert block_findings == []
 
     def test_backend_max_plus_one_without_integrity_error_warns(self) -> None:
@@ -488,7 +490,9 @@ class TestAuthGuard:
             "max_id = result.scalar_one_or_none()\n"
         )
         findings = check_auth_guard(code, is_frontend=False)
-        warn_findings = [f for f in findings if f.severity == Severity.WARN and "IntegrityError" in f.message]
+        warn_findings = [
+            f for f in findings if f.severity == Severity.WARN and "IntegrityError" in f.message
+        ]
         assert warn_findings == []
 
     def test_backend_max_plus_one_with_integrity_error_passes(self) -> None:
@@ -502,7 +506,9 @@ class TestAuthGuard:
             "    await db.rollback()\n"
         )
         findings = check_auth_guard(code, is_frontend=False)
-        warn_findings = [f for f in findings if f.severity == Severity.WARN and "IntegrityError" in f.message]
+        warn_findings = [
+            f for f in findings if f.severity == Severity.WARN and "IntegrityError" in f.message
+        ]
         assert warn_findings == []
 
     def test_backend_clean_code_passes(self) -> None:
@@ -563,7 +569,7 @@ class TestAuthGuard:
 
     def test_mobile_clean_code_passes(self) -> None:
         """토큰 저장 없는 모바일 코드 → 통과."""
-        code = "let username = UserDefaults.standard.string(forKey: \"username\")"
+        code = 'let username = UserDefaults.standard.string(forKey: "username")'
         findings = check_auth_guard(code, is_mobile=True)
         assert findings == []
 
@@ -617,13 +623,15 @@ class TestAuthGuard:
         code = 'prefs.getString("accessToken")'
         findings = check_auth_guard(code, is_mobile=True)
         assert any(f.severity == Severity.WARN for f in findings)
-        assert not any(f.severity == Severity.BLOCK and "getString" in (f.snippet or "") for f in findings)
+        assert not any(
+            f.severity == Severity.BLOCK and "getString" in (f.snippet or "") for f in findings
+        )
 
     # --- UserDefaults multi-line (Swift labeled arg style) ---
 
     def test_mobile_userdefaults_multiline_blocked(self) -> None:
         """UserDefaults multi-line Swift call → BLOCK (file-level DOTALL scan)."""
-        code = "UserDefaults.standard.set(\n    token,\n    forKey: \"authToken\"\n)"
+        code = 'UserDefaults.standard.set(\n    token,\n    forKey: "authToken"\n)'
         findings = check_auth_guard(code, is_mobile=True)
         assert any(f.severity == Severity.BLOCK for f in findings)
 

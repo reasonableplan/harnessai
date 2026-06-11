@@ -16,6 +16,7 @@
 - 매칭: tasks.md 행 + 그 스펙 블록 안 파일명 substring 검색
 - 결과: JSON stdout (failures / matches / unmatched_failures)
 """
+
 from __future__ import annotations
 
 import json
@@ -58,7 +59,14 @@ def extract_failed_files(output: str) -> list[str]:
     """
     found: dict[str, None] = {}  # 삽입 순서 보존 중복 제거
 
-    for pattern in (_PYTEST_RE, _PYRIGHT_RE, _ESLINT_LINE_RE, _JEST_FAIL_RE, _JEST_STACK_RE, _TSC_RE):
+    for pattern in (
+        _PYTEST_RE,
+        _PYRIGHT_RE,
+        _ESLINT_LINE_RE,
+        _JEST_FAIL_RE,
+        _JEST_STACK_RE,
+        _TSC_RE,
+    ):
         for m in pattern.finditer(output):
             normalized = _normalize_path(m.group(1))
             if normalized and normalized not in found:

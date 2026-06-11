@@ -79,11 +79,7 @@ def test_permission_burst_warn(ha_review: ModuleType) -> None:
 
 def test_cocoapods_new_warn(ha_review: ModuleType) -> None:
     """ios-swift profile 에서 Podfile 에 새 pod 추가 → WARN."""
-    diff = (
-        "diff --git a/Podfile b/Podfile\n"
-        "+++ b/Podfile\n"
-        "+  pod 'Alamofire'\n"
-    )
+    diff = "diff --git a/Podfile b/Podfile\n+++ b/Podfile\n+  pod 'Alamofire'\n"
     findings = ha_review._check_cocoapods_new(diff, "ios-swift")
     assert len(findings) >= 1, f"expected WARN for new CocoaPod, got: {findings}"
     severities = {f["severity"] for f in findings}
@@ -118,6 +114,4 @@ def test_backend_profile_no_mobile_findings(ha_review: ModuleType) -> None:
     findings += ha_review._check_mobile_permission_burst(diff, "fastapi")
     findings += ha_review._check_cocoapods_new(diff, "fastapi")
     findings += ha_review._check_rn_cli(diff, "fastapi")
-    assert len(findings) == 0, (
-        f"backend profile should not trigger mobile rules, got: {findings}"
-    )
+    assert len(findings) == 0, f"backend profile should not trigger mobile rules, got: {findings}"

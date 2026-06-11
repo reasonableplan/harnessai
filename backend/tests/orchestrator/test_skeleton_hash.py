@@ -1,4 +1,5 @@
 """Regression tests for skeleton_hash utilities (Group 2 Step 3)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -46,9 +47,7 @@ def test_section_hashes_missing_file_returns_empty(tmp_path: Path) -> None:
 def test_section_hashes_unknown_heading_skipped(tmp_path: Path) -> None:
     """SECTION_TITLES 에 없는 제목의 헤딩은 ID 로 해석 불가 — 결과에서 제외."""
     p = tmp_path / "skeleton.md"
-    p.write_text(
-        "## 1. 프로젝트 개요\nbody\n\n## 2. 정체불명 섹션\nx\n", encoding="utf-8"
-    )
+    p.write_text("## 1. 프로젝트 개요\nbody\n\n## 2. 정체불명 섹션\nx\n", encoding="utf-8")
     assert set(compute_section_hashes(p)) == {"overview"}
 
 

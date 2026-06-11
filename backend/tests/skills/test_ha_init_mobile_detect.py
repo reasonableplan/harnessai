@@ -89,25 +89,17 @@ def fastapi_project(tmp_path: Path) -> Path:
 def test_flutter_is_mobile_true(flutter_project: Path) -> None:
     """flutter 프로젝트 → matches 의 flutter 항목에 is_mobile: true."""
     output, _ = _run_detect(flutter_project)
-    flutter_match = next(
-        (m for m in output["matches"] if m["profile_id"] == "flutter"), None
-    )
+    flutter_match = next((m for m in output["matches"] if m["profile_id"] == "flutter"), None)
     assert flutter_match is not None, "flutter profile not detected"
-    assert flutter_match.get("is_mobile") is True, (
-        f"expected is_mobile=true, got: {flutter_match}"
-    )
+    assert flutter_match.get("is_mobile") is True, f"expected is_mobile=true, got: {flutter_match}"
 
 
 def test_react_native_expo_is_mobile_true(rn_project: Path) -> None:
     """react-native-expo 프로젝트 → is_mobile: true."""
     output, _ = _run_detect(rn_project)
-    rn_match = next(
-        (m for m in output["matches"] if m["profile_id"] == "react-native-expo"), None
-    )
+    rn_match = next((m for m in output["matches"] if m["profile_id"] == "react-native-expo"), None)
     assert rn_match is not None, "react-native-expo profile not detected"
-    assert rn_match.get("is_mobile") is True, (
-        f"expected is_mobile=true, got: {rn_match}"
-    )
+    assert rn_match.get("is_mobile") is True, f"expected is_mobile=true, got: {rn_match}"
 
 
 def test_python_cli_is_mobile_false(python_cli_project: Path) -> None:
@@ -131,6 +123,4 @@ def test_fastapi_is_mobile_false(fastapi_project: Path) -> None:
 def test_mobile_detect_stderr_message(flutter_project: Path) -> None:
     """flutter 감지 시 stderr 에 '모바일 프로젝트 감지' 메시지 포함."""
     _, stderr = _run_detect(flutter_project)
-    assert "모바일 프로젝트 감지" in stderr, (
-        f"expected mobile guidance in stderr, got: {stderr!r}"
-    )
+    assert "모바일 프로젝트 감지" in stderr, f"expected mobile guidance in stderr, got: {stderr!r}"

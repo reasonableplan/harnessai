@@ -9,6 +9,7 @@ Findings are advisory (severity="info"|"warn") — never blocking. The point is 
 give the next agent or reviewer a concrete checklist, not to gate progress with
 heuristic rules. A blocker would need stronger guarantees than regex can provide.
 """
+
 from __future__ import annotations
 
 import re
@@ -88,9 +89,7 @@ def check_isolated_components(skel_text: str) -> list[ConsistencyFinding]:
     return findings
 
 
-def check_task_skeleton_references(
-    tasks_text: str, skel_text: str
-) -> list[ConsistencyFinding]:
+def check_task_skeleton_references(tasks_text: str, skel_text: str) -> list[ConsistencyFinding]:
     """Tasks with no §N reference and no view.components-component reference.
 
     A task that mentions neither a section number nor a known component is likely

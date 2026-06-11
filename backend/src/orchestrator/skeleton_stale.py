@@ -60,9 +60,7 @@ def _find_heading_line_by_title(lines: list[str], title: str) -> int | None:
     return None
 
 
-def _find_heading_line_by_number(
-    heading_line_indices: list[int], num: int
-) -> int | None:
+def _find_heading_line_by_number(heading_line_indices: list[int], num: int) -> int | None:
     """skeleton.md 헤딩 목록에서 1-based 번호로 라인 인덱스 반환."""
     if 1 <= num <= len(heading_line_indices):
         return heading_line_indices[num - 1]
@@ -83,9 +81,7 @@ def _resolve_heading_indices(
     """
     import sys
 
-    heading_line_indices = [
-        i for i, ln in enumerate(lines) if _HEADING_RE.match(ln.rstrip("\r\n"))
-    ]
+    heading_line_indices = [i for i, ln in enumerate(lines) if _HEADING_RE.match(ln.rstrip("\r\n"))]
     id_to_index: dict[str, int] = {sid: i + 1 for i, sid in enumerate(included_order)}
 
     result: dict[str, int | None] = {}

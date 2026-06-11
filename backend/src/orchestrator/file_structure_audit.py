@@ -9,6 +9,7 @@ Design:
 - Skip standard noise dirs: node_modules, __pycache__, .git, .next, dist, etc.
 - Top-3 depth limit (configurable) to avoid deep build-artefact noise.
 """
+
 from __future__ import annotations
 
 import re
@@ -58,9 +59,9 @@ _COMMENT_RE = re.compile(r"\s+#.*$")
 class DriftResult:
     """Result of comparing declared vs actual directory sets."""
 
-    extras: list[str]   # dirs in actual but NOT in declared (intentional expansions)
+    extras: list[str]  # dirs in actual but NOT in declared (intentional expansions)
     missing: list[str]  # dirs in declared but NOT in actual
-    match: bool         # True when both extras and missing are empty
+    match: bool  # True when both extras and missing are empty
 
 
 def parse_profile_file_structure(profile: Profile) -> set[str]:

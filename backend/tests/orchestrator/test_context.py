@@ -328,9 +328,13 @@ class TestHarnessGlobalDocs:
         harness = tmp_path / "harness"
         rn_guidelines = harness / "templates" / "guidelines" / "react-native-expo"
         rn_guidelines.mkdir(parents=True)
-        (rn_guidelines / "navigation.md").write_text("# RN Nav\nExpo Router rules.", encoding="utf-8")
+        (rn_guidelines / "navigation.md").write_text(
+            "# RN Nav\nExpo Router rules.", encoding="utf-8"
+        )
         (rn_guidelines / "state.md").write_text("# RN State\nZustand rules.", encoding="utf-8")
-        (rn_guidelines / "storage.md").write_text("# RN Storage\nSecureStore rules.", encoding="utf-8")
+        (rn_guidelines / "storage.md").write_text(
+            "# RN Storage\nSecureStore rules.", encoding="utf-8"
+        )
         (rn_guidelines / "style.md").write_text("# RN Style\nNativeWind rules.", encoding="utf-8")
 
         # Project dir mock — empty docs/

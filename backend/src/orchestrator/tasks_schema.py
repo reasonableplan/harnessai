@@ -19,6 +19,7 @@ Design notes:
 - validate_tasks_md() is pure (no I/O) and returns a sorted list of violations.
 - extract_task_graph() is pure (no I/O) and returns a TaskGraph dataclass.
 """
+
 from __future__ import annotations
 
 import re
@@ -40,11 +41,11 @@ _DEPS_NONE_TOKENS: frozenset[str] = frozenset({"-", "—", "(없음)", "none", "
 # Column header aliases — each position in the 5-column table has a set of
 # accepted header names.  All comparisons are case-sensitive.
 _COL_ALIASES: tuple[frozenset[str], ...] = (
-    frozenset({"ID", "id"}),                                            # col 0
-    frozenset({"에이전트", "agent", "Agent"}),                           # col 1
-    frozenset({"의존성", "depends", "Depends", "Dependency"}),           # col 2
+    frozenset({"ID", "id"}),  # col 0
+    frozenset({"에이전트", "agent", "Agent"}),  # col 1
+    frozenset({"의존성", "depends", "Depends", "Dependency"}),  # col 2
     frozenset({"설명", "description", "Description", "desc", "Desc"}),  # col 3
-    frozenset({"상태", "status", "Status"}),                             # col 4
+    frozenset({"상태", "status", "Status"}),  # col 4
 )
 
 # Human-readable labels for each column position (used in violation messages).
@@ -58,18 +59,20 @@ _COL_LABELS: tuple[str, ...] = (
 
 # Valid status values — mirrors plan_manager task status policy and
 # TASK_STATUS_NEEDS_REBUILD introduced in Group 3.
-VALID_STATUSES: frozenset[str] = frozenset({
-    "대기",
-    "pending",
-    "진행중",
-    "in-progress",
-    "완료",
-    "done",
-    "completed",
-    "차단",
-    "blocked",
-    "needs_rebuild",
-})
+VALID_STATUSES: frozenset[str] = frozenset(
+    {
+        "대기",
+        "pending",
+        "진행중",
+        "in-progress",
+        "완료",
+        "done",
+        "completed",
+        "차단",
+        "blocked",
+        "needs_rebuild",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -128,14 +131,16 @@ def validate_tasks_md(content: str) -> list[SchemaViolation]:
         # phase header candidate; validate its exact format.
         if stripped.startswith("### Phase") or stripped.startswith("## Phase"):
             if not _PHASE_HEADER_RE.match(stripped):
-                violations.append(SchemaViolation(
-                    line_number=idx,
-                    kind="bad_phase_header",
-                    detail=(
-                        f"Phase 헤더 형식 위반 — `### Phase N[+] — <name>` 필요 "
-                        f"(예: `### Phase 1 — MVP`). 실제: {stripped!r}"
-                    ),
-                ))
+                violations.append(
+                    SchemaViolation(
+                        line_number=idx,
+                        kind="bad_phase_header",
+                        detail=(
+                            f"Phase 헤더 형식 위반 — `### Phase N[+] — <name>` 필요 "
+                            f"(예: `### Phase 1 — MVP`). 실제: {stripped!r}"
+                        ),
+                    )
+                )
             # Phase headers reset table state: a new table section may follow.
             in_table = False
             continue
@@ -169,19 +174,19 @@ def validate_tasks_md(content: str) -> list[SchemaViolation]:
                         # Only surface as a violation when the row actually
                         # looks like a header (contains at least one known alias
                         # at some position).
-                        all_known = any(
-                            cells[j] in _COL_ALIASES[j] for j in range(5)
-                        )
+                        all_known = any(cells[j] in _COL_ALIASES[j] for j in range(5))
                         if all_known:
-                            violations.append(SchemaViolation(
-                                line_number=idx,
-                                kind="bad_column_order",
-                                detail=(
-                                    f"컬럼 헤더 순서/이름 위반 — "
-                                    f"{_COL_LABELS[i]} 위치에 {cells[i]!r} "
-                                    f"(허용: {sorted(_COL_ALIASES[i])})"
-                                ),
-                            ))
+                            violations.append(
+                                SchemaViolation(
+                                    line_number=idx,
+                                    kind="bad_column_order",
+                                    detail=(
+                                        f"컬럼 헤더 순서/이름 위반 — "
+                                        f"{_COL_LABELS[i]} 위치에 {cells[i]!r} "
+                                        f"(허용: {sorted(_COL_ALIASES[i])})"
+                                    ),
+                                )
+                            )
                         break
                 continue
 
@@ -190,39 +195,41 @@ def validate_tasks_md(content: str) -> list[SchemaViolation]:
 
             # Task ID validation
             if task_id and not _TASK_ID_VALID_RE.match(task_id):
-                violations.append(SchemaViolation(
-                    line_number=idx,
-                    kind="invalid_task_id",
-                    detail=(
-                        f"Task ID 형식 위반 — `T-NNN` (3자리 정수) 필요. "
-                        f"실제: {task_id!r}"
-                    ),
-                ))
+                violations.append(
+                    SchemaViolation(
+                        line_number=idx,
+                        kind="invalid_task_id",
+                        detail=(
+                            f"Task ID 형식 위반 — `T-NNN` (3자리 정수) 필요. 실제: {task_id!r}"
+                        ),
+                    )
+                )
 
             # Status validation (skip empty cells gracefully)
             if status and status not in VALID_STATUSES:
-                violations.append(SchemaViolation(
-                    line_number=idx,
-                    kind="invalid_status",
-                    detail=(
-                        f"상태 값 위반 — 허용: {sorted(VALID_STATUSES)}. "
-                        f"실제: {status!r}"
-                    ),
-                ))
+                violations.append(
+                    SchemaViolation(
+                        line_number=idx,
+                        kind="invalid_status",
+                        detail=(f"상태 값 위반 — 허용: {sorted(VALID_STATUSES)}. 실제: {status!r}"),
+                    )
+                )
 
             # Dependency validation
             if depends not in _DEPS_NONE_TOKENS:
                 dep_parts = [d.strip() for d in depends.split(",")]
                 for dep in dep_parts:
                     if dep and not _TASK_ID_VALID_RE.match(dep):
-                        violations.append(SchemaViolation(
-                            line_number=idx,
-                            kind="bad_dependency",
-                            detail=(
-                                f"의존성 항목 형식 위반 — `T-NNN` 만 허용. "
-                                f"실제: {dep!r} (전체: {depends!r})"
-                            ),
-                        ))
+                        violations.append(
+                            SchemaViolation(
+                                line_number=idx,
+                                kind="bad_dependency",
+                                detail=(
+                                    f"의존성 항목 형식 위반 — `T-NNN` 만 허용. "
+                                    f"실제: {dep!r} (전체: {depends!r})"
+                                ),
+                            )
+                        )
                         break  # report once per row
 
             continue
@@ -310,17 +317,16 @@ def extract_task_graph(content: str) -> TaskGraph:
                 dep_tuple: tuple[str, ...] = ()
             else:
                 dep_parts = [d.strip() for d in depends.split(",")]
-                dep_tuple = tuple(
-                    d for d in dep_parts
-                    if d and _TASK_ID_VALID_RE.match(d)
-                )
+                dep_tuple = tuple(d for d in dep_parts if d and _TASK_ID_VALID_RE.match(d))
 
-            nodes.append(TaskNode(
-                task_id=task_id,
-                agent=agent,
-                depends_on=dep_tuple,
-                phase=current_phase,
-            ))
+            nodes.append(
+                TaskNode(
+                    task_id=task_id,
+                    agent=agent,
+                    depends_on=dep_tuple,
+                    phase=current_phase,
+                )
+            )
             continue
 
         # Non-pipe line exits table mode

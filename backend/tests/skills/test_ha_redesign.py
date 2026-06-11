@@ -123,9 +123,7 @@ def test_prepare_records_proposed_entry(
     project: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    rc = ha_redesign.cmd_prepare(
-        _ns(decision="CEO pivot test", rationale="unit test source")
-    )
+    rc = ha_redesign.cmd_prepare(_ns(decision="CEO pivot test", rationale="unit test source"))
     assert rc == 0
 
     # plan 갱신 검증

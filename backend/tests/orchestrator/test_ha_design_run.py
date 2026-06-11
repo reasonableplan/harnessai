@@ -13,14 +13,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 from src.orchestrator.plan_manager import (
     HarnessPlan,
     PlanManager,
-    Pipeline,
     ProfileRef,
-    ScaleAxes,
     SkeletonSpec,
 )
 
@@ -271,9 +267,7 @@ def test_prepare_consistency_violations_mobile_only_with_interface_http(
 
     # interface.http 섹션의 http_server violation 이 있어야 함
     http_violations = [v for v in violations if v.get("section_id") == "interface.http"]
-    assert http_violations, (
-        f"interface.http violation 없음. 전체 violations: {violations}"
-    )
+    assert http_violations, f"interface.http violation 없음. 전체 violations: {violations}"
     v = http_violations[0]
     assert v["missing_atom"] == "http_server"
     assert set(v["expected_providers"]) == {"fastapi", "nestjs", "nextjs"}
@@ -405,15 +399,11 @@ def test_commit_passes_when_lessons_md_missing(tmp_path: Path) -> None:
     _write_plan(project_dir, plan)
     skel = _write_skeleton(project_dir / "docs", "LESSON-001 참고.")
 
-    returncode, out, stderr = _run_commit(
-        project_dir, skel, harness_home_override=fake_home
-    )
+    returncode, out, stderr = _run_commit(project_dir, skel, harness_home_override=fake_home)
 
     assert returncode == 0, f"shared-lessons.md 없을 때 실패: stderr={stderr!r}"
     # stderr 에 skip 또는 없음 안내
-    assert "skip" in stderr or "없음" in stderr, (
-        f"shared-lessons.md 없음 안내 없음: {stderr!r}"
-    )
+    assert "skip" in stderr or "없음" in stderr, f"shared-lessons.md 없음 안내 없음: {stderr!r}"
 
 
 # ── v0.10.0 HITL gate 테스트 ────────────────────────────────────────────────

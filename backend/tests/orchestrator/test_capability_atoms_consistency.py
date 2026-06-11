@@ -186,8 +186,8 @@ def test_has_key_providers_profiles_actually_provide() -> None:
                     f"{list(profile.provides_capabilities)} — atom missing."
                 )
 
-    assert not failures, (
-        "Bidirectional consistency failures:\n" + "\n".join(f"  - {f}" for f in failures)
+    assert not failures, "Bidirectional consistency failures:\n" + "\n".join(
+        f"  - {f}" for f in failures
     )
 
 

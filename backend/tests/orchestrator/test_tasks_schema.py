@@ -3,15 +3,18 @@
 validate_tasks_md() 의 모든 violation 종류를 커버.
 pure function 테스트이므로 fixture 없이 문자열 직접 전달.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from src.orchestrator.tasks_schema import SchemaViolation, validate_tasks_md
+from src.orchestrator.tasks_schema import validate_tasks_md
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
-_VALID_HEADER = "| ID | 에이전트 | 의존성 | 설명 | 상태 |\n|----|---------|--------|------|------|\n"
+_VALID_HEADER = (
+    "| ID | 에이전트 | 의존성 | 설명 | 상태 |\n|----|---------|--------|------|------|\n"
+)
 _VALID_HEADER_EN = "| ID | agent | depends | description | status |\n|----|-------|---------|-------------|--------|\n"
 
 
@@ -77,7 +80,9 @@ def test_validate_detects_fractional_task_id() -> None:
 def test_validate_detects_bad_column_order() -> None:
     """컬럼 순서 변경 (ID, 설명, 에이전트, ...) — bad_column_order violation."""
     # Wrong order: ID | 설명 | 에이전트 | 의존성 | 상태
-    bad_header = "| ID | 설명 | 에이전트 | 의존성 | 상태 |\n|----|------|---------|--------|------|\n"
+    bad_header = (
+        "| ID | 설명 | 에이전트 | 의존성 | 상태 |\n|----|------|---------|--------|------|\n"
+    )
     content = bad_header + _row()
     result = validate_tasks_md(content)
     col_violations = [v for v in result if v.kind == "bad_column_order"]
@@ -123,11 +128,9 @@ def test_validate_detects_bad_phase_header_korean_style() -> None:
     """'### 1단계' (한국어 Phase 형식) — bad_phase_header violation."""
     content = "### 1단계\n" + _VALID_HEADER + _row()
     result = validate_tasks_md(content)
-    # "### 1단계" 는 "### Phase" 로 시작하지 않으므로 phase check 자체가 미발동.
-    # 이 케이스는 헤더가 없는 일반 텍스트로 처리 — violation 없음이 올바름.
-    # (Phase 헤더 체크는 "### Phase" 또는 "## Phase" 로 시작할 때만 발동)
-    # → violation 없어야 정상.
-    assert True  # 형식 명세상 Phase 헤더 absent = OK (단일 Phase 로 간주)
+    # "### 1단계" 는 "### Phase" 로 시작하지 않으므로 phase check 미발동 —
+    # 헤더 없는 일반 텍스트로 처리되어 bad_phase_header violation 이 없어야 정상.
+    assert all(v.kind != "bad_phase_header" for v in result)
 
 
 # ── Test 7: 한국어/영어 컬럼 alias 수용 ──────────────────────────────────────
@@ -135,10 +138,7 @@ def test_validate_detects_bad_phase_header_korean_style() -> None:
 
 def test_validate_accepts_korean_english_column_aliases() -> None:
     """전부 영어 컬럼명 | ID | agent | depends | description | status | — violations 없음."""
-    content = (
-        _VALID_HEADER_EN
-        + "| T-001 | mobile_coder_rn | - | task | 대기 |\n"
-    )
+    content = _VALID_HEADER_EN + "| T-001 | mobile_coder_rn | - | task | 대기 |\n"
     result = validate_tasks_md(content)
     assert result == [], f"영어 alias 사용 시 violations 발생: {result}"
 
@@ -182,10 +182,21 @@ def test_validate_returns_violations_sorted() -> None:
 # ── Test 10: 허용 상태값 전부 통과 ───────────────────────────────────────────
 
 
-@pytest.mark.parametrize("status", [
-    "대기", "pending", "진행중", "in-progress",
-    "완료", "done", "completed", "차단", "blocked", "needs_rebuild",
-])
+@pytest.mark.parametrize(
+    "status",
+    [
+        "대기",
+        "pending",
+        "진행중",
+        "in-progress",
+        "완료",
+        "done",
+        "completed",
+        "차단",
+        "blocked",
+        "needs_rebuild",
+    ],
+)
 def test_validate_all_valid_statuses_pass(status: str) -> None:
     """VALID_STATUSES 전체 — violations 없음."""
     content = _table(_row("T-001", status=status))
@@ -218,9 +229,7 @@ def test_validate_accepts_comma_separated_dependencies() -> None:
     content = _table(_row("T-003", depends="T-001, T-002"))
     result = validate_tasks_md(content)
     dep_violations = [v for v in result if v.kind == "bad_dependency"]
-    assert dep_violations == [], (
-        f"콤마 구분 의존성에서 violation 발생: {dep_violations}"
-    )
+    assert dep_violations == [], f"콤마 구분 의존성에서 violation 발생: {dep_violations}"
 
 
 # ── Test 13: Phase 없는 단일 Phase (Phase 헤더 부재) — OK ────────────────────

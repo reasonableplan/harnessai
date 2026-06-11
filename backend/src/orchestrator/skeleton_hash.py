@@ -4,6 +4,7 @@ Used by:
 - ha-design commit / ha-redesign apply: write current hash to plan
 - ha-plan / ha-build / ha-verify / ha-review / ha-redesign prepare: compare and warn
 """
+
 from __future__ import annotations
 
 import hashlib

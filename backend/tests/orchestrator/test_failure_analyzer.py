@@ -2,11 +2,10 @@
 
 대상: extract_failed_files, match_failures_to_tasks, analyze_failure, CLI main()
 """
+
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from pathlib import Path
 from textwrap import dedent
 
@@ -15,8 +14,10 @@ import pytest
 from src.orchestrator.failure_analyzer import (
     analyze_failure,
     extract_failed_files,
-    main as analyzer_main,
     match_failures_to_tasks,
+)
+from src.orchestrator.failure_analyzer import (
+    main as analyzer_main,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -226,9 +227,7 @@ def test_analyze_failure_no_failures() -> None:
 def test_cli_with_output_file(tmp_path: Path) -> None:
     """CLI: output-file 경로 + tasks.md → JSON 출력."""
     output_file = tmp_path / "pytest-output.txt"
-    output_file.write_text(
-        "FAILED tests/api/test_auth.py::test_login\n", encoding="utf-8"
-    )
+    output_file.write_text("FAILED tests/api/test_auth.py::test_login\n", encoding="utf-8")
     tasks_file = tmp_path / "tasks.md"
     tasks_file.write_text(_TASKS_MD_SAMPLE, encoding="utf-8")
 
@@ -258,8 +257,7 @@ def test_cli_json_output_structure(tmp_path: Path, capsys: pytest.CaptureFixture
     """CLI: stdout 이 유효한 JSON + 필수 키 포함."""
     output_file = tmp_path / "output.txt"
     output_file.write_text(
-        "FAILED tests/models/test_user.py::test_dup\n"
-        "src/services/auth.py:10 — Type error\n",
+        "FAILED tests/models/test_user.py::test_dup\nsrc/services/auth.py:10 — Type error\n",
         encoding="utf-8",
     )
     tasks_file = tmp_path / "tasks.md"

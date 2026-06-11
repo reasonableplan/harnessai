@@ -11,7 +11,6 @@ import json
 import sys
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
-from subprocess import CompletedProcess
 from types import ModuleType, SimpleNamespace
 
 import pytest
@@ -71,7 +70,13 @@ def _make_plan(current_step: str, completed: tuple[str, ...] = ()):
     )
 
 
-def _args(task: str, status: str, reason: str = "", skip_toolchain: bool = False, skip_security: bool = False):
+def _args(
+    task: str,
+    status: str,
+    reason: str = "",
+    skip_toolchain: bool = False,
+    skip_security: bool = False,
+):
     return SimpleNamespace(
         task=task,
         status=status,
@@ -101,7 +106,9 @@ def _patch_load_plan(ha_build, monkeypatch, plan, tmp_path: Path, tasks_text: st
         transitions.append((target, completed_step))
         p.pipeline = SimpleNamespace(
             current_step=target,
-            completed_steps=(*p.pipeline.completed_steps, completed_step) if completed_step else p.pipeline.completed_steps,
+            completed_steps=(*p.pipeline.completed_steps, completed_step)
+            if completed_step
+            else p.pipeline.completed_steps,
             skipped_steps=p.pipeline.skipped_steps,
             steps=p.pipeline.steps,
             gstack_mode=p.pipeline.gstack_mode,
@@ -116,11 +123,14 @@ def _patch_load_plan(ha_build, monkeypatch, plan, tmp_path: Path, tasks_text: st
 # B5 — skipped 마킹 테스트
 # ---------------------------------------------------------------------------
 
+
 def test_skipped_status_updates_tasks_md(ha_build, tmp_path, monkeypatch, capsys) -> None:
     """skipped 마킹 → tasks.md 상태 컬럼이 'skipped' 로 바뀐다."""
     plan = _make_plan("building")
     tasks_text = _tasks_md([("T-001", "done      "), ("T-002", "대기      ")])
-    tasks_path, saved, transitions = _patch_load_plan(ha_build, monkeypatch, plan, tmp_path, tasks_text)
+    tasks_path, saved, transitions = _patch_load_plan(
+        ha_build, monkeypatch, plan, tmp_path, tasks_text
+    )
 
     rc = ha_build.cmd_complete(_args("T-002", "skipped"))
 
@@ -136,7 +146,9 @@ def test_skipped_does_not_run_toolchain_gate(ha_build, tmp_path, monkeypatch) ->
     _patch_load_plan(ha_build, monkeypatch, plan, tmp_path, tasks_text)
 
     gate_called: list[bool] = []
-    monkeypatch.setattr(ha_build, "_run_toolchain_gate", lambda *a, **kw: gate_called.append(True) or [])
+    monkeypatch.setattr(
+        ha_build, "_run_toolchain_gate", lambda *a, **kw: gate_called.append(True) or []
+    )
     monkeypatch.setattr(ha_build, "_run_security_gate", lambda *a, **kw: [])
 
     rc = ha_build.cmd_complete(_args("T-002", "skipped"))
@@ -153,7 +165,9 @@ def test_skipped_does_not_run_security_gate(ha_build, tmp_path, monkeypatch) -> 
 
     sec_called: list[bool] = []
     monkeypatch.setattr(ha_build, "_run_toolchain_gate", lambda *a, **kw: [])
-    monkeypatch.setattr(ha_build, "_run_security_gate", lambda *a, **kw: sec_called.append(True) or [])
+    monkeypatch.setattr(
+        ha_build, "_run_security_gate", lambda *a, **kw: sec_called.append(True) or []
+    )
 
     rc = ha_build.cmd_complete(_args("T-002", "skipped"))
 
@@ -216,6 +230,7 @@ def test_output_json_uses_all_tasks_resolved_key(ha_build, tmp_path, monkeypatch
 # B1 — atomic 보장 테스트
 # ---------------------------------------------------------------------------
 
+
 def test_missing_task_id_returns_exit1(ha_build, tmp_path, monkeypatch, capsys) -> None:
     """tasks.md 에 없는 T-ID → exit 1, plan 갱신 안 됨."""
     plan = _make_plan("building")
@@ -239,7 +254,9 @@ def test_missing_task_id_no_plan_update(ha_build, tmp_path, monkeypatch, capsys)
     assert not transitions, "transition 이 발생하면 안 됨"
 
 
-def test_missing_task_id_error_message_contains_tid(ha_build, tmp_path, monkeypatch, capsys) -> None:
+def test_missing_task_id_error_message_contains_tid(
+    ha_build, tmp_path, monkeypatch, capsys
+) -> None:
     """에러 메시지에 T-ID 포함 확인."""
     plan = _make_plan("building")
     tasks_text = _tasks_md([("T-001", "done      ")])

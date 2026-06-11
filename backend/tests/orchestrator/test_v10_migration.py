@@ -9,19 +9,18 @@ migrate_v10.migrate() 함수의 핵심 동작을 검증:
 
 모든 픽스처는 tmp_path 기반 — 사용자 환경 비의존.
 """
+
 from __future__ import annotations
-
-import sys
-from pathlib import Path
-from textwrap import dedent
-
-import pytest
-import yaml
 
 # migrate_v10 는 ~/.claude/harness/bin/ 에 있으므로 직접 importlib 로 로드.
 import importlib
 import importlib.util
+import sys
 from importlib.machinery import SourceFileLoader
+from pathlib import Path
+
+import pytest
+import yaml
 
 
 def _load_migrate_module():

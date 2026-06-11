@@ -182,6 +182,6 @@ class TestLoadAgentsConfig:
             for name, agent in cfg.all_agents().items()
             if not (backend_dir / agent.prompt_path).exists()
         ]
-        assert not missing, (
-            "prompt_path 파일이 없습니다 (.gitignore 누락 의심):\n" + "\n".join(missing)
+        assert not missing, "prompt_path 파일이 없습니다 (.gitignore 누락 의심):\n" + "\n".join(
+            missing
         )

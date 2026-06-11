@@ -35,6 +35,7 @@ def utils() -> ModuleType:
 
 # ── 실제 guidelines 디렉토리 존재 전제 ─────────────────────────────────
 
+
 def test_flutter_returns_four_sorted_paths(utils) -> None:
     """flutter 프로파일 → 4개 .md 파일, 정렬 보장."""
     paths = utils.resolve_guideline_paths("flutter")

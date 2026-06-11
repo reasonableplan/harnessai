@@ -19,8 +19,6 @@ import sys
 import textwrap
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
 HA_VERIFY_RUN = REPO_ROOT / "skills" / "ha-verify" / "run.py"
 
@@ -167,7 +165,9 @@ def test_android_kotlin_no_java_home_warns(tmp_path: Path) -> None:
     output, _ = _run_prepare(project, extra_env=env_override)
     assert "platform_warnings" in output, "platform_warnings field missing"
     warnings_text = " ".join(output["platform_warnings"]).lower()
-    has_java_warn = "java" in warnings_text or "gradle" in warnings_text or "android" in warnings_text
+    has_java_warn = (
+        "java" in warnings_text or "gradle" in warnings_text or "android" in warnings_text
+    )
     assert has_java_warn, (
         f"expected JAVA_HOME warning for android-kotlin, got: {output['platform_warnings']}"
     )

@@ -24,6 +24,7 @@ def _load_profile_loader():
     if not HARNESS_DIR.exists():
         pytest.skip("harness/ 디렉토리 없음")
     from src.orchestrator.profile_loader import ProfileLoader  # noqa: PLC0415
+
     return ProfileLoader
 
 

@@ -3,22 +3,19 @@
 parse_profile_file_structure, scan_project_directories, compute_drift 를
 직접 import 해서 검증. harness CLI integrity 통합 테스트는 별도.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 from textwrap import dedent
 from unittest.mock import MagicMock
 
-import pytest
-
 from src.orchestrator.file_structure_audit import (
-    DriftResult,
     _parse_tree_to_dirs,
     compute_drift,
     parse_profile_file_structure,
     scan_project_directories,
 )
-
 
 # ── parse_profile_file_structure ─────────────────────────────────────────
 
@@ -313,6 +310,7 @@ def test_integrity_file_structure_drift_warns(tmp_path: Path) -> None:
     profiles_dir.mkdir()
 
     import yaml
+
     profile_data = {
         "id": "test-profile",
         "name": "Test Profile",
@@ -355,6 +353,7 @@ def test_integrity_file_structure_no_drift_no_warn(tmp_path: Path) -> None:
     loader.exec_module(mod)
 
     import yaml
+
     profiles_dir = tmp_path / "profiles"
     profiles_dir.mkdir()
     profile_data = {
@@ -375,7 +374,6 @@ def test_integrity_file_structure_no_drift_no_warn(tmp_path: Path) -> None:
     mod._check_file_structure_drift(project, profiles_dir, report)
 
     drift_warns = [
-        i for i in report.issues
-        if i.severity == "warn" and "file_structure drift" in i.message
+        i for i in report.issues if i.severity == "warn" and "file_structure drift" in i.message
     ]
     assert drift_warns == []

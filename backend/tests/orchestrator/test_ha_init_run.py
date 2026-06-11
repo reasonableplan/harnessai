@@ -61,12 +61,18 @@ def test_write_accepts_external_capabilities_flag(tmp_path: Path) -> None:
             sys.executable,
             str(_RUN_PY),
             "write",
-            "--project", str(project),
-            "--profiles", "python-cli",
-            "--included", "overview,stack",
-            "--description", "Firebase BaaS 사용",
-            "--project-type", "mobile BaaS",
-            "--external-capabilities", "http_server,users",
+            "--project",
+            str(project),
+            "--profiles",
+            "python-cli",
+            "--included",
+            "overview,stack",
+            "--description",
+            "Firebase BaaS 사용",
+            "--project-type",
+            "mobile BaaS",
+            "--external-capabilities",
+            "http_server,users",
             "--overwrite",
         ],
         capture_output=True,
@@ -102,10 +108,14 @@ def test_write_rejects_unknown_external_atom(tmp_path: Path) -> None:
             sys.executable,
             str(_RUN_PY),
             "write",
-            "--project", str(project),
-            "--profiles", "python-cli",
-            "--included", "overview",
-            "--external-capabilities", "foobar",
+            "--project",
+            str(project),
+            "--profiles",
+            "python-cli",
+            "--included",
+            "overview",
+            "--external-capabilities",
+            "foobar",
             "--overwrite",
         ],
         capture_output=True,
@@ -142,8 +152,12 @@ def ha_init_module() -> ModuleType:
 
 def _axes(**kw):
     base = dict(
-        user_scale="small", data_sensitivity="none", team_size="solo",
-        availability="standard", monetization="none", lifecycle="mvp",
+        user_scale="small",
+        data_sensitivity="none",
+        team_size="solo",
+        availability="standard",
+        monetization="none",
+        lifecycle="mvp",
     )
     base.update(kw)
     return SimpleNamespace(**base)
@@ -156,26 +170,38 @@ def test_axis_warning_payment_without_sensitivity(ha_init_module) -> None:
 
 
 def test_axis_warning_high_availability_poc(ha_init_module) -> None:
-    warnings = ha_init_module._axis_warnings(
-        _axes(availability="high", lifecycle="poc")
-    )
+    warnings = ha_init_module._axis_warnings(_axes(availability="high", lifecycle="poc"))
     assert len(warnings) == 1
 
 
 def test_axis_no_warning_for_consistent_answers(ha_init_module) -> None:
     assert ha_init_module._axis_warnings(_axes()) == []
-    assert ha_init_module._axis_warnings(
-        _axes(monetization="payment", data_sensitivity="payment")
-    ) == []
+    assert (
+        ha_init_module._axis_warnings(_axes(monetization="payment", data_sensitivity="payment"))
+        == []
+    )
 
 
 # ── S-1: 활성 섹션 canonical 삽입 배치 ──────────────────────────────
 
 _FASTAPI_ORDER = [
-    "overview", "requirements", "stack", "configuration", "environments",
-    "errors", "auth", "persistence", "integrations", "interface.http",
-    "rate_limiting", "state.flow", "core.logic", "observability",
-    "deployment", "test_strategy", "ci_cd",
+    "overview",
+    "requirements",
+    "stack",
+    "configuration",
+    "environments",
+    "errors",
+    "auth",
+    "persistence",
+    "integrations",
+    "interface.http",
+    "rate_limiting",
+    "state.flow",
+    "core.logic",
+    "observability",
+    "deployment",
+    "test_strategy",
+    "ci_cd",
 ]
 
 

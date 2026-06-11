@@ -10,8 +10,6 @@ from pathlib import Path
 from textwrap import dedent
 from unittest.mock import patch
 
-import pytest
-
 # fixtures: harness_module (from conftest)
 
 PLAN_MINIMAL = (
@@ -130,7 +128,9 @@ def test_verbose_result_plan_missing_returns_none(harness_module, tmp_path: Path
 def _capture_integrity_print(harness_module, report, vr, *, quiet: bool = False) -> str:
     """print_integrity_report 출력을 문자열로 캡처."""
     buf = io.StringIO()
-    with patch("builtins.print", side_effect=lambda *a, **kw: buf.write(" ".join(str(x) for x in a) + "\n")):
+    with patch(
+        "builtins.print", side_effect=lambda *a, **kw: buf.write(" ".join(str(x) for x in a) + "\n")
+    ):
         harness_module.print_integrity_report(report, vr, quiet=quiet)
     return buf.getvalue()
 

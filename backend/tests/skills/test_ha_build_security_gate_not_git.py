@@ -3,6 +3,7 @@
 결함: git repo 아니거나 git 미설치면 returncode≠0 → diff_text="" → return [] (silent pass).
 Fix: _is_git_repo 로 명시적 git repo 체크 → WARN 출력 + 빈 리스트 반환 (visible pass).
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -54,7 +55,9 @@ def test_is_git_repo_returns_false_when_not_repo(ha_build, tmp_path, monkeypatch
     """git rev-parse --git-dir 실패 (rc=128) → (False, True)."""
     monkeypatch.setattr(
         "subprocess.run",
-        lambda *a, **kw: CompletedProcess(args=a[0], returncode=128, stdout="", stderr="fatal: not a git repository"),
+        lambda *a, **kw: CompletedProcess(
+            args=a[0], returncode=128, stdout="", stderr="fatal: not a git repository"
+        ),
     )
     is_repo, git_installed = ha_build._is_git_repo(tmp_path)
     assert is_repo is False
@@ -63,8 +66,10 @@ def test_is_git_repo_returns_false_when_not_repo(ha_build, tmp_path, monkeypatch
 
 def test_is_git_repo_returns_false_when_git_not_installed(ha_build, tmp_path, monkeypatch) -> None:
     """git 미설치 → FileNotFoundError → (False, False)."""
+
     def _raise(*a, **kw):
         raise FileNotFoundError("git not found")
+
     monkeypatch.setattr("subprocess.run", _raise)
     is_repo, git_installed = ha_build._is_git_repo(tmp_path)
     assert is_repo is False
@@ -74,7 +79,9 @@ def test_is_git_repo_returns_false_when_git_not_installed(ha_build, tmp_path, mo
 # ── _run_security_gate not-git WARN 테스트 ────────────────────────────────
 
 
-def test_security_gate_warns_when_git_not_installed(ha_build, tmp_path, monkeypatch, capsys) -> None:
+def test_security_gate_warns_when_git_not_installed(
+    ha_build, tmp_path, monkeypatch, capsys
+) -> None:
     """git 미설치 → WARN 출력 + 빈 리스트 반환 (silent pass → visible pass)."""
     monkeypatch.setattr(ha_build, "_is_git_repo", lambda p: (False, False))
     plan = _make_plan()
@@ -102,17 +109,17 @@ def test_security_gate_warns_when_not_git_repo(ha_build, tmp_path, monkeypatch, 
     assert "git" in combined
 
 
-def test_security_gate_warn_message_includes_git_init_hint(ha_build, tmp_path, monkeypatch, capsys) -> None:
+def test_security_gate_warn_message_includes_git_init_hint(
+    ha_build, tmp_path, monkeypatch, capsys
+) -> None:
     """not-repo WARN 메시지에 git init 힌트 포함."""
     monkeypatch.setattr(ha_build, "_is_git_repo", lambda p: (False, True))
     plan = _make_plan()
 
-    ha_build._run_security_gate(tmp_path, plan)
+    # info() 는 stderr 로 출력 — redirect 로 캡처해 git init 힌트 단언
+    import contextlib
+    import io
 
-    combined = capsys.readouterr().out + capsys.readouterr().err
-    # info() 는 stderr 로 출력
-    # git init 힌트가 있어야 함
-    import io, contextlib
     buf = io.StringIO()
     with contextlib.redirect_stderr(buf):
         ha_build._run_security_gate(tmp_path, plan)

@@ -3,6 +3,7 @@
 결함: SKILL.md §5 가 `run.py augment-plan` 호출을 명시하지만 subcommand 미구현.
 Fix: cmd_augment_plan — scan 결과 요약을 user_description_original 에 append.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -177,6 +178,7 @@ def test_augment_plan_save_oserror_returns_exit1(ha_deepinit, tmp_path, monkeypa
 
     def _fail_save(p, pp):
         raise OSError("disk full")
+
     monkeypatch.setattr(ha_deepinit, "save_plan", _fail_save)
 
     args = SimpleNamespace(project="", no_backup=True)

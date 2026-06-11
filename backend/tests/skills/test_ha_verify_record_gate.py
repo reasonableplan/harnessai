@@ -56,7 +56,11 @@ def test_record_failed_without_rework_exits_1(ha_verify: ModuleType) -> None:
     mock_plan = _make_mock_plan("built")
 
     with (
-        patch.object(ha_verify, "load_plan", return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake"))),
+        patch.object(
+            ha_verify,
+            "load_plan",
+            return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake")),
+        ),
         patch.object(ha_verify, "assert_state"),
     ):
         args = MagicMock()
@@ -76,7 +80,11 @@ def test_record_failed_error_message_mentions_rework_tasks(
     mock_plan = _make_mock_plan("built")
 
     with (
-        patch.object(ha_verify, "load_plan", return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake"))),
+        patch.object(
+            ha_verify,
+            "load_plan",
+            return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake")),
+        ),
         patch.object(ha_verify, "assert_state"),
     ):
         args = MagicMock()
@@ -104,7 +112,11 @@ def test_record_failed_with_rework_tasks_passes(ha_verify: ModuleType) -> None:
         captured.append(data)
 
     with (
-        patch.object(ha_verify, "load_plan", return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake"))),
+        patch.object(
+            ha_verify,
+            "load_plan",
+            return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake")),
+        ),
         patch.object(ha_verify, "assert_state"),
         patch.object(ha_verify, "record_verify"),
         patch.object(ha_verify, "regress"),
@@ -134,7 +146,11 @@ def test_record_failed_summary_includes_rework_tag(ha_verify: ModuleType) -> Non
         captured.append(data)
 
     with (
-        patch.object(ha_verify, "load_plan", return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake"))),
+        patch.object(
+            ha_verify,
+            "load_plan",
+            return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake")),
+        ),
         patch.object(ha_verify, "assert_state"),
         patch.object(ha_verify, "record_verify"),
         patch.object(ha_verify, "regress"),
@@ -166,7 +182,11 @@ def test_record_failed_with_no_rework_passes(ha_verify: ModuleType) -> None:
         captured.append(data)
 
     with (
-        patch.object(ha_verify, "load_plan", return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake"))),
+        patch.object(
+            ha_verify,
+            "load_plan",
+            return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake")),
+        ),
         patch.object(ha_verify, "assert_state"),
         patch.object(ha_verify, "record_verify"),
         patch.object(ha_verify, "regress"),
@@ -198,7 +218,11 @@ def test_record_passed_no_rework_check(ha_verify: ModuleType) -> None:
         captured.append(data)
 
     with (
-        patch.object(ha_verify, "load_plan", return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake"))),
+        patch.object(
+            ha_verify,
+            "load_plan",
+            return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake")),
+        ),
         patch.object(ha_verify, "assert_state"),
         patch.object(ha_verify, "record_verify"),
         patch.object(ha_verify, "transition"),
@@ -228,7 +252,11 @@ def test_record_passed_output_has_rework_tasks_field(ha_verify: ModuleType) -> N
         captured.append(data)
 
     with (
-        patch.object(ha_verify, "load_plan", return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake"))),
+        patch.object(
+            ha_verify,
+            "load_plan",
+            return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake")),
+        ),
         patch.object(ha_verify, "assert_state"),
         patch.object(ha_verify, "record_verify"),
         patch.object(ha_verify, "transition"),

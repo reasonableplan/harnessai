@@ -3,6 +3,7 @@
 결함: SKILL.md §1.5 가 harness integrity 실행 지시하지만 run.py cmd_prepare 가 미실행.
 Fix: _run_integrity_check 가 harness integrity subprocess 실행 → advisory JSON 필드 포함.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -12,7 +13,7 @@ from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from subprocess import CompletedProcess
 from types import ModuleType, SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -53,7 +54,9 @@ def test_run_integrity_check_passed_when_harness_exits_0(ha_verify, tmp_path, mo
     assert result["output"] == "OK"
 
 
-def test_run_integrity_check_failed_when_harness_exits_nonzero(ha_verify, tmp_path, monkeypatch, capsys) -> None:
+def test_run_integrity_check_failed_when_harness_exits_nonzero(
+    ha_verify, tmp_path, monkeypatch, capsys
+) -> None:
     """harness integrity exit 1 → passed=False, skipped=False, WARN 출력."""
     harness_bin = tmp_path / "harness" / "bin" / "harness"
     harness_bin.parent.mkdir(parents=True)
@@ -62,7 +65,9 @@ def test_run_integrity_check_failed_when_harness_exits_nonzero(ha_verify, tmp_pa
     monkeypatch.setattr(ha_verify, "HARNESS_HOME", tmp_path)
     monkeypatch.setattr(
         "subprocess.run",
-        lambda *a, **kw: CompletedProcess(args=a[0], returncode=1, stdout="placeholder detected", stderr=""),
+        lambda *a, **kw: CompletedProcess(
+            args=a[0], returncode=1, stdout="placeholder detected", stderr=""
+        ),
     )
 
     result = ha_verify._run_integrity_check(tmp_path)
@@ -74,7 +79,9 @@ def test_run_integrity_check_failed_when_harness_exits_nonzero(ha_verify, tmp_pa
     assert "[WARN]" in combined
 
 
-def test_run_integrity_check_skipped_when_harness_bin_missing(ha_verify, tmp_path, monkeypatch) -> None:
+def test_run_integrity_check_skipped_when_harness_bin_missing(
+    ha_verify, tmp_path, monkeypatch
+) -> None:
     """harness 바이너리 없음 → skipped=True, passed=None."""
     # HARNESS_HOME 을 빈 tmp_path 로 → harness/bin/harness 없음
     monkeypatch.setattr(ha_verify, "HARNESS_HOME", tmp_path)
@@ -89,6 +96,7 @@ def test_run_integrity_check_skipped_when_harness_bin_missing(ha_verify, tmp_pat
 def test_run_integrity_check_skipped_on_timeout(ha_verify, tmp_path, monkeypatch) -> None:
     """harness integrity 타임아웃 → skipped=True, reason='timeout'."""
     import subprocess
+
     harness_bin = tmp_path / "harness" / "bin" / "harness"
     harness_bin.parent.mkdir(parents=True)
     harness_bin.touch()
@@ -119,7 +127,9 @@ def _make_mock_plan_for_prepare(current_step: str = "built") -> MagicMock:
     return mock_plan
 
 
-def test_cmd_prepare_output_includes_integrity_passed(ha_verify, tmp_path, monkeypatch, capsys) -> None:
+def test_cmd_prepare_output_includes_integrity_passed(
+    ha_verify, tmp_path, monkeypatch, capsys
+) -> None:
     """cmd_prepare JSON 출력에 integrity_passed 필드 존재."""
     mock_plan = _make_mock_plan_for_prepare("built")
     plan_path = tmp_path / "docs" / "harness-plan.md"
@@ -133,7 +143,11 @@ def test_cmd_prepare_output_includes_integrity_passed(ha_verify, tmp_path, monke
     monkeypatch.setattr(ha_verify, "assert_state", lambda *a, **kw: None)
     monkeypatch.setattr(ha_verify, "get_active_profiles", lambda *a, **kw: [])
     monkeypatch.setattr(ha_verify, "check_skeleton_hash", lambda *a, **kw: mock_hash_check)
-    monkeypatch.setattr(ha_verify, "_run_integrity_check", lambda p: {"passed": True, "skipped": False, "reason": "", "output": "OK"})
+    monkeypatch.setattr(
+        ha_verify,
+        "_run_integrity_check",
+        lambda p: {"passed": True, "skipped": False, "reason": "", "output": "OK"},
+    )
 
     rc = ha_verify.cmd_prepare(SimpleNamespace())
 
@@ -145,7 +159,9 @@ def test_cmd_prepare_output_includes_integrity_passed(ha_verify, tmp_path, monke
     assert data["integrity_passed"] is True
 
 
-def test_cmd_prepare_integrity_check_field_on_failure(ha_verify, tmp_path, monkeypatch, capsys) -> None:
+def test_cmd_prepare_integrity_check_field_on_failure(
+    ha_verify, tmp_path, monkeypatch, capsys
+) -> None:
     """integrity 실패 시 integrity_passed=False 가 JSON 에 포함."""
     mock_plan = _make_mock_plan_for_prepare("built")
     plan_path = tmp_path / "docs" / "harness-plan.md"
@@ -158,7 +174,16 @@ def test_cmd_prepare_integrity_check_field_on_failure(ha_verify, tmp_path, monke
     monkeypatch.setattr(ha_verify, "assert_state", lambda *a, **kw: None)
     monkeypatch.setattr(ha_verify, "get_active_profiles", lambda *a, **kw: [])
     monkeypatch.setattr(ha_verify, "check_skeleton_hash", lambda *a, **kw: mock_hash_check)
-    monkeypatch.setattr(ha_verify, "_run_integrity_check", lambda p: {"passed": False, "skipped": False, "reason": "", "output": "placeholder detected"})
+    monkeypatch.setattr(
+        ha_verify,
+        "_run_integrity_check",
+        lambda p: {
+            "passed": False,
+            "skipped": False,
+            "reason": "",
+            "output": "placeholder detected",
+        },
+    )
 
     rc = ha_verify.cmd_prepare(SimpleNamespace())
 

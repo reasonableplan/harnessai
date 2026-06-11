@@ -3,6 +3,7 @@
 대상: skills/ha-log/run.py::append_entry
 전략: tmp_path 기반 파일 I/O — 실제 worklog.md 미접촉.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -53,12 +54,7 @@ def test_append_existing_today_section(ha_log, tmp_path: Path) -> None:
     """오늘 섹션 + sub_header 이미 있으면 그 안에 bullet 추가."""
     worklog = tmp_path / "worklog.md"
     today = ha_log._today()
-    initial = (
-        "# 작업 일지\n\n"
-        f"## {today}\n\n"
-        "### 논의 / 합의\n"
-        "- 기존 항목\n"
-    )
+    initial = f"# 작업 일지\n\n## {today}\n\n### 논의 / 합의\n- 기존 항목\n"
     worklog.write_text(initial, encoding="utf-8")
 
     ha_log.append_entry(worklog, "discussion", "두 번째 항목")
@@ -75,12 +71,7 @@ def test_append_new_today_section_above_old(ha_log, tmp_path: Path) -> None:
     worklog = tmp_path / "worklog.md"
     yesterday = "2020-01-01"
     today = ha_log._today()
-    initial = (
-        "# 작업 일지\n\n"
-        f"## {yesterday}\n\n"
-        "### 변경\n"
-        "- 어제 항목\n"
-    )
+    initial = f"# 작업 일지\n\n## {yesterday}\n\n### 변경\n- 어제 항목\n"
     worklog.write_text(initial, encoding="utf-8")
 
     ha_log.append_entry(worklog, "next", "다음 할 일")

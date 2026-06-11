@@ -56,20 +56,32 @@ def test_prepare_output_has_security_findings_key(ha_review: ModuleType, tmp_pat
         captured_output.append(data)
 
     with (
-        patch.object(ha_review, "load_plan", return_value=(mock_plan, tmp_path / "harness-plan.md", tmp_path)),
+        patch.object(
+            ha_review, "load_plan", return_value=(mock_plan, tmp_path / "harness-plan.md", tmp_path)
+        ),
         patch.object(ha_review, "assert_state"),
         patch.object(ha_review, "_check_git_repo"),
         patch.object(ha_review, "get_active_profiles", return_value=[]),
         patch.object(ha_review, "_extract_diff", return_value=""),
-        patch.object(ha_review, "_collect_findings", return_value={
-            "ai_slop": [],
-            "security": [],
-            "block_count": 0,
-            "warn_count": 0,
-        }),
-        patch.object(ha_review, "check_skeleton_hash", return_value=MagicMock(
-            skeleton_missing=True, is_legacy=False, is_match=True,
-        )),
+        patch.object(
+            ha_review,
+            "_collect_findings",
+            return_value={
+                "ai_slop": [],
+                "security": [],
+                "block_count": 0,
+                "warn_count": 0,
+            },
+        ),
+        patch.object(
+            ha_review,
+            "check_skeleton_hash",
+            return_value=MagicMock(
+                skeleton_missing=True,
+                is_legacy=False,
+                is_match=True,
+            ),
+        ),
         patch("builtins.print", side_effect=fake_print),
     ):
         args = MagicMock()
@@ -86,7 +98,9 @@ def test_prepare_output_has_security_findings_key(ha_review: ModuleType, tmp_pat
     assert "ai_slop_findings_in_diff" in output
 
 
-def test_prepare_security_summary_reflects_block_count(ha_review: ModuleType, tmp_path: Path) -> None:
+def test_prepare_security_summary_reflects_block_count(
+    ha_review: ModuleType, tmp_path: Path
+) -> None:
     """_collect_findings 가 BLOCK 1건 반환 시 security_summary.block_count == 1."""
     mock_plan = MagicMock()
     mock_plan.pipeline.current_step = "verified"
@@ -98,22 +112,39 @@ def test_prepare_security_summary_reflects_block_count(ha_review: ModuleType, tm
     def fake_print(data: str, **kwargs) -> None:  # type: ignore[misc]
         captured_output.append(data)
 
-    block_finding = {"hook": "secret-filter", "severity": "BLOCK", "message": "하드코딩 시크릿", "snippet": ""}
+    block_finding = {
+        "hook": "secret-filter",
+        "severity": "BLOCK",
+        "message": "하드코딩 시크릿",
+        "snippet": "",
+    }
     with (
-        patch.object(ha_review, "load_plan", return_value=(mock_plan, tmp_path / "harness-plan.md", tmp_path)),
+        patch.object(
+            ha_review, "load_plan", return_value=(mock_plan, tmp_path / "harness-plan.md", tmp_path)
+        ),
         patch.object(ha_review, "assert_state"),
         patch.object(ha_review, "_check_git_repo"),
         patch.object(ha_review, "get_active_profiles", return_value=[]),
         patch.object(ha_review, "_extract_diff", return_value=""),
-        patch.object(ha_review, "_collect_findings", return_value={
-            "ai_slop": [],
-            "security": [block_finding],
-            "block_count": 1,
-            "warn_count": 0,
-        }),
-        patch.object(ha_review, "check_skeleton_hash", return_value=MagicMock(
-            skeleton_missing=True, is_legacy=False, is_match=True,
-        )),
+        patch.object(
+            ha_review,
+            "_collect_findings",
+            return_value={
+                "ai_slop": [],
+                "security": [block_finding],
+                "block_count": 1,
+                "warn_count": 0,
+            },
+        ),
+        patch.object(
+            ha_review,
+            "check_skeleton_hash",
+            return_value=MagicMock(
+                skeleton_missing=True,
+                is_legacy=False,
+                is_match=True,
+            ),
+        ),
         patch("builtins.print", side_effect=fake_print),
     ):
         args = MagicMock()
@@ -150,7 +181,9 @@ def test_collect_findings_calls_security_hooks(ha_review: ModuleType, tmp_path: 
     assert "block_count" in result
 
 
-def test_collect_findings_mobile_profile_runs_mobile_rules(ha_review: ModuleType, tmp_path: Path) -> None:
+def test_collect_findings_mobile_profile_runs_mobile_rules(
+    ha_review: ModuleType, tmp_path: Path
+) -> None:
     """_collect_findings — mobile profile 이면 mobile 룰도 실행."""
     mock_profile = MagicMock()
     mock_profile.id = "react-native-expo"
@@ -169,7 +202,9 @@ def test_collect_findings_mobile_profile_runs_mobile_rules(ha_review: ModuleType
 
     # mobile 룰(_check_mobile_secret_storage)이 BLOCK 을 추가해야 함
     block_items = [f for f in result["security"] if f.get("severity") == "BLOCK"]
-    assert len(block_items) >= 1, f"mobile secret storage BLOCK 기대, got security={result['security']}"
+    assert len(block_items) >= 1, (
+        f"mobile secret storage BLOCK 기대, got security={result['security']}"
+    )
     assert result["block_count"] >= 1
 
 
@@ -182,7 +217,11 @@ def test_record_reject_without_violations_exits_1(ha_review: ModuleType) -> None
     mock_plan.pipeline.current_step = "verified"
 
     with (
-        patch.object(ha_review, "load_plan", return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake"))),
+        patch.object(
+            ha_review,
+            "load_plan",
+            return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake")),
+        ),
         patch.object(ha_review, "assert_state"),
     ):
         args = MagicMock()
@@ -201,7 +240,11 @@ def test_record_reject_with_empty_json_array_exits_1(ha_review: ModuleType) -> N
     mock_plan.pipeline.current_step = "verified"
 
     with (
-        patch.object(ha_review, "load_plan", return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake"))),
+        patch.object(
+            ha_review,
+            "load_plan",
+            return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake")),
+        ),
         patch.object(ha_review, "assert_state"),
     ):
         args = MagicMock()
@@ -226,7 +269,11 @@ def test_record_reject_with_violations_passes(ha_review: ModuleType) -> None:
         captured.append(data)
 
     with (
-        patch.object(ha_review, "load_plan", return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake"))),
+        patch.object(
+            ha_review,
+            "load_plan",
+            return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake")),
+        ),
         patch.object(ha_review, "assert_state"),
         patch.object(ha_review, "record_verify"),
         patch.object(ha_review, "regress"),
@@ -254,7 +301,12 @@ def test_record_approve_with_block_exits_1(ha_review: ModuleType) -> None:
     mock_plan = MagicMock()
     mock_plan.pipeline.current_step = "verified"
 
-    block_finding = {"hook": "secret-filter", "severity": "BLOCK", "message": "하드코딩 시크릿", "snippet": ""}
+    block_finding = {
+        "hook": "secret-filter",
+        "severity": "BLOCK",
+        "message": "하드코딩 시크릿",
+        "snippet": "",
+    }
     findings_result = {
         "ai_slop": [],
         "security": [block_finding],
@@ -263,7 +315,11 @@ def test_record_approve_with_block_exits_1(ha_review: ModuleType) -> None:
     }
 
     with (
-        patch.object(ha_review, "load_plan", return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake"))),
+        patch.object(
+            ha_review,
+            "load_plan",
+            return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake")),
+        ),
         patch.object(ha_review, "assert_state"),
         patch.object(ha_review, "get_active_profiles", return_value=[]),
         patch.object(ha_review, "_extract_diff", return_value=""),
@@ -291,7 +347,11 @@ def test_record_approve_with_block_and_allow_block_passes(ha_review: ModuleType)
         captured.append(data)
 
     with (
-        patch.object(ha_review, "load_plan", return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake"))),
+        patch.object(
+            ha_review,
+            "load_plan",
+            return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake")),
+        ),
         patch.object(ha_review, "assert_state"),
         patch.object(ha_review, "record_verify"),
         patch.object(ha_review, "transition"),
@@ -324,7 +384,11 @@ def test_record_approve_no_block_passes(ha_review: ModuleType) -> None:
     findings_result = {"ai_slop": [], "security": [], "block_count": 0, "warn_count": 0}
 
     with (
-        patch.object(ha_review, "load_plan", return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake"))),
+        patch.object(
+            ha_review,
+            "load_plan",
+            return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake")),
+        ),
         patch.object(ha_review, "assert_state"),
         patch.object(ha_review, "get_active_profiles", return_value=[]),
         patch.object(ha_review, "_extract_diff", return_value=""),
@@ -351,11 +415,25 @@ def test_record_approve_error_message_mentions_block(
     mock_plan = MagicMock()
     mock_plan.pipeline.current_step = "verified"
 
-    block_finding = {"hook": "command-guard", "severity": "BLOCK", "message": "eval() 사용", "snippet": "eval(x)"}
-    findings_result = {"ai_slop": [], "security": [block_finding], "block_count": 1, "warn_count": 0}
+    block_finding = {
+        "hook": "command-guard",
+        "severity": "BLOCK",
+        "message": "eval() 사용",
+        "snippet": "eval(x)",
+    }
+    findings_result = {
+        "ai_slop": [],
+        "security": [block_finding],
+        "block_count": 1,
+        "warn_count": 0,
+    }
 
     with (
-        patch.object(ha_review, "load_plan", return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake"))),
+        patch.object(
+            ha_review,
+            "load_plan",
+            return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake")),
+        ),
         patch.object(ha_review, "assert_state"),
         patch.object(ha_review, "get_active_profiles", return_value=[]),
         patch.object(ha_review, "_extract_diff", return_value=""),

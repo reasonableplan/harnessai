@@ -603,7 +603,11 @@ def check_auth_guard(
             r"\b(?:session|db)\.(?:add|add_all|merge|bulk_save_objects|bulk_insert_mappings)|INSERT\s+INTO",
             text,
         )
-        if _has_write and re.search(r"func\.max\s*\(", text) and not re.search(r"\bIntegrityError\b", text):
+        if (
+            _has_write
+            and re.search(r"func\.max\s*\(", text)
+            and not re.search(r"\bIntegrityError\b", text)
+        ):
             findings.append(
                 Finding(
                     hook="auth-guard",

@@ -9,6 +9,7 @@ plan_manager 를 직접 사용해 freeze 시뮬레이션.
 
 모든 픽스처는 tmp_path 기반 — 사용자 환경 비의존.
 """
+
 from __future__ import annotations
 
 import os
@@ -16,9 +17,6 @@ import subprocess
 import sys
 from pathlib import Path
 from textwrap import dedent
-
-import pytest
-import yaml
 
 from src.orchestrator.plan_manager import (
     PlanManager,

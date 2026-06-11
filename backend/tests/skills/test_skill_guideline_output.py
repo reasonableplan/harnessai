@@ -14,8 +14,6 @@ import sys
 import textwrap
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SKILLS_DIR = REPO_ROOT / "skills"
 
@@ -31,6 +29,7 @@ HA_REVIEW_RUN = SKILLS_DIR / "ha-review" / "run.py"
 def _run_skill(script: Path, args: list[str], cwd: Path) -> dict:
     """skill run.py 를 subprocess 실행해 stdout JSON 반환."""
     import os
+
     env = dict(os.environ)
     env["HARNESS_AI_HOME"] = str(REPO_ROOT)
     result = subprocess.run(
@@ -144,9 +143,7 @@ def test_ha_init_detect_has_guideline_paths(tmp_path: Path) -> None:
     output = _run_skill(HA_INIT_RUN, ["detect", str(project)], cwd=project)
     assert "matches" in output
     assert len(output["matches"]) >= 1
-    flutter_match = next(
-        (m for m in output["matches"] if m["profile_id"] == "flutter"), None
-    )
+    flutter_match = next((m for m in output["matches"] if m["profile_id"] == "flutter"), None)
     assert flutter_match is not None, "flutter profile not detected"
     assert "guideline_paths" in flutter_match, "guideline_paths missing from detect output"
     assert len(flutter_match["guideline_paths"]) == 4, (
@@ -193,7 +190,9 @@ def test_ha_build_prepare_has_guideline_paths(tmp_path: Path) -> None:
         project / "docs" / "harness-plan.md", "planned", ["ha-init", "ha-design", "ha-plan"]
     )
     # v0.10.0: frozen_status 미설정 plan → --skip-frozen-gate 로 게이트 우회 (마이그레이션 케이스)
-    output = _run_skill(HA_BUILD_RUN, ["prepare", "--task", "T-001", "--skip-frozen-gate"], cwd=project)
+    output = _run_skill(
+        HA_BUILD_RUN, ["prepare", "--task", "T-001", "--skip-frozen-gate"], cwd=project
+    )
     assert "tasks" in output
     assert len(output["tasks"]) >= 1
     task = output["tasks"][0]
@@ -234,12 +233,18 @@ def test_ha_review_prepare_has_guideline_paths(tmp_path: Path) -> None:
     )
     # R1 gate: ha-review prepare fails fast on a non-git project so the boundary tests share a fixture
     import os
-    git_env = {**os.environ,
-               "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
-               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+
+    git_env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+    }
     for git_args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "initial"]):
-        subprocess.run(["git", *git_args], cwd=str(project), check=True,
-                       capture_output=True, env=git_env)
+        subprocess.run(
+            ["git", *git_args], cwd=str(project), check=True, capture_output=True, env=git_env
+        )
     output = _run_skill(HA_REVIEW_RUN, ["prepare"], cwd=project)
     assert "profiles" in output
     profile = output["profiles"][0]
@@ -256,6 +261,7 @@ def _advance_plan_to(plan_path: Path, target_step: str, completed: list[str]) ->
 
     # current_step 교체
     import re
+
     text = re.sub(r"current_step: \w+", f"current_step: {target_step}", text)
 
     # completed_steps 교체

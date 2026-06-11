@@ -36,7 +36,4 @@ def test_skill_md_has_mobile_keyword(skill_name: str) -> None:
     text = skill_md.read_text(encoding="utf-8").lower()
     mobile_keywords = ["flutter", "react-native", "android", "ios"]
     found = [kw for kw in mobile_keywords if kw in text]
-    assert found, (
-        f"{skill_name}/SKILL.md 에 모바일 키워드 없음 "
-        f"(검색: {mobile_keywords})"
-    )
+    assert found, f"{skill_name}/SKILL.md 에 모바일 키워드 없음 (검색: {mobile_keywords})"

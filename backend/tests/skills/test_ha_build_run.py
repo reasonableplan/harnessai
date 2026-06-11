@@ -3,6 +3,7 @@
 대상: skills/ha-build/run.py::cmd_prepare, cmd_complete
 전략: load_plan / save_plan / validate_task_id / transition monkeypatch.
 """
+
 from __future__ import annotations
 
 import importlib.util

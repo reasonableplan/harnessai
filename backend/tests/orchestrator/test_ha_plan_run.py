@@ -22,11 +22,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 from src.orchestrator.plan_manager import (
     HarnessPlan,
-    Pipeline,
     PlanManager,
     ProfileRef,
     ScaleAxes,
@@ -123,10 +120,7 @@ def _make_tasks_content(rows: list[tuple[str, str]]) -> str:
     포맷: | T-NNN | agent_id | - | 설명 | 대기 |
     """
     header = "### Phase 1 — MVP\n| ID | 에이전트 | 의존성 | 설명 | 상태 |\n|----|---------|--------|------|------|\n"
-    task_rows = "".join(
-        f"| {tid} | {agent} | - | 테스트 태스크 | 대기 |\n"
-        for tid, agent in rows
-    )
+    task_rows = "".join(f"| {tid} | {agent} | - | 테스트 태스크 | 대기 |\n" for tid, agent in rows)
     return header + task_rows
 
 
@@ -183,11 +177,13 @@ def test_commit_passes_when_all_tasks_match_context(tmp_path: Path) -> None:
     _write_plan(tmp_path, plan)
     _write_skeleton(tmp_path)
 
-    tasks_content = _make_tasks_content([
-        ("T-001", "mobile_coder_rn"),
-        ("T-002", "mobile_coder_rn"),
-        ("T-003", "mobile_coder_rn"),
-    ])
+    tasks_content = _make_tasks_content(
+        [
+            ("T-001", "mobile_coder_rn"),
+            ("T-002", "mobile_coder_rn"),
+            ("T-003", "mobile_coder_rn"),
+        ]
+    )
     returncode, out, stderr = _run_commit(tmp_path, tasks_content)
 
     assert returncode == 0, (
@@ -211,22 +207,20 @@ def test_commit_fails_when_task_agent_mismatches_context(tmp_path: Path) -> None
     _write_skeleton(tmp_path)
 
     # backend_coder requires http_server/cli_entrypoint/sdk_surface — rn profile 에 없음
-    tasks_content = _make_tasks_content([
-        ("T-001", "backend_coder"),
-    ])
+    tasks_content = _make_tasks_content(
+        [
+            ("T-001", "backend_coder"),
+        ]
+    )
     returncode, out, stderr = _run_commit(tmp_path, tasks_content)
 
-    assert returncode != 0, (
-        "mismatch 상황에서 exit code 0 — fail-fast 미작동"
-    )
+    assert returncode != 0, "mismatch 상황에서 exit code 0 — fail-fast 미작동"
     assert "T-001" in stderr, f"stderr 에 T-001 누락: {stderr!r}"
     # stdout JSON 에 agent_mismatches 가 포함되어야 함 (--allow 없이도 출력)
     # run.py 는 fail 시 JSON 없이 종료할 수 있으므로 out is None 도 허용,
     # 그 경우 stderr 에 "backend_coder" 언급 확인
     if out is not None:
-        assert len(out.get("agent_mismatches", [])) > 0, (
-            "agent_mismatches 가 비어있음"
-        )
+        assert len(out.get("agent_mismatches", [])) > 0, "agent_mismatches 가 비어있음"
     else:
         assert "backend_coder" in stderr, f"stderr 에 agent 정보 없음: {stderr!r}"
 
@@ -242,9 +236,11 @@ def test_commit_passes_with_allow_agent_mismatch_flag(tmp_path: Path) -> None:
     _write_plan(tmp_path, plan)
     _write_skeleton(tmp_path)
 
-    tasks_content = _make_tasks_content([
-        ("T-001", "backend_coder"),
-    ])
+    tasks_content = _make_tasks_content(
+        [
+            ("T-001", "backend_coder"),
+        ]
+    )
     returncode, out, stderr = _run_commit(tmp_path, tasks_content, allow_mismatch=True)
 
     assert returncode == 0, (
@@ -273,13 +269,15 @@ def test_commit_capability_agnostic_agents_always_pass(tmp_path: Path) -> None:
     _write_skeleton(tmp_path)
 
     # capability-agnostic agents: requires_capabilities=[], requires_profile_ids=[]
-    tasks_content = _make_tasks_content([
-        ("T-001", "architect"),
-        ("T-002", "reviewer"),
-        ("T-003", "qa"),
-        ("T-004", "designer"),
-        ("T-005", "orchestrator"),
-    ])
+    tasks_content = _make_tasks_content(
+        [
+            ("T-001", "architect"),
+            ("T-002", "reviewer"),
+            ("T-003", "qa"),
+            ("T-004", "designer"),
+            ("T-005", "orchestrator"),
+        ]
+    )
     returncode, out, stderr = _run_commit(tmp_path, tasks_content)
 
     assert returncode == 0, (
@@ -305,15 +303,15 @@ def test_commit_paired_profiles_unlock_backend_tasks(tmp_path: Path) -> None:
     _write_plan(tmp_path, plan)
     _write_skeleton(tmp_path)
 
-    tasks_content = _make_tasks_content([
-        ("T-001", "backend_coder"),
-        ("T-002", "mobile_coder_rn"),
-    ])
+    tasks_content = _make_tasks_content(
+        [
+            ("T-001", "backend_coder"),
+            ("T-002", "mobile_coder_rn"),
+        ]
+    )
     returncode, out, stderr = _run_commit(tmp_path, tasks_content)
 
-    assert returncode == 0, (
-        f"paired profiles 에서 fail. returncode={returncode}\nstderr={stderr!r}"
-    )
+    assert returncode == 0, f"paired profiles 에서 fail. returncode={returncode}\nstderr={stderr!r}"
     assert out is not None
     assert out.get("agent_mismatches") == [], (
         f"paired profiles 에서 mismatches 발생: {out.get('agent_mismatches')}"
@@ -331,22 +329,18 @@ def test_commit_unknown_agent_id_reported(tmp_path: Path) -> None:
     _write_plan(tmp_path, plan)
     _write_skeleton(tmp_path)
 
-    tasks_content = _make_tasks_content([
-        ("T-001", "mystery_coder"),
-    ])
+    tasks_content = _make_tasks_content(
+        [
+            ("T-001", "mystery_coder"),
+        ]
+    )
     returncode, out, stderr = _run_commit(tmp_path, tasks_content)
 
-    assert returncode != 0, (
-        "unknown agent 에서 exit code 0 — 오류 감지 미작동"
-    )
+    assert returncode != 0, "unknown agent 에서 exit code 0 — 오류 감지 미작동"
     # stderr 또는 JSON 에 "unknown" 언급
     has_unknown_in_stderr = "unknown" in stderr.lower() or "mystery_coder" in stderr
-    has_unknown_in_json = (
-        out is not None
-        and any(
-            "unknown" in mm.get("reason", "").lower()
-            for mm in out.get("agent_mismatches", [])
-        )
+    has_unknown_in_json = out is not None and any(
+        "unknown" in mm.get("reason", "").lower() for mm in out.get("agent_mismatches", [])
     )
     assert has_unknown_in_stderr or has_unknown_in_json, (
         f"unknown agent 에러 메시지 없음. stderr={stderr!r}, out={out}"
@@ -366,9 +360,7 @@ def test_commit_empty_tasks_content_returns_error(tmp_path: Path) -> None:
 
     returncode, _out, stderr = _run_commit(tmp_path, "")
 
-    assert returncode != 0, (
-        f"빈 tasks-content 에서 exit code 0 — 검증 누락\nstderr={stderr!r}"
-    )
+    assert returncode != 0, f"빈 tasks-content 에서 exit code 0 — 검증 누락\nstderr={stderr!r}"
 
 
 # ── prepare: consistency_violations 검증 테스트 (Group 2 Step 1) ─────────────
@@ -391,9 +383,7 @@ def test_prepare_includes_consistency_violations_field(tmp_path: Path) -> None:
 
     returncode, out, stderr = _run_prepare(tmp_path)
 
-    assert returncode == 0, (
-        f"prepare 실패 (exit {returncode})\nstderr={stderr!r}"
-    )
+    assert returncode == 0, f"prepare 실패 (exit {returncode})\nstderr={stderr!r}"
     assert out is not None, "stdout JSON 없음"
     assert "consistency_violations" in out, "consistency_violations 필드 누락"
     assert isinstance(out["consistency_violations"], list), (
@@ -433,13 +423,9 @@ def test_prepare_consistency_violations_mobile_only_with_interface_http(
     assert isinstance(violations, list)
 
     http_violations = [v for v in violations if v.get("section_id") == "interface.http"]
-    assert http_violations, (
-        f"interface.http violation 없음. 전체 violations: {violations}"
-    )
+    assert http_violations, f"interface.http violation 없음. 전체 violations: {violations}"
     v = http_violations[0]
-    assert v["missing_atom"] == "http_server", (
-        f"missing_atom 불일치: {v['missing_atom']!r}"
-    )
+    assert v["missing_atom"] == "http_server", f"missing_atom 불일치: {v['missing_atom']!r}"
     assert "fastapi" in v["expected_providers"] or "nestjs" in v["expected_providers"], (
         f"expected_providers 에 backend profile 없음: {v['expected_providers']}"
     )
@@ -456,9 +442,7 @@ def test_prepare_legacy_plan_empty_trace_warns_to_stderr(tmp_path: Path) -> None
 
     returncode, out, stderr = _run_prepare(tmp_path)
 
-    assert returncode == 0, (
-        f"legacy plan prepare 실패 (exit {returncode})\nstderr={stderr!r}"
-    )
+    assert returncode == 0, f"legacy plan prepare 실패 (exit {returncode})\nstderr={stderr!r}"
     assert out is not None, "stdout JSON 없음"
     # stderr 에 legacy 경고
     assert "trace 미포함" in stderr or "cross-check 불가능" in stderr, (
@@ -490,9 +474,7 @@ def test_prepare_paired_no_violations(tmp_path: Path) -> None:
 
     returncode, out, stderr = _run_prepare(tmp_path)
 
-    assert returncode == 0, (
-        f"paired plan prepare 실패 (exit {returncode})\nstderr={stderr!r}"
-    )
+    assert returncode == 0, f"paired plan prepare 실패 (exit {returncode})\nstderr={stderr!r}"
     assert out is not None, "stdout JSON 없음"
     assert out.get("consistency_violations") == [], (
         f"paired plan 에서 violation 발생: {out.get('consistency_violations')}"
@@ -527,11 +509,10 @@ def test_commit_fails_on_fractional_task_id(tmp_path: Path) -> None:
         f"T-024.5 fractional ID 에서 exit code 0 — schema fail-fast 미작동\nstderr={stderr!r}"
     )
     # stderr 또는 stdout JSON 에 위반 정보 존재
-    has_violation_in_stderr = "T-024.5" in stderr or "schema" in stderr.lower() or "형식 위반" in stderr
-    has_violation_in_json = (
-        out is not None
-        and len(out.get("schema_violations", [])) > 0
+    has_violation_in_stderr = (
+        "T-024.5" in stderr or "schema" in stderr.lower() or "형식 위반" in stderr
     )
+    has_violation_in_json = out is not None and len(out.get("schema_violations", [])) > 0
     assert has_violation_in_stderr or has_violation_in_json, (
         f"T-024.5 위반 정보 없음. returncode={returncode}\nstderr={stderr!r}\nout={out}"
     )
@@ -558,9 +539,7 @@ def test_commit_passes_with_allow_format_drift_flag(tmp_path: Path) -> None:
         "|----|---------|--------|------|------|\n"
         "| T-001 | mobile_coder_rn | - | 태스크 | invalid_status_value |\n"
     )
-    returncode, out, stderr = _run_commit(
-        tmp_path, bad_status_content, allow_format_drift=True
-    )
+    returncode, out, stderr = _run_commit(tmp_path, bad_status_content, allow_format_drift=True)
 
     assert returncode == 0, (
         f"--allow-format-drift 에도 불구하고 실패. returncode={returncode}\nstderr={stderr!r}"
@@ -568,7 +547,7 @@ def test_commit_passes_with_allow_format_drift_flag(tmp_path: Path) -> None:
     assert out is not None, "stdout JSON 없음"
     violations = out.get("schema_violations", [])
     assert len(violations) > 0, (
-        f"--allow-format-drift 로 진행 시 schema_violations 가 비어있음 — 위반 추적 불가"
+        "--allow-format-drift 로 진행 시 schema_violations 가 비어있음 — 위반 추적 불가"
     )
     # stderr 에 WARN 포함
     assert "WARN" in stderr or "schema" in stderr.lower(), (
@@ -598,9 +577,7 @@ def test_commit_passes_on_compliant_tasks_md(tmp_path: Path) -> None:
     )
     returncode, out, stderr = _run_commit(tmp_path, compliant_content)
 
-    assert returncode == 0, (
-        f"정상 tasks.md 에서 실패. returncode={returncode}\nstderr={stderr!r}"
-    )
+    assert returncode == 0, f"정상 tasks.md 에서 실패. returncode={returncode}\nstderr={stderr!r}"
     assert out is not None, "stdout JSON 없음"
     assert out.get("schema_violations") == [], (
         f"정상 tasks.md 에서 schema_violations 비어있지 않음: {out.get('schema_violations')}"

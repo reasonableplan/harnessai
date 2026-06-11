@@ -30,9 +30,7 @@ def test_param_path_matches_via_static_prefix(ha_review_module, tmp_path: Path) 
     """router prefix 조합 케이스: 정적 prefix 가 소스에 있으면 미구현으로 안 잡는다."""
     src = tmp_path / "src"
     src.mkdir()
-    (src / "router.py").write_text(
-        'router = APIRouter(prefix="/api/users")\n', encoding="utf-8"
-    )
+    (src / "router.py").write_text('router = APIRouter(prefix="/api/users")\n', encoding="utf-8")
 
     skel = _skel("**`GET /api/users/{id}`**\n")
     assert ha_review_module._check_missing_declared_endpoints(tmp_path, skel) == []

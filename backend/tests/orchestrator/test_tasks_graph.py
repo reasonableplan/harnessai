@@ -3,6 +3,7 @@
 extract_task_graph() / render_mermaid() 의 동작을 커버.
 pure function 테스트이므로 fixture 없이 문자열 직접 전달.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -16,7 +17,9 @@ from src.orchestrator.tasks_schema import (
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-_VALID_HEADER = "| ID | 에이전트 | 의존성 | 설명 | 상태 |\n|----|---------|--------|------|------|\n"
+_VALID_HEADER = (
+    "| ID | 에이전트 | 의존성 | 설명 | 상태 |\n|----|---------|--------|------|------|\n"
+)
 
 
 def _row(
@@ -145,10 +148,12 @@ def test_extract_invalid_task_id_dropped() -> None:
 
 def test_render_mermaid_basic() -> None:
     """2 nodes (T-001 → T-002) — 'flowchart TD' + 'T-001 --> T-002' 포함."""
-    graph = TaskGraph(nodes=(
-        TaskNode(task_id="T-001", agent="a", depends_on=(), phase=None),
-        TaskNode(task_id="T-002", agent="a", depends_on=("T-001",), phase=None),
-    ))
+    graph = TaskGraph(
+        nodes=(
+            TaskNode(task_id="T-001", agent="a", depends_on=(), phase=None),
+            TaskNode(task_id="T-002", agent="a", depends_on=("T-001",), phase=None),
+        )
+    )
     result = render_mermaid(graph)
     assert result.startswith("flowchart TD")
     assert "T-001 --> T-002" in result
@@ -159,11 +164,13 @@ def test_render_mermaid_basic() -> None:
 
 def test_render_mermaid_with_phase_subgraphs() -> None:
     """Phase 1 / Phase 2 nodes — 각 phase 별 subgraph 블록 포함."""
-    graph = TaskGraph(nodes=(
-        TaskNode(task_id="T-001", agent="a", depends_on=(), phase="Phase 1 — MVP"),
-        TaskNode(task_id="T-002", agent="a", depends_on=("T-001",), phase="Phase 1 — MVP"),
-        TaskNode(task_id="T-101", agent="a", depends_on=(), phase="Phase 2+ — 확장"),
-    ))
+    graph = TaskGraph(
+        nodes=(
+            TaskNode(task_id="T-001", agent="a", depends_on=(), phase="Phase 1 — MVP"),
+            TaskNode(task_id="T-002", agent="a", depends_on=("T-001",), phase="Phase 1 — MVP"),
+            TaskNode(task_id="T-101", agent="a", depends_on=(), phase="Phase 2+ — 확장"),
+        )
+    )
     result = render_mermaid(graph, group_by_phase=True)
     assert 'subgraph "Phase 1 — MVP"' in result
     assert 'subgraph "Phase 2+ — 확장"' in result
@@ -181,10 +188,12 @@ def test_render_mermaid_with_phase_subgraphs() -> None:
 
 def test_render_mermaid_no_phases_flat() -> None:
     """group_by_phase=False → subgraph 없음, flat node 목록."""
-    graph = TaskGraph(nodes=(
-        TaskNode(task_id="T-001", agent="a", depends_on=(), phase="Phase 1 — MVP"),
-        TaskNode(task_id="T-002", agent="a", depends_on=("T-001",), phase="Phase 1 — MVP"),
-    ))
+    graph = TaskGraph(
+        nodes=(
+            TaskNode(task_id="T-001", agent="a", depends_on=(), phase="Phase 1 — MVP"),
+            TaskNode(task_id="T-002", agent="a", depends_on=("T-001",), phase="Phase 1 — MVP"),
+        )
+    )
     result = render_mermaid(graph, group_by_phase=False)
     assert "subgraph" not in result
     assert "T-001" in result

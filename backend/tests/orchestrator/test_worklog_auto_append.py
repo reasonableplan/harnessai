@@ -8,16 +8,15 @@
 - ha-log/run.py::append_entry 를 monkeypatch 로 대체해 실제 파일 I/O 없이 호출 추적.
 - subprocess.run 을 monkeypatch 해 ha-log subprocess 호출을 가로채어 검증.
 """
+
 from __future__ import annotations
 
 import importlib.util
-import json
 import sys
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -47,6 +46,7 @@ def ha_build() -> ModuleType:
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_plan_design(frozen_status: str = "frozen") -> SimpleNamespace:
     return SimpleNamespace(
@@ -93,6 +93,7 @@ _TASKS_ALL_DONE = (
 # T1: ha-design commit 후 worklog append 호출 확인
 # ---------------------------------------------------------------------------
 
+
 def test_ha_design_commit_appends_worklog(ha_design, tmp_path: Path, monkeypatch) -> None:
     """ha-design cmd_commit 성공 시 subprocess.run 으로 ha-log 가 호출됨."""
     plan = _make_plan_design()
@@ -121,6 +122,7 @@ def test_ha_design_commit_appends_worklog(ha_design, tmp_path: Path, monkeypatch
     monkeypatch.setattr(ha_design, "compute_skeleton_hash", lambda path: "abc123")
 
     import subprocess as sp_mod
+
     monkeypatch.setattr(sp_mod, "run", fake_subprocess_run)
 
     args = SimpleNamespace(
@@ -147,6 +149,7 @@ def test_ha_design_commit_appends_worklog(ha_design, tmp_path: Path, monkeypatch
 # ---------------------------------------------------------------------------
 # T2: ha-build done 시 append, skipped 는 append 안 함
 # ---------------------------------------------------------------------------
+
 
 def test_ha_build_done_appends_worklog_skipped_does_not(
     ha_build, tmp_path: Path, monkeypatch
@@ -181,6 +184,7 @@ def test_ha_build_done_appends_worklog_skipped_does_not(
     monkeypatch.setattr(ha_build, "_run_security_gate", lambda project, plan: [])
 
     import subprocess as sp_mod
+
     monkeypatch.setattr(sp_mod, "run", fake_subprocess_run)
 
     # -- done 케이스
@@ -213,12 +217,15 @@ def test_ha_build_done_appends_worklog_skipped_does_not(
     rc2 = ha_build.cmd_complete(args_skip)
     assert rc2 == 0
     ha_log_skip_calls = [c for c in subprocess_calls if "ha-log" in " ".join(c)]
-    assert len(ha_log_skip_calls) == 0, f"ha-log should NOT be called for skipped. calls: {subprocess_calls}"
+    assert len(ha_log_skip_calls) == 0, (
+        f"ha-log should NOT be called for skipped. calls: {subprocess_calls}"
+    )
 
 
 # ---------------------------------------------------------------------------
 # T3: worklog append 실패해도 commit 자체는 통과
 # ---------------------------------------------------------------------------
+
 
 def test_worklog_append_failure_does_not_block_commit(
     ha_design, tmp_path: Path, monkeypatch
@@ -244,6 +251,7 @@ def test_worklog_append_failure_does_not_block_commit(
     monkeypatch.setattr(ha_design, "compute_skeleton_hash", lambda path: "abc123")
 
     import subprocess as sp_mod
+
     monkeypatch.setattr(sp_mod, "run", raise_oserror)
 
     args = SimpleNamespace(
