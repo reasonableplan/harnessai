@@ -115,6 +115,37 @@ const getTimeRemaining = (iso: string) => {
 
 ---
 
+## import 경계 — 단방향만 허용
+
+의존 방향은 한쪽으로만 흐른다: `shared → containers → 라우트(app/pages)`.
+
+- `shared/` 는 `containers/` 를 import 금지 — shared 가 기능을 알면 더 이상 shared 가 아니다
+- 컨테이너끼리 import 금지 — `containers/issues` 가 `containers/projects` 를 직접 import 하면
+  두 기능이 묶여서 한쪽 삭제/수정이 다른 쪽을 깨뜨린다. 공유가 필요해지면 그 코드를 `shared/` 로 승격
+- 라우트 레이어만 여러 컨테이너를 조합할 수 있다
+
+```js
+// ✅ eslint.config — 위반을 도구로 강제 (출처: bulletproof-react)
+'import/no-restricted-paths': ['error', {
+  zones: [
+    // 컨테이너 간 직접 import 금지
+    { target: './src/containers/issues', from: './src/containers', except: ['./issues'] },
+    // shared 는 containers 를 모른다
+    { target: './src/shared', from: './src/containers' },
+  ],
+}]
+```
+
+```tsx
+// ❌ cross-container import
+import { useIssuesStore } from '@/containers/issues/store/issues.store'  // in containers/projects
+
+// ✅ 공유 시점에 shared 로 승격 후 양쪽이 shared 를 import
+import { useIssuesStore } from '@/shared/store/issues.store'
+```
+
+---
+
 ## React 규칙
 
 ```tsx
