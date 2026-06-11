@@ -31,7 +31,11 @@ from utils import (  # noqa: E402, I001
 )
 
 # backend src import — utils.py 가 backend/ 를 sys.path 에 추가 보장
-from src.orchestrator.security_hooks import SecurityHooks  # noqa: E402
+from src.orchestrator.security_hooks import (  # noqa: E402
+    SecurityHooks,
+    detect_local_packages,
+    strip_doc_files_from_diff,
+)
 from src.orchestrator.context import extract_section_by_id  # noqa: E402
 from src.orchestrator.skeleton_hash import check_skeleton_hash  # noqa: E402
 
@@ -79,36 +83,9 @@ _AI_SLOP_PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
 ]
 
 
-def _strip_non_code_from_diff(diff: str) -> str:
-    """git diff 에서 코드 파일 블록만 남김 (문서/템플릿 placeholder 를 ai-slop 로 오탐 방지).
-
-    제외 대상:
-    - `docs/` 경로 (skeleton.md, harness-plan.md, AGENTS.md, README 등)
-    - `*.md` 확장자
-    - `templates/` 경로의 조각
-    - `.harness-backup-*` 백업 파일
-    """
-    if not diff:
-        return diff
-    lines = diff.splitlines(keepends=True)
-    out: list[str] = []
-    skip = False
-    for line in lines:
-        if line.startswith("diff --git "):
-            # 파일 헤더: "diff --git a/<path> b/<path>"
-            parts = line.split(" b/", 1)
-            path = parts[1].strip() if len(parts) == 2 else ""
-            skip = (
-                path.endswith(".md")
-                or "/docs/" in path
-                or "/templates/" in path
-                or ".harness-backup-" in path
-                or path.startswith("docs/")
-                or path.startswith("templates/")
-            )
-        if not skip:
-            out.append(line)
-    return "".join(out)
+# 문서 diff 제외 — backend strip_doc_files_from_diff 로 이관 (LESSON-030,
+# SecurityHooks/mobile 룰 입력에도 동일 적용).
+_strip_non_code_from_diff = strip_doc_files_from_diff
 
 
 def _ai_slop_scan(text: str) -> list[dict[str, str]]:
@@ -556,6 +533,11 @@ def _collect_findings(
 
     security: list[dict[str, str]] = []
 
+    # LESSON-030: 문서 diff (.md 산문/인라인 예시) 가 코드 패턴 훅을 오발시키므로
+    # 보안 훅 입력은 코드 파일 블록만. 자기 패키지 import 는 외부 의존성이 아님.
+    code_diff = strip_doc_files_from_diff(diff)
+    local_pkgs = detect_local_packages(project)
+
     # 이미 처리한 mode 는 중복 실행 방지
     seen_modes: set[str] = set()
 
@@ -570,9 +552,9 @@ def _collect_findings(
 
         if mode not in seen_modes:
             seen_modes.add(mode)
-            hooks = SecurityHooks.from_profile(profile)
+            hooks = SecurityHooks.from_profile(profile, extra_python_allowed=local_pkgs)
             result = hooks.run_all(
-                diff,
+                code_diff,
                 is_frontend=(mode == "frontend"),
                 is_mobile=(mode == "mobile"),
             )
@@ -584,17 +566,17 @@ def _collect_findings(
                     "snippet": f.snippet[:100] if f.snippet else "",
                 })
 
-        # mobile 룰 (SecurityHooks 와 별개 — diff 기반 패턴)
+        # mobile 룰 (SecurityHooks 와 별개 — diff 기반 패턴, 코드 블록만)
         if pid in _MOBILE_PROFILE_IDS:
-            for finding in _check_mobile_secret_storage(diff, pid):
+            for finding in _check_mobile_secret_storage(code_diff, pid):
                 security.append(finding)
-            for finding in _check_mobile_permission_burst(diff, pid):
+            for finding in _check_mobile_permission_burst(code_diff, pid):
                 security.append(finding)
             if pid == "ios-swift":
-                for finding in _check_cocoapods_new(diff, pid):
+                for finding in _check_cocoapods_new(code_diff, pid):
                     security.append(finding)
             if pid == "react-native-expo":
-                for finding in _check_rn_cli(diff, pid):
+                for finding in _check_rn_cli(code_diff, pid):
                     security.append(finding)
 
     block_count = sum(1 for f in security if f.get("severity") == "BLOCK")

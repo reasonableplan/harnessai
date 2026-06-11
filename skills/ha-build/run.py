@@ -279,6 +279,22 @@ def _run_security_gate(project: Path, plan) -> list[str]:
     if not diff_text.strip():
         return []
 
+    security_src = HARNESS_HOME / "backend" / "src"
+    if str(security_src) not in sys.path:
+        sys.path.insert(0, str(security_src))
+    try:
+        from orchestrator.security_hooks import (  # noqa: PLC0415
+            SecurityHooks,
+            Severity,
+            detect_local_packages,
+            strip_doc_files_from_diff,
+        )
+    except ImportError:
+        return []
+
+    # LESSON-030: 문서 diff (.md 산문/인라인 예시) 는 코드 패턴 훅 대상 아님.
+    diff_text = strip_doc_files_from_diff(diff_text)
+
     # Scan added lines only — deleted code (- prefix) must not trigger findings.
     added_text = "\n".join(
         line[1:] for line in diff_text.splitlines()
@@ -287,13 +303,8 @@ def _run_security_gate(project: Path, plan) -> list[str]:
     if not added_text.strip():
         return []
 
-    security_src = HARNESS_HOME / "backend" / "src"
-    if str(security_src) not in sys.path:
-        sys.path.insert(0, str(security_src))
-    try:
-        from orchestrator.security_hooks import SecurityHooks, Severity  # noqa: PLC0415
-    except ImportError:
-        return []
+    # 자기 패키지 import 는 외부 의존성 아님 (LESSON-030)
+    local_pkgs = detect_local_packages(project)
 
     failures: list[str] = []
     seen_modes: set[str] = set()
@@ -307,7 +318,7 @@ def _run_security_gate(project: Path, plan) -> list[str]:
         if mode in seen_modes:
             continue
         seen_modes.add(mode)
-        result = SecurityHooks().run_all(
+        result = SecurityHooks(extra_python_allowed=local_pkgs).run_all(
             added_text,
             is_frontend=(mode == "frontend"),
             is_mobile=(mode == "mobile"),

@@ -560,3 +560,17 @@ _rate_limit_store: dict[int, list[float]] = defaultdict(list)
 **규칙**: 가변 길이 tuple (`Path.parts` 등) 의 빈 가드는 `if len(parts) == 0: continue` 처럼 **len() 비교**로 작성 — pyright 의 tuple 길이 내로잉은 len() 체크에서만 동작한다.
 
 **근거**: code-hijack Phase 3 ha-verify — negative_space.py:188, truthiness 가드로 1차 수정 실패 → len()==0 으로 해소 (2026-06-11, 사용자 promotion 승인).
+
+## LESSON-030: 보안 훅이 .md 문서 diff 산문을 코드로 오인 (eval/print/import FP)
+
+**문제**: command-guard/code-quality/dependency-check 가 diff 의 파일 종류를 구분하지 않아 마크다운 문서가 diff 에 포함되면 산문·인라인 예시를 코드로 오인한다. code-hijack 에서 3회 반복: (1) harness-plan.md rationale 의 'external eval (matching...' 문구 → eval() BLOCK 3건, (2) SKILL.md 인라인 스크립트 예시 print → WARN, (3) SKILL.md 예시 import hijack/tomllib → dependency WARN 다발. FP 홍수가 진짜 finding 을 묻는다
+
+**규칙**: 보안 훅 입력에서 .md/.rst/.txt 문서 diff 는 command-guard·code-quality·dependency-check 대상에서 제외하거나 별도 severity(INFO) 로 강등. 코드 펜스 블록만 선택 스캔하는 것도 대안. 리뷰어는 BLOCK 의 snippet 출처 파일 확장자를 fp-check 1차 기준으로 사용
+
+**근거**: code-hijack 2026-06-11 ha-review prepare: BLOCK 3 (harness-plan.md), WARN 16 중 16 FP (SKILL.md). 2026-06-11 직전 리뷰도 WARN 28 중 27 FP 동일 원인 (2026-06-11, 사용자 promotion 승인 — `strip_doc_files_from_diff` + `detect_local_packages` + stdlib 허용으로 구현됨).
+
+## Pending Lessons (자동 추출 — 사용자 promotion 대기)
+
+> 자동 추출된 LESSON. 사용자 검토 후 main 섹션으로 promote (auto_extracted 마커 제거) 또는 거부 (블록 삭제).
+
+---

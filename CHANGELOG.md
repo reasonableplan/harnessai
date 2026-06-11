@@ -4,6 +4,22 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.11.1] — 2026-06-11 — "Dogfood Harvest: FP Flood & CI Green"
+
+code-hijack dogfood Phase 3~4 실전 수확 (LESSON-030 promote) + 6/1부터 깨져 있던 CI 복구.
+
+### Fixed
+
+- **보안 훅 FP 홍수 (LESSON-030)** — command-guard/code-quality/dependency-check 가 문서 diff 산문을 코드로 오인 (실전: harness-plan.md rationale `'external eval ('` → BLOCK 3건, SKILL.md 인라인 예시 → WARN 16/16 FP). `strip_doc_files_from_diff` 로 `.md/.rst/.txt`·`docs/`·`templates/` diff 블록을 보안 훅 입력에서 제외 — `/ha-review` `_collect_findings` (SecurityHooks + mobile 룰) 와 `/ha-build` security gate 양쪽 적용. `.py` 코드의 eval() BLOCK 은 유지
+- **dependency-check stdlib/자기 패키지 오인** — `sys.stdlib_module_names` 상시 허용 (tomllib/pathlib FP), `detect_local_packages` 가 `<project>[/<child>][/src]/<pkg>/__init__.py` 스캔으로 자기 패키지 import (`import hijack` WARN 25건) 를 `extra_python_allowed` 로 면제. import 스캔만 — `pip install <자기패키지>` 는 여전히 BLOCK
+- **CI 6/1부터 red 였던 2개 잡 복구** — install-snapshot: ha-* 스킬 수 `7` 하드코딩 → 레포 소스에서 동적 파생 (현재 10개). quality: 테스트 7파일이 설치된 런타임 (`~/.claude`) 에 의존하는데 러너에 미설치 → pytest 전 `install.sh --force` 스텝 추가
+
+### Added
+
+- LESSON-030 main 승격 (자동학습 루프 2회째 완주) + 회귀 테스트 21개 (994 → **1015**)
+
+---
+
 ## [0.11.0] — 2026-06-10 — "Design Integrity & Intent Capture"
 
 전체 시스템 리뷰 (프롬프트 감사 + 코드/아키텍처 리뷰 에이전트 2종 병렬 + 최신 기법 리서치) 의 결함 수정 + 사용자 dogfood 피드백 ("작동은 하는데 의도와 다르게 작동") 대응. 설계 게이트 3→6개, 의도 손실 깔때기 5지점 봉합.

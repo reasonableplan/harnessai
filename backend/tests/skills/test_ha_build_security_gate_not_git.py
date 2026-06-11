@@ -155,3 +155,46 @@ def test_security_gate_no_warn_in_git_repo(ha_build, tmp_path, monkeypatch, caps
     captured = capsys.readouterr()
     combined = captured.out + captured.err
     assert "[WARN]" not in combined
+
+
+# ── LESSON-030: 문서 diff 제외 + 자기 패키지 import ──────────────────────
+
+
+_MD_EVAL_DIFF = (
+    "diff --git a/backend/docs/harness-plan.md b/backend/docs/harness-plan.md\n"
+    "--- a/backend/docs/harness-plan.md\n"
+    "+++ b/backend/docs/harness-plan.md\n"
+    "+  rationale: external eval (matching rate 50%) remains manual\n"
+)
+
+_PY_EVAL_DIFF = (
+    "diff --git a/backend/src/app.py b/backend/src/app.py\n"
+    "--- a/backend/src/app.py\n"
+    "+++ b/backend/src/app.py\n"
+    "+result = eval(user_input)\n"
+)
+
+
+def _mock_git_diff(stdout: str):
+    def _run(*a, **kw):
+        return CompletedProcess(args=a[0], returncode=0, stdout=stdout, stderr="")
+
+    return _run
+
+
+def test_security_gate_ignores_md_prose_eval(ha_build, tmp_path, monkeypatch) -> None:
+    """실전 FP 재현 (code-hijack Phase 4): harness-plan.md 산문 'eval (' → BLOCK 0."""
+    monkeypatch.setattr(ha_build, "_is_git_repo", lambda p: (True, True))
+    monkeypatch.setattr("subprocess.run", _mock_git_diff(_MD_EVAL_DIFF))
+
+    assert ha_build._run_security_gate(tmp_path, _make_plan()) == []
+
+
+def test_security_gate_still_blocks_py_eval(ha_build, tmp_path, monkeypatch) -> None:
+    """문서 제외가 코드 검사까지 무력화하지 않음 — .py 의 eval() 은 여전히 BLOCK."""
+    monkeypatch.setattr(ha_build, "_is_git_repo", lambda p: (True, True))
+    monkeypatch.setattr("subprocess.run", _mock_git_diff(_MD_EVAL_DIFF + _PY_EVAL_DIFF))
+
+    failures = ha_build._run_security_gate(tmp_path, _make_plan())
+    assert any("eval" in f for f in failures)
+    assert all("harness-plan.md" not in f for f in failures)

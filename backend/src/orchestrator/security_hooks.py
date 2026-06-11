@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 
 
 class Severity(StrEnum):
@@ -45,6 +47,99 @@ class SecurityResult:
         if warns:
             parts.append(f"WARN x{len(warns)}")
         return " / ".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Diff preprocessing helpers (LESSON-030)
+# ---------------------------------------------------------------------------
+
+# Documentation diffs trigger code-pattern hooks on prose and inline examples
+# (e.g. "external eval (" in harness-plan.md rationale → eval() BLOCK).
+_DOC_FILE_SUFFIXES = (".md", ".rst", ".txt")
+
+
+def strip_doc_files_from_diff(diff: str) -> str:
+    """Remove documentation-file blocks from a git diff (LESSON-030).
+
+    Excluded blocks:
+    - ``.md`` / ``.rst`` / ``.txt`` files
+    - ``docs/`` and ``templates/`` paths
+    - ``.harness-backup-*`` backup files
+    """
+    if not diff:
+        return diff
+    lines = diff.splitlines(keepends=True)
+    out: list[str] = []
+    skip = False
+    for line in lines:
+        if line.startswith("diff --git "):
+            # File header: "diff --git a/<path> b/<path>"
+            parts = line.split(" b/", 1)
+            path = parts[1].strip() if len(parts) == 2 else ""
+            skip = (
+                path.endswith(_DOC_FILE_SUFFIXES)
+                or "/docs/" in path
+                or "/templates/" in path
+                or ".harness-backup-" in path
+                or path.startswith("docs/")
+                or path.startswith("templates/")
+            )
+        if not skip:
+            out.append(line)
+    return "".join(out)
+
+
+# Self-imports of the project's own packages are not external dependencies
+# (LESSON-030: dependency-check flooded WARNs on "import hijack" in code-hijack).
+_LOCAL_PKG_SKIP_DIRS = frozenset(
+    {
+        "node_modules",
+        "dist",
+        "build",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".git",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".mypy_cache",
+    }
+)
+
+
+def detect_local_packages(project: Path) -> frozenset[str]:
+    """Detect top-level import names of the project's own packages.
+
+    Scans ``<project>/``, ``<project>/src/``, ``<project>/<child>/`` and
+    ``<project>/<child>/src/`` (monorepo profile paths, e.g.
+    ``backend/src/hijack``) for directories containing ``__init__.py``.
+    Unreadable directories are skipped — failure here only means fewer
+    whitelist exclusions (more WARNs), never weaker security.
+    """
+    bases = [project, project / "src"]
+    try:
+        for child in project.iterdir():
+            if (
+                child.is_dir()
+                and not child.name.startswith(".")
+                and child.name not in _LOCAL_PKG_SKIP_DIRS
+            ):
+                bases.append(child)
+                bases.append(child / "src")
+    except OSError:
+        return frozenset()
+
+    pkgs: set[str] = set()
+    for base in bases:
+        if not base.is_dir():
+            continue
+        try:
+            for child in base.iterdir():
+                if child.is_dir() and (child / "__init__.py").is_file():
+                    pkgs.add(child.name.lower().replace("-", "_"))
+        except OSError:
+            continue
+    return frozenset(pkgs)
 
 
 # Whitelists (based on conventions.md)
@@ -283,6 +378,9 @@ def check_db_guard(text: str) -> list[Finding]:
 # ---------------------------------------------------------------------------
 
 _PYTHON_IMPORT = re.compile(r"^(?:import|from)\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE)
+
+# Stdlib imports are never external dependencies (LESSON-030: tomllib/pathlib FPs).
+_STDLIB_MODULES = frozenset(sys.stdlib_module_names)
 _FRONTEND_IMPORT = re.compile(r"""from\s+(?P<q>['"])(@?[^'"./][^'"]*)(?P=q)""")
 _PIP_INSTALL = re.compile(r"\bpip\s+install\s+([A-Za-z0-9_\-]+)", re.IGNORECASE)
 _NPM_INSTALL = re.compile(r"\bnpm\s+install\s+([A-Za-z0-9_\-@/]+)", re.IGNORECASE)
@@ -295,13 +393,17 @@ def check_dependency(
     python_whitelist: set[str] | None = None,
     frontend_whitelist: set[str] | None = None,
     frontend_prefixes: tuple[str, ...] | None = None,
+    extra_allowed: frozenset[str] | set[str] | None = None,
 ) -> list[Finding]:
     """Dependency whitelist check.
 
     Harness v2: pass ``python_whitelist`` / ``frontend_whitelist`` /
     ``frontend_prefixes`` to inject profile-derived whitelists. ``None`` uses
-    the built-in defaults.
+    the built-in defaults. ``extra_allowed`` adds project-local package names
+    (see :func:`detect_local_packages`) to the Python import whitelist —
+    import scan only, ``pip install <self>`` still blocks.
     """
+    extra = extra_allowed or frozenset()
     py_wl = python_whitelist if python_whitelist is not None else _PYTHON_WHITELIST
     fe_wl = frontend_whitelist if frontend_whitelist is not None else _FRONTEND_WHITELIST
     fe_prefixes = (
@@ -316,7 +418,7 @@ def check_dependency(
             m = _PYTHON_IMPORT.match(line.strip())
             if m:
                 pkg = m.group(1).lower().replace("-", "_")
-                if pkg not in py_wl:
+                if pkg not in py_wl and pkg not in _STDLIB_MODULES and pkg not in extra:
                     findings.append(
                         Finding(
                             hook="dependency-check",
@@ -683,13 +785,20 @@ class SecurityHooks:
         python_whitelist: set[str] | None = None,
         frontend_whitelist: set[str] | None = None,
         frontend_prefixes: tuple[str, ...] | None = None,
+        extra_python_allowed: frozenset[str] | set[str] | None = None,
     ) -> None:
         self.python_whitelist = python_whitelist
         self.frontend_whitelist = frontend_whitelist
         self.frontend_prefixes = frontend_prefixes
+        self.extra_python_allowed = extra_python_allowed
 
     @classmethod
-    def from_profile(cls, profile: object) -> SecurityHooks:
+    def from_profile(
+        cls,
+        profile: object,
+        *,
+        extra_python_allowed: frozenset[str] | set[str] | None = None,
+    ) -> SecurityHooks:
         """Build SecurityHooks from a ``profile_loader.Profile`` instance.
 
         Uses the union of ``whitelist.runtime`` + ``whitelist.dev``. The
@@ -706,6 +815,7 @@ class SecurityHooks:
             python_whitelist=combined,
             frontend_whitelist=combined,
             frontend_prefixes=tuple(wl_prefixes),
+            extra_python_allowed=extra_python_allowed,
         )
 
     def run_all(
@@ -742,6 +852,7 @@ class SecurityHooks:
                 python_whitelist=self.python_whitelist,
                 frontend_whitelist=self.frontend_whitelist,
                 frontend_prefixes=self.frontend_prefixes,
+                extra_allowed=self.extra_python_allowed,
             )
         )
         findings.extend(check_code_quality(text))

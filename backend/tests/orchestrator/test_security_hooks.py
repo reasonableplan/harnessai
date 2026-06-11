@@ -12,6 +12,8 @@ from src.orchestrator.security_hooks import (
     check_db_guard,
     check_dependency,
     check_secret_filter,
+    detect_local_packages,
+    strip_doc_files_from_diff,
 )
 
 # ---------------------------------------------------------------------------
@@ -660,3 +662,123 @@ class TestAuthGuard:
         result = hooks.run_all(code, is_frontend=True)
         auth_findings = [f for f in result.findings if f.hook == "auth-guard"]
         assert len(auth_findings) > 0
+
+
+# ---------------------------------------------------------------------------
+# LESSON-030: doc-diff exclusion + stdlib/self-package dependency FP
+# ---------------------------------------------------------------------------
+
+
+_MD_DIFF_BLOCK = (
+    "diff --git a/backend/docs/harness-plan.md b/backend/docs/harness-plan.md\n"
+    "--- a/backend/docs/harness-plan.md\n"
+    "+++ b/backend/docs/harness-plan.md\n"
+    "+  rationale: external eval (matching rate 50%) remains manual\n"
+    "+  print('inline SKILL.md example')\n"
+)
+
+_PY_DIFF_BLOCK = (
+    "diff --git a/backend/src/app.py b/backend/src/app.py\n"
+    "--- a/backend/src/app.py\n"
+    "+++ b/backend/src/app.py\n"
+    "+result = eval(user_input)\n"
+)
+
+
+class TestStripDocFilesFromDiff:
+    def test_md_block_removed_py_block_kept(self) -> None:
+        stripped = strip_doc_files_from_diff(_MD_DIFF_BLOCK + _PY_DIFF_BLOCK)
+        assert "harness-plan.md" not in stripped
+        assert "external eval (" not in stripped
+        assert "eval(user_input)" in stripped
+
+    def test_rst_and_txt_removed(self) -> None:
+        diff = (
+            "diff --git a/README.rst b/README.rst\n+eval(x)\n"
+            "diff --git a/notes.txt b/notes.txt\n+eval(y)\n"
+        )
+        assert strip_doc_files_from_diff(diff) == ""
+
+    def test_docs_and_templates_paths_removed(self) -> None:
+        diff = (
+            "diff --git a/docs/guide.py b/docs/guide.py\n+eval(x)\n"
+            "diff --git a/harness/templates/frag.py b/harness/templates/frag.py\n+eval(y)\n"
+        )
+        assert strip_doc_files_from_diff(diff) == ""
+
+    def test_empty_diff_passthrough(self) -> None:
+        assert strip_doc_files_from_diff("") == ""
+
+    def test_command_guard_no_block_after_strip(self) -> None:
+        """실전 FP 재현: harness-plan.md rationale 의 'external eval (' → BLOCK 0."""
+        stripped = strip_doc_files_from_diff(_MD_DIFF_BLOCK)
+        assert check_command_guard(stripped) == []
+
+
+class TestDetectLocalPackages:
+    def test_monorepo_src_layout(self, tmp_path) -> None:
+        """code-hijack 실레이아웃: <project>/backend/src/hijack/__init__.py."""
+        pkg = tmp_path / "backend" / "src" / "hijack"
+        pkg.mkdir(parents=True)
+        (pkg / "__init__.py").write_text("", encoding="utf-8")
+        assert "hijack" in detect_local_packages(tmp_path)
+
+    def test_root_and_src_layouts(self, tmp_path) -> None:
+        for rel in ("mypkg", "src/otherpkg"):
+            d = tmp_path / rel
+            d.mkdir(parents=True)
+            (d / "__init__.py").write_text("", encoding="utf-8")
+        pkgs = detect_local_packages(tmp_path)
+        assert {"mypkg", "otherpkg"} <= pkgs
+
+    def test_skip_dirs_and_plain_dirs_excluded(self, tmp_path) -> None:
+        noise = tmp_path / "node_modules" / "leftpad"
+        noise.mkdir(parents=True)
+        (noise / "__init__.py").write_text("", encoding="utf-8")
+        (tmp_path / "no_init_dir").mkdir()
+        assert detect_local_packages(tmp_path) == frozenset()
+
+    def test_missing_project_dir(self, tmp_path) -> None:
+        assert detect_local_packages(tmp_path / "nope") == frozenset()
+
+
+class TestDependencyStdlibAndExtraAllowed:
+    def test_stdlib_imports_not_warned(self) -> None:
+        """LESSON-030: tomllib/pathlib 등 stdlib 은 외부 의존성 아님."""
+        code = "import tomllib\nfrom pathlib import Path\nimport sqlite3"
+        assert check_dependency(code, is_frontend=False) == []
+
+    def test_self_package_allowed_via_extra(self) -> None:
+        code = "from hijack import analyzer"
+        assert check_dependency(code, extra_allowed={"hijack"}) == []
+
+    def test_self_package_warned_without_extra(self) -> None:
+        code = "from hijack import analyzer"
+        findings = check_dependency(code)
+        assert any("hijack" in f.message for f in findings)
+
+    def test_unknown_package_still_warned_with_extra(self) -> None:
+        code = "import pandas"
+        findings = check_dependency(code, extra_allowed={"hijack"})
+        assert any("pandas" in f.message for f in findings)
+
+    def test_pip_install_self_package_still_blocked(self) -> None:
+        """extra_allowed 는 import 스캔만 — pip install 자기 패키지는 여전히 BLOCK."""
+        code = "pip install hijack"
+        findings = check_dependency(code, extra_allowed={"hijack"})
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    def test_run_all_passes_extra_python_allowed(self) -> None:
+        hooks = SecurityHooks(extra_python_allowed=frozenset({"hijack"}))
+        result = hooks.run_all("from hijack import analyzer")
+        assert [f for f in result.findings if f.hook == "dependency-check"] == []
+
+    def test_from_profile_passes_extra_python_allowed(self) -> None:
+        from types import SimpleNamespace
+
+        profile = SimpleNamespace(
+            whitelist=SimpleNamespace(runtime=["fastapi"], dev=[], prefix_allowed=[])
+        )
+        hooks = SecurityHooks.from_profile(profile, extra_python_allowed=frozenset({"hijack"}))
+        result = hooks.run_all("from hijack import analyzer")
+        assert [f for f in result.findings if f.hook == "dependency-check"] == []
