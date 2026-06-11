@@ -14,9 +14,9 @@
 | `android-kotlin` | 4 | architecture / compose / network / storage — MVVM + Hilt + Compose + Retrofit + Room |
 | `ios-swift` | 4 | architecture / swiftui / network / storage — MV pattern + SwiftUI + URLSession + Keychain |
 | `fastapi` | 3 | api / services / structure — Clean Arch + DI + 패키지 구조 |
-| `react-vite` | 3 | components / state / routing — React Query + Zustand + React Router |
-| `python-cli` | 1 | cli — Click + argparse 패턴 |
-| `python-lib` | 1 | library — 패키지 구조 + 배포 컨벤션 |
+| `react-vite` | 4 | api / components / state / style — Zustand + axios 인스턴스 + CVA |
+| `python-cli` | 0 | (가이드라인 없음 — 프로파일 본문이 컨벤션 담당) |
+| `python-lib` | 0 | (가이드라인 없음 — 프로파일 본문이 컨벤션 담당) |
 
 ## 경고
 
