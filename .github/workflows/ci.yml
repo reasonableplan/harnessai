@@ -37,6 +37,12 @@ jobs:
         working-directory: backend
         run: uv run pyright src/
 
+      # Several tests exercise the installed runtime copies (~/.claude/harness,
+      # ~/.claude/skills) and skill run.py scripts resolve profiles from
+      # DEFAULT_HARNESS_DIR — install first to mirror a real user machine.
+      - name: Install harness runtime to ~/.claude
+        run: bash install.sh --force
+
       - name: Pytest
         working-directory: backend
         run: uv run pytest tests/ --rootdir=. -q
