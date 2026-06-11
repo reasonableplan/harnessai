@@ -39,7 +39,9 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 - 모바일 코더 4종 프롬프트 섹션 순서 통일 (권위 → 자율결정금지 → 골든원칙)
 - repo↔`~/.claude` 미러 정리 — stale backport 해소 + byte-identical 동기 운영 (ha-design run.py 만 의도적 divergence)
 
-테스트 939 → **986** (+47). ruff / pyright clean.
+**후반 추가 (같은 날)**: canonical 섹션 삽입 (`user_journey` 가 notes 뒤 dangling 하던 결함 — `CANONICAL_SECTION_ORDER`), ha-verify **가짜 FAIL 가드** (`test_dir_warning` — profile cwd 오매칭 시 실행 전 경고, python-cli paths 의 `backend/` 제거), `harness validate` 0 errors/0 warnings (stale ID 셋·`_`파일 스캔·slo 괄호식), 약모델 프롬프트 다이어트 (architect/designer 체크리스트→인변량 ≤7, backend_coder JWT 3중사본→포인터 264→219줄, ha-design 519→391줄 + 실행 진행표 + 게이트 8블록→표), assert 누락 테스트 3건 수정, LESSON 자동학습 루프 첫 완주 (**LESSON-029** promotion).
+
+테스트 939 → **994** (+55). ruff check/format · pyright · validate · gate benchmark 전부 clean.
 
 ---
 

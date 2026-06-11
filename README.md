@@ -2,7 +2,7 @@
 
 🌐 **English** · [한국어](README.ko.md)
 
-![tests](https://img.shields.io/badge/tests-986%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-994%20passing-brightgreen)
 ![pyright](https://img.shields.io/badge/pyright-0%20errors-brightgreen)
 ![ruff](https://img.shields.io/badge/ruff-clean-brightgreen)
 ![gate coverage](https://img.shields.io/badge/gate%20coverage-100%25-brightgreen)
@@ -318,7 +318,7 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 
 **Phase 10 — v0.10.0 (completed, 2026-05-15)**: **HITL Gate**. Human-locked sections (`requirements` / `user_journey` / `view.screens`) enforced via PreToolUse hook. `PlanManager.freeze()` one-way gate. `/ha-design` HITL interview (5 AI candidates → user pick). `/ha-build` frozen-status gate. `/ha-review extract-lesson` auto-appends to Pending Lessons. `/ha-log` micro skill (worklog append + subprocess auto-append). `harness migrate-v10` CLI. ChatDev / aider / CrewAI gap closed. +39 tests (893 → 939).
 
-**Phase 11 — v0.11.0 (completed, 2026-06-10)**: **Design Integrity & Intent Capture**. Full-system review (prompt audit + parallel code/architecture review agents) → ID-keyed consistency checker, 5 fail-open fixes, skeleton drift gate, per-section hashes for deterministic rebuild derivation, reverse contract validation, loop-escape guard, `/ha-ship` last mile. Intent-capture batch from dogfood feedback ("works, but not what I meant"): Intent Echo, per-feature Given/When/Then acceptance criteria, behavioral walkthrough gates, vague-word scan, adversarial self-critique. Senior handoff notes across 9 agent prompts. 3-way fragment title sync test (caught 2 live drifts on first run). `GATES.md` registry. +47 tests (939 → 986).
+**Phase 11 — v0.11.0 (completed, 2026-06-10)**: **Design Integrity & Intent Capture**. Full-system review (prompt audit + parallel code/architecture review agents) → ID-keyed consistency checker, 5 fail-open fixes, skeleton drift gate, per-section hashes for deterministic rebuild derivation, reverse contract validation, loop-escape guard, `/ha-ship` last mile. Intent-capture batch from dogfood feedback ("works, but not what I meant"): Intent Echo, per-feature Given/When/Then acceptance criteria, behavioral walkthrough gates, vague-word scan, adversarial self-critique. Senior handoff notes across 9 agent prompts. 3-way fragment title sync test (caught 2 live drifts on first run). `GATES.md` registry. Late additions: canonical section insertion (user_journey no longer dangles after notes), fake-FAIL guard for mis-matched profile cwd, `harness validate` 0/0, weak-model prompt diet (checklists→≤7 invariants, ha-design 519→391 lines with an execution progress table), first full LESSON auto-learning cycle (LESSON-029). +55 tests (939 → 994).
 
 **v1.0.0 backlog**:
 - Live LESSONS auto-learning (ha-review repeated pattern → LESSON candidate)

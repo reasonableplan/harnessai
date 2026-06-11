@@ -38,6 +38,7 @@
 |---|---|---|
 | skeleton integrity (filesystem 블록 ↔ 실재) | BLOCK | — (design 복귀) |
 | rework T-ID 필수 (passed=false) | BLOCK | `--no-rework` |
+| 가짜 FAIL 가드 (`test_dir_warning` — cwd 에 테스트 디렉토리 부재) | advisory(실행 전 경고) | profiles[].path 수정 |
 | 동일 T-ID 3회째 FAIL 루프 가드 | BLOCK | `--force-continue` |
 | skeleton hash 비교 | advisory | — |
 
