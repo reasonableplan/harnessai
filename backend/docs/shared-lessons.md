@@ -550,3 +550,13 @@ _rate_limit_store: dict[int, list[float]] = defaultdict(list)
 **연결**:
 - 같은 정신: LESSON-014 (Designer 가 디자인 시스템 소스를 직접 정의하면 품질 미보장)
   — 시스템화된 추출 패턴이 디자인 토큰 일관성의 기반
+
+---
+
+## LESSON-029: pyright 가변 tuple 빈 체크는 len() 내로잉만 인정
+
+**문제**: `tuple[str, ...]` 의 빈 여부를 `if not parts:` truthiness 로 가드하면 pyright 가 빈 tuple 분기를 제거하지 못해 `parts[-1]` 에 'Index -1 out of range for tuple[()]' 오류 지속.
+
+**규칙**: 가변 길이 tuple (`Path.parts` 등) 의 빈 가드는 `if len(parts) == 0: continue` 처럼 **len() 비교**로 작성 — pyright 의 tuple 길이 내로잉은 len() 체크에서만 동작한다.
+
+**근거**: code-hijack Phase 3 ha-verify — negative_space.py:188, truthiness 가드로 1차 수정 실패 → len()==0 으로 해소 (2026-06-11, 사용자 promotion 승인).
