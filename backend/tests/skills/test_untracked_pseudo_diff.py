@@ -42,19 +42,26 @@ def utils() -> ModuleType:
 
 @pytest.fixture(scope="module")
 def ha_review() -> ModuleType:
-    return _load_module(
-        "ha_review_run_untracked", REPO_ROOT / "skills" / "ha-review" / "run.py"
-    )
+    return _load_module("ha_review_run_untracked", REPO_ROOT / "skills" / "ha-review" / "run.py")
 
 
 def _init_repo(path: Path) -> None:
     subprocess.run(["git", "init", "-q"], cwd=path, check=True)
     subprocess.run(
         [
-            "git", "-c", "user.email=t@example.com", "-c", "user.name=t",
-            "commit", "--allow-empty", "-m", "init", "-q",
+            "git",
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "user.name=t",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "init",
+            "-q",
         ],
-        cwd=path, check=True,
+        cwd=path,
+        check=True,
     )
 
 
@@ -80,10 +87,18 @@ def test_tracked_file_not_included(utils, tmp_path) -> None:
     subprocess.run(["git", "add", "tracked.py"], cwd=tmp_path, check=True)
     subprocess.run(
         [
-            "git", "-c", "user.email=t@example.com", "-c", "user.name=t",
-            "commit", "-m", "add", "-q",
+            "git",
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-m",
+            "add",
+            "-q",
         ],
-        cwd=tmp_path, check=True,
+        cwd=tmp_path,
+        check=True,
     )
 
     assert "tracked.py" not in utils.untracked_pseudo_diff(tmp_path)

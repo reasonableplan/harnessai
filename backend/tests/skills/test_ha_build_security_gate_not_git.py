@@ -209,10 +209,19 @@ def _init_real_repo(path: Path) -> None:
     sp.run(["git", "init", "-q"], cwd=path, check=True)
     sp.run(
         [
-            "git", "-c", "user.email=t@example.com", "-c", "user.name=t",
-            "commit", "--allow-empty", "-m", "init", "-q",
+            "git",
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "user.name=t",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "init",
+            "-q",
         ],
-        cwd=path, check=True,
+        cwd=path,
+        check=True,
     )
 
 

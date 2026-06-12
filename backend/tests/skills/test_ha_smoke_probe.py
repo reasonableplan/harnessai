@@ -70,9 +70,7 @@ def test_url_mode_ready(ha_smoke, tmp_path) -> None:
     """dev server 가 뜨면 PASS — 이후 프로세스 정리."""
     port = _free_port()
     cmd = f'"{sys.executable}" -m http.server {port} --bind 127.0.0.1'
-    r = ha_smoke.run_probe(
-        cmd, cwd=tmp_path, url=f"http://127.0.0.1:{port}/", ready_timeout=30
-    )
+    r = ha_smoke.run_probe(cmd, cwd=tmp_path, url=f"http://127.0.0.1:{port}/", ready_timeout=30)
     assert r["passed"] is True
     assert r["mode"] == "url"
     assert "200" in r["detail"]
