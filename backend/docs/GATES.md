@@ -72,5 +72,5 @@
 | reviewed 상태에서만 마킹 | BLOCK | — |
 
 ## 집계
-- BLOCK 계열: **15** · advisory/HITL 계열: **10+**
+- BLOCK 계열: **16** · advisory/HITL 계열: **11+**
 - 다이어그램/README 의 "8개 게이트" 는 이 표 기준으로 갱신할 것.
