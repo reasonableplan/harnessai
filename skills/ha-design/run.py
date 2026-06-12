@@ -41,6 +41,35 @@ from src.orchestrator.skeleton_hash import (  # noqa: E402
 # placeholder 패턴: <PROJECT_NAME>, <예: ...>, _미작성_, <DOMAIN>_NNN 등
 _PLACEHOLDER_RE = re.compile(r"<[A-Z_][A-Z0-9_\s/.,'\"\-—:]*?>|_미작성_|_미정_")
 
+# LOCKED 섹션 fill 상태 감지용 (v0.10.0+ 복구 지원)
+_LOCKED_SECTION_IDS = ("requirements", "user_journey", "view.screens")
+_AI_WRITABLE_RE = re.compile(
+    r"<!--\s*AI-WRITABLE:[^>]*-->(.*?)<!--\s*/AI-WRITABLE\s*-->",
+    re.DOTALL,
+)
+# AI-WRITABLE 존 안에서 남은 placeholder 카운트용. `<...>` 형태 광범위 매칭 —
+# `<AI 채움>` / `<AI>` / `<Mobbin URL>` 등 템플릿마다 다른 컨벤션 모두 잡음.
+_ANY_PLACEHOLDER_RE = re.compile(r"<[^<>\n]{1,80}>")
+
+
+def _locked_section_status(skeleton_text: str, section_id: str) -> str:
+    """LOCKED 섹션의 fill 상태 반환.
+
+    반환값:
+    - "not_included": HUMAN-LOCKED 블록 자체가 skeleton 에 없음 (해당 섹션 미활성)
+    - "empty": AI-WRITABLE 후보 표가 아직 placeholder 가득 → Step A 부터 진행 필요
+    - "filled": 후보 표가 채워짐 (사용자 확정 여부는 별도 판단) → Claude 가 본문 확인 후 결정
+    """
+    block_re = re.compile(
+        rf"<!--\s*HUMAN-LOCKED:{re.escape(section_id)}\s*-->(.*?)<!--\s*/HUMAN-LOCKED:{re.escape(section_id)}\s*-->",
+        re.DOTALL,
+    )
+    m = block_re.search(skeleton_text)
+    if not m:
+        return "not_included"
+    ai_zone = "".join(z.group(1) for z in _AI_WRITABLE_RE.finditer(m.group(1)))
+    return "empty" if len(_ANY_PLACEHOLDER_RE.findall(ai_zone)) >= 3 else "filled"
+
 
 def cmd_prepare(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
@@ -74,10 +103,22 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         for v in consistency_violations_raw
     ]
 
+    # v0.10.0+ 세션 중단 복구 — 각 LOCKED 섹션의 fill 상태 감지.
+    # 빈 섹션만 인터뷰 재개하도록 SKILL.md 가 이 필드 보고 분기.
+    skeleton_path = plan_path.parent / "skeleton.md"
+    if skeleton_path.exists():
+        skeleton_text = skeleton_path.read_text(encoding="utf-8")
+        locked_section_status = {
+            sid: _locked_section_status(skeleton_text, sid)
+            for sid in _LOCKED_SECTION_IDS
+        }
+    else:
+        locked_section_status = {sid: "not_included" for sid in _LOCKED_SECTION_IDS}
+
     output = {
         "project": str(project),
         "plan_path": str(plan_path),
-        "skeleton_path": str(plan_path.parent / "skeleton.md"),
+        "skeleton_path": str(skeleton_path),
         "current_step": plan.pipeline.current_step,
         "included_sections": list(plan.skeleton_sections.included),
         # v0.10.0 HITL — 어느 included 섹션이 LOCKED 인지 SKILL.md 에 알림.
@@ -85,6 +126,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
             sid for sid in plan.skeleton_sections.included
             if sid in {"requirements", "user_journey", "view.screens"}
         ],
+        "locked_section_status": locked_section_status,
         "activation_trace": activation_trace,
         "profiles": [
             {

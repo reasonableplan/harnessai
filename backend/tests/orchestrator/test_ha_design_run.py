@@ -436,6 +436,55 @@ def test_prepare_outputs_locked_section_ids(tmp_path: Path) -> None:
     assert "stack" not in locked
 
 
+def test_prepare_locked_section_status_without_skeleton(tmp_path: Path) -> None:
+    """skeleton.md 부재 시 locked_section_status 의 3개 LOCKED id 전부 not_included.
+
+    백포트 회귀 가드: 이 필드는 SKILL.md §0/복구 절차가 참조 — run.py 가 출력하지
+    않으면 명세-코드 격차 (2026-06-12 미러→repo 백포트 누락으로 실재했던 결함).
+    """
+    plan = _make_plan(activation_trace={"overview": "always", "stack": "always"})
+    _write_plan(tmp_path, plan)
+
+    output, _ = _run_prepare(tmp_path)
+
+    assert "locked_section_status" in output, "locked_section_status 필드 누락"
+    status = output["locked_section_status"]
+    assert status == {
+        "requirements": "not_included",
+        "user_journey": "not_included",
+        "view.screens": "not_included",
+    }, f"skeleton 부재 시 전부 not_included 여야 함: {status}"
+
+
+def test_prepare_locked_section_status_empty_vs_filled(tmp_path: Path) -> None:
+    """HUMAN-LOCKED 블록의 AI-WRITABLE 존 상태로 empty/filled/not_included 판정."""
+    plan = _make_plan(activation_trace={"overview": "always", "stack": "always"})
+    _write_plan(tmp_path, plan)
+    # requirements: placeholder 3개 → empty / user_journey: 채워짐 → filled
+    # view.screens: 블록 없음 → not_included
+    _write_skeleton(
+        tmp_path / "docs",
+        "<!-- HUMAN-LOCKED:requirements -->\n"
+        "<!-- AI-WRITABLE:candidates -->\n"
+        "| <후보 1> | <후보 2> | <후보 3> |\n"
+        "<!-- /AI-WRITABLE -->\n"
+        "<!-- /HUMAN-LOCKED:requirements -->\n"
+        "\n"
+        "<!-- HUMAN-LOCKED:user_journey -->\n"
+        "<!-- AI-WRITABLE:candidates -->\n"
+        "사용자가 도면을 열고 검사 결과를 확인한다.\n"
+        "<!-- /AI-WRITABLE -->\n"
+        "<!-- /HUMAN-LOCKED:user_journey -->\n",
+    )
+
+    output, _ = _run_prepare(tmp_path)
+
+    status = output["locked_section_status"]
+    assert status["requirements"] == "empty", f"placeholder 가득인데 empty 아님: {status}"
+    assert status["user_journey"] == "filled", f"채워졌는데 filled 아님: {status}"
+    assert status["view.screens"] == "not_included", f"블록 없는데 not_included 아님: {status}"
+
+
 def test_commit_freeze_called_with_locked_sections(tmp_path: Path) -> None:
     """--locked-sections requirements user_journey 박으면 frontmatter 에 frozen_status='frozen' + locked_sections 박힘."""
     plan = _make_plan(activation_trace={"overview": "always", "stack": "always"})

@@ -19,6 +19,7 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 - **dogfood P1: untracked 파일 보안 스캔 우회** (`32b4ffd`) — 방금 생성된 파일은 `git diff` 에 안 잡혀 `/ha-build` BLOCK 게이트와 `/ha-review` 보안 스캔을 통째로 우회. `untracked_pseudo_diff` 가 `git ls-files --others` 결과를 `diff --git` 의사 diff 로 합성해 양쪽 스캔에 합류 (바이너리/대용량/벤더 디렉토리 제외). 회귀 +10 (1015 → 1025)
 - **cp949 디코딩 크래시 root fix** (`32b4ffd`) — Windows locale 에서 `subprocess.run(text=True)` 가 UTF-8 출력을 cp949 로 디코딩하다 크래시. skills 6개 지점 `encoding="utf-8", errors="replace"` 통일
+- **ha-design `locked_section_status` 백포트 누락** — v0.10.0+ 세션 중단 복구 기능 (`_locked_section_status`: HUMAN-LOCKED 블록의 empty/filled/not_included 판정) 이 설치 런타임 (`~/.claude`) 에만 있고 repo 소스에 없었음. repo SKILL.md (§0, 복구 절차) 는 이 필드를 참조 → 외부 설치본이 존재하지 않는 필드를 참조하는 명세-코드 격차. 미러 전수 해시 비교 점검에서 적발, 미러 → repo 백포트 + 핀 테스트 +2 (1036 → **1038**)
 
 ---
 
