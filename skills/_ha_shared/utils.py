@@ -67,11 +67,76 @@ def project_root() -> Path:
     try:
         out = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, check=True,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            check=True,
         )
         return Path(out.stdout.strip()).resolve()
     except (subprocess.CalledProcessError, FileNotFoundError):
         return Path.cwd().resolve()
+
+
+# untracked 의사 diff — 벤더/생성물 디렉토리는 .gitignore 없어도 제외
+_UNTRACKED_SKIP_SEGMENTS = frozenset({
+    "node_modules", "dist", "build", "__pycache__", ".venv", "venv",
+    ".git", ".pytest_cache", ".ruff_cache", ".mypy_cache", ".next", "coverage",
+})
+UNTRACKED_FILE_MAX_BYTES = 200_000
+UNTRACKED_TOTAL_MAX_BYTES = 2_000_000
+
+
+def untracked_pseudo_diff(project: Path, timeout: int = 60) -> str:
+    """untracked 신규 파일을 `diff --git` 형식 의사 diff 로 합성 (dogfood P1).
+
+    git diff (HEAD / main...HEAD / --cached) 는 미추적 파일을 포함하지 않아
+    방금 생성된 모듈이 보안/슬롭/LESSON 스캔을 통째로 우회한다. 합성 헤더는
+    strip_doc_files_from_diff 가 인식하는 `diff --git a/.. b/..` 형식을
+    그대로 따라 문서 파일 제외 규칙이 동일하게 적용된다.
+
+    바이너리(NUL 포함)/크기 상한 초과/벤더 디렉토리는 제외. git 미설치·
+    repo 아님·timeout 은 빈 문자열 (호출처의 기존 not-git 처리 유지).
+    """
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            cwd=str(project), capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=timeout,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ""
+    if out.returncode != 0:
+        return ""
+
+    blocks: list[str] = []
+    budget = UNTRACKED_TOTAL_MAX_BYTES
+    for rel in out.stdout.splitlines():
+        rel = rel.strip()
+        if not rel:
+            continue
+        posix = Path(rel).as_posix()
+        if any(seg in _UNTRACKED_SKIP_SEGMENTS for seg in posix.split("/")):
+            continue
+        f = project / rel
+        try:
+            if not f.is_file():
+                continue
+            size = f.stat().st_size
+            if size > UNTRACKED_FILE_MAX_BYTES or size > budget:
+                continue
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if "\x00" in text:
+            continue
+        budget -= size
+        added = "".join(f"+{line}\n" for line in text.splitlines())
+        blocks.append(
+            f"diff --git a/{posix} b/{posix}\n"
+            "new file mode 100644\n"
+            "--- /dev/null\n"
+            f"+++ b/{posix}\n" + added
+        )
+    return "".join(blocks)
 
 
 def get_docs_dir(plan: HarnessPlan, project: Path) -> Path:

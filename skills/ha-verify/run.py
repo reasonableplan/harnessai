@@ -105,6 +105,8 @@ def _run_integrity_check(project: Path) -> dict:
             [sys.executable, str(harness_bin), "integrity", "--project", str(project), "--quiet"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=60,
         )
         passed = r.returncode == 0

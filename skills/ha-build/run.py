@@ -23,6 +23,7 @@ from utils import (  # noqa: E402, I001
     resolve_guideline_paths,
     save_plan,
     transition,
+    untracked_pseudo_diff,
     validate_task_id,
 )
 
@@ -226,6 +227,8 @@ def _is_git_repo(project: Path) -> tuple[bool, bool]:
             cwd=str(project),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
         )
         return r.returncode == 0, True
@@ -266,7 +269,8 @@ def _run_security_gate(project: Path, plan) -> list[str]:
         try:
             r = subprocess.run(
                 git_args, cwd=str(project),
-                capture_output=True, text=True, timeout=30,
+                capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=30,
             )
             if r.returncode != 0:
                 continue
@@ -275,6 +279,9 @@ def _run_security_gate(project: Path, plan) -> list[str]:
             return []
         if diff_text.strip():
             break
+
+    # dogfood P1: 방금 생성된 untracked 파일은 git diff 에 없음 — 의사 diff 합류
+    diff_text += untracked_pseudo_diff(project)
 
     if not diff_text.strip():
         return []
@@ -375,7 +382,8 @@ def _run_toolchain_gate(project: Path, plan) -> list[str]:
                 # 사용자 입력이 아니므로 command injection 위험 없음.
                 r = subprocess.run(
                     cmd, shell=True, cwd=cwd,
-                    capture_output=True, text=True, timeout=300,
+                    capture_output=True, text=True,
+                    encoding="utf-8", errors="replace", timeout=300,
                 )
                 if r.returncode != 0:
                     failures.append(

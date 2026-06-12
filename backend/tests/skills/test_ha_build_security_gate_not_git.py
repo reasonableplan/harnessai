@@ -198,3 +198,38 @@ def test_security_gate_still_blocks_py_eval(ha_build, tmp_path, monkeypatch) -> 
     failures = ha_build._run_security_gate(tmp_path, _make_plan())
     assert any("eval" in f for f in failures)
     assert all("harness-plan.md" not in f for f in failures)
+
+
+# ── dogfood P1: untracked 신규 파일 게이트 합류 ───────────────────────────
+
+
+def _init_real_repo(path: Path) -> None:
+    import subprocess as sp
+
+    sp.run(["git", "init", "-q"], cwd=path, check=True)
+    sp.run(
+        [
+            "git", "-c", "user.email=t@example.com", "-c", "user.name=t",
+            "commit", "--allow-empty", "-m", "init", "-q",
+        ],
+        cwd=path, check=True,
+    )
+
+
+def test_security_gate_blocks_untracked_py_eval(ha_build, tmp_path) -> None:
+    """방금 생성된 (아직 add 안 된) .py 의 eval() 도 BLOCK — 기존엔 게이트 우회."""
+    _init_real_repo(tmp_path)
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "service.py").write_text("eval(user_input)\n", encoding="utf-8")
+
+    failures = ha_build._run_security_gate(tmp_path, _make_plan())
+
+    assert any("eval" in f for f in failures)
+
+
+def test_security_gate_untracked_md_only_passes(ha_build, tmp_path) -> None:
+    """untracked 가 문서뿐이면 게이트 통과 (LESSON-030 제외 규칙 그대로 적용)."""
+    _init_real_repo(tmp_path)
+    (tmp_path / "notes.md").write_text("external eval ( prose\n", encoding="utf-8")
+
+    assert ha_build._run_security_gate(tmp_path, _make_plan()) == []

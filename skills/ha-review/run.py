@@ -28,6 +28,7 @@ from utils import (  # noqa: E402, I001
     resolve_guideline_paths,
     save_plan,
     transition,
+    untracked_pseudo_diff,
 )
 
 # backend src import — utils.py 가 backend/ 를 sys.path 에 추가 보장
@@ -426,7 +427,7 @@ def _check_rn_cli(diff: str, profile_id: str) -> list[dict[str, str]]:
 
 
 def _extract_diff(project: Path) -> str:
-    """git diff main...HEAD 또는 HEAD fallback 으로 diff 추출."""
+    """git diff main...HEAD 또는 HEAD fallback + untracked 의사 diff (dogfood P1)."""
     diff = ""
     try:
         out = subprocess.run(
@@ -449,7 +450,8 @@ def _extract_diff(project: Path) -> str:
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
 
-    return diff
+    # untracked 신규 파일은 git diff 에 없음 — 의사 diff 로 같은 스캔 입력에 합류
+    return diff + untracked_pseudo_diff(project)
 
 
 # 역방향 contract 검증 (architecture review F7-1) — contract-validator 훅은
@@ -607,6 +609,8 @@ def _check_git_repo(project: Path) -> None:
             cwd=str(project),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     except FileNotFoundError:
         info(
