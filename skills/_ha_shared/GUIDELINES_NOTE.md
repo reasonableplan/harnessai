@@ -15,6 +15,9 @@
 | `ios-swift` | 4 | architecture / swiftui / network / storage — MV pattern + SwiftUI + URLSession + Keychain |
 | `fastapi` | 3 | api / services / structure — Clean Arch + DI + 패키지 구조 |
 | `react-vite` | 4 | api / components / state / style — Zustand + axios 인스턴스 + CVA |
+| `nextjs` | 4 | components / data / routing / style — RSC/Client 분리 + Server Actions + CVA |
+| `nestjs` | 3 | api / services / structure — DTO 검증 + Module 캡슐화 + 트랜잭션 |
+| `electron` | 4 | ipc / state / structure / style — IpcResult 봉투 + store-action-IPC + CVA |
 | `python-cli` | 0 | (가이드라인 없음 — 프로파일 본문이 컨벤션 담당) |
 | `python-lib` | 0 | (가이드라인 없음 — 프로파일 본문이 컨벤션 담당) |
 

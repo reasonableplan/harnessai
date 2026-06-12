@@ -13,6 +13,7 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 - **`/ha-smoke` 스킬** — 런타임 기동 검증 (advisory 게이트, 상태 전이 없음). exit 모드 (명령 exit 0 = PASS — CLI/빌드 류) / url 모드 (dev server 백그라운드 기동 + readiness 폴링 + 프로세스 트리 정리: win32 `taskkill /F /T` · POSIX `killpg`). 결과는 `verify_history` 에 step=`smoke` 로 기록 — 스키마 변경 0. verified/reviewed 상태에서만 실행 (exit 2 가드)
 - **`toolchain.smoke` 프로파일 필드** (optional) — 프로파일/사용자가 smoke 명령을 고정 가능. 포트는 프로젝트마다 달라 디폴트 프로파일엔 비워두고 SKILL.md 의 프로파일별 휴리스틱 표가 도출
 - 회귀 테스트 +8 (probe 계약 6 + toolchain.smoke 파싱 2) — 1025 → **1033**
+- **electron / nextjs / nestjs 디폴트 guidelines** (11 파일) — 기존 0개였던 v0.7.0 프로파일 3종의 컨벤션 문서 보충. electron: ipc (IpcResult 봉투 + 채널 상수) / state (store-action-IPC) / structure (프로세스 3분할 + colocation) / style. nextjs: routing (Route Group + 렌더링 전략) / components (Server·Client 분리) / data (Server Actions + Drizzle 싱글턴) / style. nestjs: api (DTO 검증 + 에러 래퍼) / services (트랜잭션 + core 순수함수) / structure. sosel dogfood 에서 검증된 kalpie 계열 규칙 (IpcResult, container colocation, CVA) 역수출. `resolve_guideline_paths` 핀 테스트 +3 — 1033 → **1036**
 
 ### Fixed
 

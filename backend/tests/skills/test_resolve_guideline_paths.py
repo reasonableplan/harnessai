@@ -88,6 +88,36 @@ def test_fastapi_returns_three_sorted_paths(utils) -> None:
     assert set(names) == expected_names
 
 
+def test_electron_returns_four_sorted_paths(utils) -> None:
+    """electron 프로파일 → 4개 .md 파일 (IPC envelope + kalpie 계열 renderer)."""
+    paths = utils.resolve_guideline_paths("electron")
+    assert len(paths) == 4
+    names = [p.name for p in paths]
+    assert names == sorted(names)
+    expected_names = {"ipc.md", "state.md", "structure.md", "style.md"}
+    assert set(names) == expected_names
+
+
+def test_nextjs_returns_four_sorted_paths(utils) -> None:
+    """nextjs 프로파일 → 4개 .md 파일 (RSC/Server Actions 중심)."""
+    paths = utils.resolve_guideline_paths("nextjs")
+    assert len(paths) == 4
+    names = [p.name for p in paths]
+    assert names == sorted(names)
+    expected_names = {"components.md", "data.md", "routing.md", "style.md"}
+    assert set(names) == expected_names
+
+
+def test_nestjs_returns_three_sorted_paths(utils) -> None:
+    """nestjs 프로파일 → 3개 .md 파일 (fastapi 와 동형: api/services/structure)."""
+    paths = utils.resolve_guideline_paths("nestjs")
+    assert len(paths) == 3
+    names = [p.name for p in paths]
+    assert names == sorted(names)
+    expected_names = {"api.md", "services.md", "structure.md"}
+    assert set(names) == expected_names
+
+
 def test_nonexistent_profile_returns_empty_list(utils) -> None:
     """존재하지 않는 프로파일 → 빈 리스트 (silent skip)."""
     paths = utils.resolve_guideline_paths("nonexistent-profile-xyz")
