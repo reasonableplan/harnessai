@@ -2,7 +2,7 @@
 
 🌐 **English** · [한국어](README.ko.md)
 
-![tests](https://img.shields.io/badge/tests-1015%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-1033%20passing-brightgreen)
 ![pyright](https://img.shields.io/badge/pyright-0%20errors-brightgreen)
 ![ruff](https://img.shields.io/badge/ruff-clean-brightgreen)
 ![gate coverage](https://img.shields.io/badge/gate%20coverage-100%25-brightgreen)
@@ -105,6 +105,7 @@ In a fresh Claude Code session:
 /ha-build T-001          # implement one task [sonnet]
 /ha-verify   # run toolchain + skeleton integrity gate [sonnet]
 /ha-review   # security hooks + LESSONs + ai-slop + test distribution
+/ha-smoke    # runtime launch probe — does the app actually start? (advisory)
 ```
 
 > Deep dive: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · [SETUP.md](SETUP.md)
@@ -130,6 +131,8 @@ In a fresh Claude Code session:
                     [2] profile toolchain (pytest / ruff / pyright)
                                           ▼
   /ha-review ─────▶ Security hooks × 7 + LESSONs × 28 + ai-slop × 7 + test distribution
+                                          ▼
+  /ha-smoke  ─────▶ runtime launch probe (exit 0 / URL readiness) — advisory
                                           ▼
                                APPROVE / REJECT → /ship
 ```
@@ -328,7 +331,7 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 - Claude Code plugin manifest distribution
 - Vector memory (CrewAI-style) — per-project LESSON embedding
 - Execution sandbox (OpenHands-style) — isolated subprocess environment
-- Runtime smoke gate (`ha-smoke`) — serve + declared-endpoint liveness + user_journey browser smoke (GWT acceptance criteria as checklist)
+- `ha-smoke` extensions — declared-endpoint liveness sweep + user_journey browser smoke (GWT acceptance criteria as checklist). Core runtime launch gate shipped in v0.12.0
 - `/ha-export` — read-only 기술명세서 / 화면설계서 / 페르소나 renders from skeleton (single source of truth preserved)
 
 ---

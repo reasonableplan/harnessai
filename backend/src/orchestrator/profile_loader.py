@@ -57,6 +57,9 @@ class Toolchain:
     lint: str | None
     type: str | None
     format: str | None
+    # /ha-smoke 런타임 기동 검증 명령 (exit 0 = PASS). 서버형 프로파일은
+    # 포트가 프로젝트마다 달라 여기 고정하지 않고 SKILL.md 휴리스틱이 도출.
+    smoke: str | None = None
 
 
 @dataclass(frozen=True)
@@ -459,6 +462,7 @@ class ProfileLoader:
                 lint=tc.get("lint"),
                 type=tc.get("type"),
                 format=tc.get("format"),
+                smoke=tc.get("smoke"),
             ),
             whitelist=Whitelist(
                 runtime=tuple(wl.get("runtime") or []),

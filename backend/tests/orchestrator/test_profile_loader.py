@@ -2161,3 +2161,34 @@ def test_compute_active_sections_baas_case_activates_interface_http(tmp_path: Pa
     )
     assert "interface.http" in active_with
     assert "overview" in active_with
+
+
+# ── toolchain.smoke (ha-smoke 런타임 게이트) ───────────────────────────────
+
+
+def test_toolchain_smoke_field_parsed(tmp_path: Path) -> None:
+    """toolchain.smoke 명령이 Toolchain.smoke 로 매핑된다."""
+    harness = tmp_path / "harness"
+    _write_profile(
+        harness / "profiles",
+        "smokeprof",
+        required_sections=["overview"],
+        extra_frontmatter={
+            "toolchain": {
+                "install": "i",
+                "test": "t",
+                "lint": "l",
+                "smoke": "python -m app --help",
+            }
+        },
+    )
+    loader = ProfileLoader(harness_dir=harness)
+    assert loader.load("smokeprof").toolchain.smoke == "python -m app --help"
+
+
+def test_toolchain_smoke_defaults_to_none(tmp_path: Path) -> None:
+    """smoke 미지정 프로파일은 None (기존 프로파일 비파괴)."""
+    harness = tmp_path / "harness"
+    _write_profile(harness / "profiles", "nosmoke", required_sections=["overview"])
+    loader = ProfileLoader(harness_dir=harness)
+    assert loader.load("nosmoke").toolchain.smoke is None

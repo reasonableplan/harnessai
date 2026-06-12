@@ -4,6 +4,23 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.12.0] — 2026-06-12 — "Runtime Smoke Gate"
+
+검증 사다리 최상단 보강: test/lint/type 이 전부 통과해도 **앱이 안 뜨는** 산출물을 잡는 `/ha-smoke` 신설 + dogfood P1 (untracked 파일 보안 스캔 우회) root fix.
+
+### Added
+
+- **`/ha-smoke` 스킬** — 런타임 기동 검증 (advisory 게이트, 상태 전이 없음). exit 모드 (명령 exit 0 = PASS — CLI/빌드 류) / url 모드 (dev server 백그라운드 기동 + readiness 폴링 + 프로세스 트리 정리: win32 `taskkill /F /T` · POSIX `killpg`). 결과는 `verify_history` 에 step=`smoke` 로 기록 — 스키마 변경 0. verified/reviewed 상태에서만 실행 (exit 2 가드)
+- **`toolchain.smoke` 프로파일 필드** (optional) — 프로파일/사용자가 smoke 명령을 고정 가능. 포트는 프로젝트마다 달라 디폴트 프로파일엔 비워두고 SKILL.md 의 프로파일별 휴리스틱 표가 도출
+- 회귀 테스트 +8 (probe 계약 6 + toolchain.smoke 파싱 2) — 1025 → **1033**
+
+### Fixed
+
+- **dogfood P1: untracked 파일 보안 스캔 우회** (`32b4ffd`) — 방금 생성된 파일은 `git diff` 에 안 잡혀 `/ha-build` BLOCK 게이트와 `/ha-review` 보안 스캔을 통째로 우회. `untracked_pseudo_diff` 가 `git ls-files --others` 결과를 `diff --git` 의사 diff 로 합성해 양쪽 스캔에 합류 (바이너리/대용량/벤더 디렉토리 제외). 회귀 +10 (1015 → 1025)
+- **cp949 디코딩 크래시 root fix** (`32b4ffd`) — Windows locale 에서 `subprocess.run(text=True)` 가 UTF-8 출력을 cp949 로 디코딩하다 크래시. skills 6개 지점 `encoding="utf-8", errors="replace"` 통일
+
+---
+
 ## [0.11.1] — 2026-06-11 — "Dogfood Harvest: FP Flood & CI Green"
 
 code-hijack dogfood Phase 3~4 실전 수확 (LESSON-030 promote) + 6/1부터 깨져 있던 CI 복구.

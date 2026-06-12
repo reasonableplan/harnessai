@@ -60,6 +60,12 @@
 | done→needs_rebuild 자동 전이 (affected ∪ hash 파생) | 자동 가드 | 사용자가 status 직접 복원 |
 | cross-section consistency | advisory | — |
 
+### /ha-smoke
+| 게이트 | severity | 우회 |
+|---|---|---|
+| verified/reviewed 상태에서만 실행 | BLOCK(exit 2) | — |
+| 런타임 기동 probe (exit 0 / URL readiness) — `verify_history` step=`smoke` 기록 | advisory(상태 전이 없음) | — |
+
 ### /ha-ship
 | 게이트 | severity | 우회 |
 |---|---|---|

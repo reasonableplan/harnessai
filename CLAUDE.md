@@ -139,13 +139,13 @@ backend/
         base.py               — BaseProvider 추상 인터페이스
         claude_cli.py         — Claude CLI subprocess provider
   tests/
-    orchestrator/             — 1015개 테스트 (E2E 통합 포함, tests/skills 포함 전체)
+    orchestrator/             — 1033개 테스트 (E2E 통합 포함, tests/skills 포함 전체)
     dashboard/                — EventMapper 17개 테스트
 
 ## HarnessAI v2 파이프라인 (`/ha-*` 스킬)
 
 ```
-/ha-init → /ha-design → /ha-plan → /ha-build (sonnet) → /ha-verify → /ha-review → /ha-ship
+/ha-init → /ha-design → /ha-plan → /ha-build (sonnet) → /ha-verify → /ha-review → /ha-smoke (advisory) → /ha-ship
         + /ha-redesign (결정 변경 propagation) + /ha-deepinit (기존 코드 → AGENTS.md) + /ha-log (worklog)
 ```
 
