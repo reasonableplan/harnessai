@@ -123,7 +123,7 @@ export HARNESS_AI_HOME="$(pwd)"       # (설치 스크립트가 안내)
   /ha-verify ─────▶ [1] harness integrity (skeleton ↔ 실재 FS)
                     [2] profile toolchain (pytest/ruff/pyright)
                                          ▼
-  /ha-review ─────▶ 보안훅 7 + LESSON 28 + ai-slop 7 + 테스트 분포
+  /ha-review ─────▶ 보안훅 7 + LESSON 31 + ai-slop 7 + 테스트 분포
                                          ▼
   /ha-smoke  ─────▶ 런타임 기동 probe (exit 0 / URL readiness) — advisory
                                          ▼
@@ -308,6 +308,8 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 **Phase 10 — v0.10.0 (완료, 2026-05-15)**: **HITL Gate**. Human-locked 섹션 (`requirements` / `user_journey` / `view.screens`) PreToolUse hook 강제. `PlanManager.freeze()` one-way gate. `/ha-design` HITL 인터뷰 (AI 후보 5 개 → 사용자 선택). `/ha-build` frozen-status 진입 게이트. `/ha-review extract-lesson` Pending Lessons 자동 추가. `/ha-log` 마이크로 스킬 (worklog append + subprocess 자동). `harness migrate-v10` CLI. ChatDev / aider / CrewAI 격차 해소. 신규 테스트 +39 (893 → 939).
 
 **Phase 11 — v0.11.0 (완료, 2026-06-10)**: **Design Integrity & Intent Capture**. 전체 시스템 리뷰 (프롬프트 감사 + 코드/아키텍처 리뷰 에이전트 병렬) → ID-키잉 consistency checker, fail-open 5곳 수정, skeleton drift 게이트, 섹션별 hash 결정론 rebuild, 역방향 contract 검증, 루프 탈출 가드, `/ha-ship` 라스트마일. dogfood 피드백 ("작동은 하는데 의도와 다르게") 대응 의도 포착 배치: Intent Echo · 기능별 Given/When/Then 수용 기준 · 행동 워크스루 게이트 · 모호어 스캔 · 적대적 자가비판. 에이전트 9종 시니어 핸드오프 노트. 3중 제목 동기 테스트 (첫 실행에서 실 drift 2건 적발). `GATES.md` 게이트 전수표. 후반 추가: canonical 섹션 삽입 (user_journey dangling 해소), 가짜 FAIL 가드 (profile cwd 오매칭), `harness validate` 0/0, 약모델 프롬프트 다이어트 (체크리스트→인변량 ≤7, ha-design 519→391줄+진행표), LESSON 자동학습 루프 첫 완주 (LESSON-029). 신규 테스트 +55 (939 → 994).
+
+**Phase 12 — v0.12.0 (완료, 2026-06-12)**: **런타임 스모크 게이트 + 디폴트 guidelines**. `/ha-smoke` — 검증 사다리 최상단: test/lint/type 전부 통과해도 앱이 안 뜨는 산출물을 잡는다. exit 모드 (exit 0 = PASS) / URL readiness probe + 프로세스 트리 정리, `verify_history` step=`smoke` 기록 (advisory, 스키마 변경 0) + `toolchain.smoke` optional 프로파일 필드. untracked 파일 스캔 우회 봉합 — 방금 생성된 파일이 의사 diff 합성으로 `/ha-build` 보안 게이트 + `/ha-review` 스캔에 합류. cp949 디코딩 크래시 root fix (6지점). `electron` / `nextjs` / `nestjs` 디폴트 guidelines 11파일 (sosel dogfood 검증 kalpie 계열 규칙 역수출). ha-design `locked_section_status` 백포트 (미러 전수 해시 감사로 명세-코드 격차 적발). 신규 테스트 +23 (1015 → 1038).
 
 **v1.0.0 백로그**:
 - Live LESSONS 자동 학습 (ha-review 반복 패턴 → 후보 등록)

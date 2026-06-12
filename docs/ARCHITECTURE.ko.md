@@ -14,6 +14,7 @@
 ┌──────────────────────────────────────────────────────────────────────┐
 │                           사용자 (CLI)                               │
 │  /ha-init → /ha-design → /ha-plan → /ha-build → /ha-verify → /ha-review │
+│      → /ha-smoke (advisory) → /ha-ship     + /ha-redesign · /ha-log    │
 └──────────────────────────────────────────────────────────────────────┘
                                     │
                  ┌──────────────────┼──────────────────┐
@@ -255,7 +256,7 @@ init ──▶ designed ──▶ planned ──▶ building ──▶ built ─
 | building → built | 모든 태스크 done | plan_manager (자동) |
 | built → verified | `/ha-verify` PASS | toolchain + harness integrity |
 | verified → reviewed | `/ha-review` APPROVE | Reviewer 에이전트 |
-| reviewed → shipped | `/ship` (gstack) | — |
+| reviewed → shipped | `/ha-ship` 마킹 (배포/PR 은 gstack `/ship` 등 외부 도구) | — |
 | * → building (reject) | `/ha-review` REJECT | 재구현 필요 |
 
 plan 파일은 `plan_manager.py::PlanManager` 가 로드/저장/전이. 스키마는 `harness validate --plan` 으로 강제.
@@ -271,6 +272,10 @@ plan 파일은 `plan_manager.py::PlanManager` 가 로드/저장/전이. 스키�
 /ha-build       → Backend / Frontend / mobile_coder_* (태스크 agent 필드로 Orchestrator 라우팅)
 /ha-verify      → (에이전트 X) toolchain + harness integrity 실행
 /ha-review      → Reviewer (보안 훅 + LESSON + ai-slop + 테스트 분포)
+/ha-smoke       → (에이전트 X) 런타임 기동 probe — exit/url 모드, advisory
+/ha-ship        → (에이전트 X) reviewed → shipped 라스트마일 마킹
+/ha-redesign    → (Sonnet 위임) 결정 변경 영향 분석 + 재설계 propagation
+/ha-log         → (에이전트 X) worklog 수동 append
 /ha-deepinit    → (기존 코드베이스용) 전 11개 에이전트 분석
 ```
 
@@ -281,8 +286,10 @@ plan 파일은 `plan_manager.py::PlanManager` 가 로드/저장/전이. 스키�
 | 스킬 | 모델 | 이유 |
 |---|---|---|
 | /ha-build | Sonnet | 코드 작성 속도/비용 (단순 실행) |
-| /ha-verify | Sonnet | 기계적 명령 실행 + 파싱 |
+| /ha-verify, /ha-smoke | Sonnet | 기계적 명령 실행 + 파싱 |
+| /ha-redesign | Sonnet | 영향 분석·재설계 위임 (Agent tool) |
 | /ha-init, /ha-design, /ha-plan, /ha-review, /ha-deepinit | Opus | 판단·설계·종합 리뷰 |
+| /ha-ship, /ha-log | — | 상태 마킹/append 만 (모델 무관) |
 
 ---
 
@@ -391,7 +398,8 @@ LESSON 추가는 수동 (`backend/docs/shared-lessons.md` 직접 편집 + 해당
 
   skills/                 ~/.claude/skills/ha-* 소스 이관 (B8)
     ha-init/, ha-design/, ha-plan/, ha-build/,
-    ha-verify/, ha-review/, ha-deepinit/
+    ha-verify/, ha-review/, ha-smoke/, ha-redesign/,
+    ha-ship/, ha-log/, ha-deepinit/
     _ha_shared/utils.py   공유 유틸 (HARNESS_AI_HOME 로드)
 
   install.sh              Unix/WSL 단일 명령 설치 (B8)

@@ -48,6 +48,7 @@ claude   # Claude Code 실행
 /ha-build T-001     # 태스크 구현 (병렬: --parallel T-001,T-002)
 /ha-verify          # 프로파일 toolchain 실행 (test/lint/type)
 /ha-review          # 보안/LESSON/AI-slop 종합 리뷰
+/ha-smoke           # 런타임 기동 검증 (advisory) — 앱이 실제로 뜨는지
 ```
 
 ### 기존 코드베이스 도입
@@ -419,7 +420,7 @@ cd ~/my-flutter-app
 # → guideline_paths 4개 모두 읽기
 # → 6축 답변 시 data_sensitivity=pii 면 audit_log/threat_model 자동 활성
 
-# 4. 이후 흐름: /ha-design → /ha-plan → /ha-build → /ha-verify → /ha-review
+# 4. 이후 흐름: /ha-design → /ha-plan → /ha-build → /ha-verify → /ha-review → /ha-smoke
 ```
 
 ### iOS 개발 환경 제약
@@ -578,7 +579,8 @@ Claude Code 세션 내에서 gstack 설치 (별도 가이드 참조).
 # → DB 정규화, API 일관성, 누락 엔드포인트 탐지
 
 # 3. IMPLEMENTING 완료 후 — 코드 리뷰
-/ha-review    # 보안훅 7 + LESSON 21 + ai-slop 7 + 테스트 분포
+/ha-review    # 보안훅 7 + LESSON 31 + ai-slop 7 + 테스트 분포
+/ha-smoke     # 런타임 기동 probe (advisory)
 /review       # SQL injection, 레이스 컨디션, 동시성
 
 # 4. 배포

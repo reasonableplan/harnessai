@@ -130,7 +130,7 @@ In a fresh Claude Code session:
   /ha-verify ─────▶ [1] harness integrity (skeleton ↔ real FS)
                     [2] profile toolchain (pytest / ruff / pyright)
                                           ▼
-  /ha-review ─────▶ Security hooks × 7 + LESSONs × 28 + ai-slop × 7 + test distribution
+  /ha-review ─────▶ Security hooks × 7 + LESSONs × 31 + ai-slop × 7 + test distribution
                                           ▼
   /ha-smoke  ─────▶ runtime launch probe (exit 0 / URL readiness) — advisory
                                           ▼
@@ -322,6 +322,8 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 **Phase 10 — v0.10.0 (completed, 2026-05-15)**: **HITL Gate**. Human-locked sections (`requirements` / `user_journey` / `view.screens`) enforced via PreToolUse hook. `PlanManager.freeze()` one-way gate. `/ha-design` HITL interview (5 AI candidates → user pick). `/ha-build` frozen-status gate. `/ha-review extract-lesson` auto-appends to Pending Lessons. `/ha-log` micro skill (worklog append + subprocess auto-append). `harness migrate-v10` CLI. ChatDev / aider / CrewAI gap closed. +39 tests (893 → 939).
 
 **Phase 11 — v0.11.0 (completed, 2026-06-10)**: **Design Integrity & Intent Capture**. Full-system review (prompt audit + parallel code/architecture review agents) → ID-keyed consistency checker, 5 fail-open fixes, skeleton drift gate, per-section hashes for deterministic rebuild derivation, reverse contract validation, loop-escape guard, `/ha-ship` last mile. Intent-capture batch from dogfood feedback ("works, but not what I meant"): Intent Echo, per-feature Given/When/Then acceptance criteria, behavioral walkthrough gates, vague-word scan, adversarial self-critique. Senior handoff notes across 9 agent prompts. 3-way fragment title sync test (caught 2 live drifts on first run). `GATES.md` registry. Late additions: canonical section insertion (user_journey no longer dangles after notes), fake-FAIL guard for mis-matched profile cwd, `harness validate` 0/0, weak-model prompt diet (checklists→≤7 invariants, ha-design 519→391 lines with an execution progress table), first full LESSON auto-learning cycle (LESSON-029). +55 tests (939 → 994).
+
+**Phase 12 — v0.12.0 (completed, 2026-06-12)**: **runtime smoke gate + default guidelines**. `/ha-smoke` — top of the validation ladder: catches builds where test/lint/type all pass but the app doesn't start. exit-mode (exit 0 = PASS) / URL-readiness probe with process-tree cleanup, recorded as `verify_history` step=`smoke` (advisory, zero schema change) + optional `toolchain.smoke` profile field. Untracked-file scan bypass closed — freshly written files now join the `/ha-build` security gate and `/ha-review` scans via synthesized pseudo-diff. cp949 decode crashes root-fixed (6 subprocess sites). Default guidelines for `electron` / `nextjs` / `nestjs` (11 files — kalpie-lineage rules validated in sosel dogfooding, re-exported). ha-design `locked_section_status` backported (mirror→repo spec-code gap caught by full mirror hash audit). +23 tests (1015 → 1038).
 
 **v1.0.0 backlog**:
 - Live LESSONS auto-learning (ha-review repeated pattern → LESSON candidate)

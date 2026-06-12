@@ -14,6 +14,7 @@
 ┌──────────────────────────────────────────────────────────────────────┐
 │                             User (CLI)                               │
 │  /ha-init → /ha-design → /ha-plan → /ha-build → /ha-verify → /ha-review │
+│      → /ha-smoke (advisory) → /ha-ship     + /ha-redesign · /ha-log    │
 └──────────────────────────────────────────────────────────────────────┘
                                     │
                  ┌──────────────────┼──────────────────┐
@@ -155,9 +156,13 @@ The plan file has a YAML frontmatter (profiles, skeleton sections, pipeline step
 | `/ha-build` | Backend / Frontend / mobile_coder_* | Sonnet | Implement one task; Orchestrator routes to coder by profile (parallel via `--parallel`) |
 | `/ha-verify` | — | Sonnet | Run toolchain + integrity gate + record verify_history |
 | `/ha-review` | Reviewer | Opus | Security hooks + LESSONs + ai-slop + test distribution |
+| `/ha-smoke` | — | Sonnet | Runtime launch probe (exit 0 / URL readiness) — advisory, records `verify_history` step=`smoke` |
+| `/ha-ship` | — | — | Last mile: mark reviewed → shipped (deploy/PR via external tools) |
+| `/ha-redesign` | (Sonnet delegates) | Sonnet | Decision-change propagation: affected sections → `needs_rebuild` derivation |
+| `/ha-log` | — | — | Manual worklog append |
 | `/ha-deepinit` | — | Opus | Analyze existing codebase → hierarchical AGENTS.md |
 
-Sonnet for mechanical work (build / verify); Opus for judgement (design / plan / review).
+Sonnet for mechanical work (build / verify / smoke); Opus for judgement (design / plan / review).
 
 ---
 
@@ -262,7 +267,8 @@ LESSONs are added manually by editing `shared-lessons.md` + each profile's `less
 
   skills/                 Installed to ~/.claude/skills/ha-*
     ha-init/, ha-design/, ha-plan/, ha-build/,
-    ha-verify/, ha-review/, ha-deepinit/
+    ha-verify/, ha-review/, ha-smoke/, ha-redesign/,
+    ha-ship/, ha-log/, ha-deepinit/
     _ha_shared/utils.py   Shared utilities (HARNESS_AI_HOME loader)
 
   install.sh              Unix/WSL single-command install
