@@ -91,7 +91,9 @@ toolchain:
   install: "pnpm install"
   test: "pnpm test"
   lint: "pnpm lint"
-  type: "pnpm exec tsc --noEmit"
+  # project-references 루트(tsconfig.json: files:[] + references)는 bare `tsc --noEmit`
+  # 가 0개 파일만 검사하고 통과한다 — `-b`(build mode)로 leaf config 를 따라가야 실검사.
+  type: "pnpm exec tsc -b --noEmit"
   format: "pnpm format"
 
 whitelist:
