@@ -157,6 +157,6 @@ def test_extract_diff_includes_untracked(ha_review, tmp_path) -> None:
     _init_repo(tmp_path)
     (tmp_path / "new_module.py").write_text("token = eval(payload)\n", encoding="utf-8")
 
-    diff = ha_review._extract_diff(tmp_path)
+    diff, _scope = ha_review._extract_diff(tmp_path)
 
     assert "+token = eval(payload)" in diff

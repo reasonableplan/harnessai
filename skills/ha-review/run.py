@@ -426,32 +426,77 @@ def _check_rn_cli(diff: str, profile_id: str) -> list[dict[str, str]]:
 # ── 공통 헬퍼 ──────────────────────────────────────────────────────
 
 
-def _extract_diff(project: Path) -> str:
-    """git diff main...HEAD 또는 HEAD fallback + untracked 의사 diff (dogfood P1)."""
-    diff = ""
+_TRUNK_NAMES = ("main", "master")
+
+
+def _git_capture(project: Path, args: list[str]) -> str | None:
+    """git 명령 stdout 반환 (exit 0). 실패/미설치/타임아웃 시 None."""
     try:
         out = subprocess.run(
-            ["git", "diff", "main...HEAD"], cwd=str(project),
+            ["git", *args], cwd=str(project),
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=60,
         )
-        diff = out.stdout if out.returncode == 0 else ""
     except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+        return None
+    return out.stdout if out.returncode == 0 else None
+
+
+def _git_ref_exists(project: Path, ref: str) -> bool:
+    """ref 가 커밋으로 해석되는지 (rev-parse --verify)."""
+    return _git_capture(project, ["rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"]) is not None
+
+
+def _resolve_diff_base(project: Path, explicit_base: str | None) -> str | None:
+    """리뷰 diff 의 base ref 결정 (이슈 #18).
+
+    우선순위:
+      1. explicit_base (--base) — 사용자/부모가 빌드 시작 커밋 등을 명시
+      2. 피처 브랜치면 main/master (분기점) — base...HEAD = 브랜치 변경분
+      3. main/master 직작업이면 origin/main (마지막 push≈마지막 ship) 추적
+      4. 못 찾으면 None → 호출처가 워킹트리 fallback + scope 로 표면화
+
+    (3) 이 핵심: main 에서 직접 작업하고 태스크를 커밋하면 `main...HEAD` 가
+    항상 비어 보안훅이 vacuous pass 하던 결함을 메운다.
+    """
+    if explicit_base:
+        return explicit_base
+    branch = (_git_capture(project, ["rev-parse", "--abbrev-ref", "HEAD"]) or "").strip()
+    if branch not in _TRUNK_NAMES:
+        for trunk in _TRUNK_NAMES:
+            if _git_ref_exists(project, trunk):
+                return trunk
+    for remote_trunk in ("origin/main", "origin/master"):
+        if _git_ref_exists(project, remote_trunk):
+            return remote_trunk
+    return None
+
+
+def _extract_diff(project: Path, base: str | None = None) -> tuple[str, str]:
+    """리뷰 대상 diff + scope 라벨 반환 (이슈 #18).
+
+    base...HEAD (커밋된 빌드 변경분) 우선, base 미결정/빈 결과면 워킹트리(HEAD)
+    fallback. untracked 신규 파일은 의사 diff 로 합류. scope 라벨은 호출처가
+    출력/경고에 써서 vacuous pass 위험(워킹트리 collapse)을 표면화한다.
+    """
+    resolved = _resolve_diff_base(project, base)
+    diff = ""
+    scope = ""
+    if resolved is not None:
+        committed = _git_capture(project, ["diff", f"{resolved}...HEAD"])
+        if committed and committed.strip():
+            diff, scope = committed, f"{resolved}...HEAD"
 
     if not diff:
-        try:
-            out = subprocess.run(
-                ["git", "diff", "HEAD"], cwd=str(project),
-                capture_output=True, text=True, encoding="utf-8", errors="replace",
-                timeout=60,
-            )
-            diff = out.stdout
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
+        worktree = _git_capture(project, ["diff", "HEAD"]) or ""
+        diff = worktree
+        if resolved is None:
+            scope = "working-tree(HEAD) — base 미결정"
+        else:
+            scope = f"working-tree(HEAD) — base '{resolved}...HEAD' 빈 결과"
 
     # untracked 신규 파일은 git diff 에 없음 — 의사 diff 로 같은 스캔 입력에 합류
-    return diff + untracked_pseudo_diff(project)
+    return diff + untracked_pseudo_diff(project), scope
 
 
 # 역방향 contract 검증 (architecture review F7-1) — contract-validator 훅은
@@ -641,7 +686,13 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     _check_git_repo(project)
 
     profiles = get_active_profiles(plan, project)
-    diff = _extract_diff(project)
+    diff, diff_scope = _extract_diff(project, getattr(args, "base", None))
+    if diff_scope.startswith("working-tree"):
+        info(
+            f"[WARN] 리뷰 diff 가 워킹트리(HEAD)로 collapse 됨 — scope: {diff_scope}.\n"
+            "       빌드를 이미 커밋했다면 변경분이 비어 보안/슬롭 훅이 vacuous pass 할 수 있습니다.\n"
+            "       빌드 시작 커밋을 base 로 지정: /ha-review prepare --base <ref>"
+        )
 
     changed_files: list[str] = []
     for line in diff.splitlines():
@@ -699,6 +750,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         ],
         "lessons_path": str(HARNESS_HOME / "backend" / "docs" / "shared-lessons.md"),
         "diff_size_bytes": len(diff),
+        "diff_scope": diff_scope,
         "changed_files": changed_files,
         # backward compat — ai-slop 단독 키 유지
         "ai_slop_findings_in_diff": findings["ai_slop"],
@@ -757,7 +809,7 @@ def cmd_record(args: argparse.Namespace) -> int:
     # ── R6: approve + BLOCK 발견 → exit 1 (--allow-block 없으면) ─────
     if verdict == "approve" and not allow_block:
         profiles = get_active_profiles(plan, project)
-        diff = _extract_diff(project)
+        diff, _diff_scope = _extract_diff(project, getattr(args, "base", None))
         findings = _collect_findings(project, profiles, diff)
         block_count = findings["block_count"]
         if block_count > 0:
@@ -891,8 +943,19 @@ def cmd_extract_lesson(args: argparse.Namespace) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(prog="ha-review")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("prepare")
+    p = sub.add_parser("prepare")
+    p.add_argument(
+        "--base",
+        default=None,
+        help="리뷰 diff 의 base ref (예: 빌드 시작 커밋). 미지정 시 자동 결정 "
+        "(피처브랜치→main, main직작업→origin/main).",
+    )
     r = sub.add_parser("record")
+    r.add_argument(
+        "--base",
+        default=None,
+        help="approve+BLOCK 재검사 시 diff base ref (prepare 와 동일).",
+    )
     r.add_argument("--verdict", required=True)
     r.add_argument("--summary", default="")
     r.add_argument("--violations", default="", help="JSON 배열 string")

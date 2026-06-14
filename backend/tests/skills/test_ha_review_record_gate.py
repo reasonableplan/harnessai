@@ -62,7 +62,7 @@ def test_prepare_output_has_security_findings_key(ha_review: ModuleType, tmp_pat
         patch.object(ha_review, "assert_state"),
         patch.object(ha_review, "_check_git_repo"),
         patch.object(ha_review, "get_active_profiles", return_value=[]),
-        patch.object(ha_review, "_extract_diff", return_value=""),
+        patch.object(ha_review, "_extract_diff", return_value=("", "test-scope")),
         patch.object(
             ha_review,
             "_collect_findings",
@@ -125,7 +125,7 @@ def test_prepare_security_summary_reflects_block_count(
         patch.object(ha_review, "assert_state"),
         patch.object(ha_review, "_check_git_repo"),
         patch.object(ha_review, "get_active_profiles", return_value=[]),
-        patch.object(ha_review, "_extract_diff", return_value=""),
+        patch.object(ha_review, "_extract_diff", return_value=("", "test-scope")),
         patch.object(
             ha_review,
             "_collect_findings",
@@ -325,7 +325,7 @@ def test_record_approve_with_block_exits_1(ha_review: ModuleType) -> None:
         ),
         patch.object(ha_review, "assert_state"),
         patch.object(ha_review, "get_active_profiles", return_value=[]),
-        patch.object(ha_review, "_extract_diff", return_value=""),
+        patch.object(ha_review, "_extract_diff", return_value=("", "test-scope")),
         patch.object(ha_review, "_collect_findings", return_value=findings_result),
     ):
         args = MagicMock()
@@ -394,7 +394,7 @@ def test_record_approve_no_block_passes(ha_review: ModuleType) -> None:
         ),
         patch.object(ha_review, "assert_state"),
         patch.object(ha_review, "get_active_profiles", return_value=[]),
-        patch.object(ha_review, "_extract_diff", return_value=""),
+        patch.object(ha_review, "_extract_diff", return_value=("", "test-scope")),
         patch.object(ha_review, "_collect_findings", return_value=findings_result),
         patch.object(ha_review, "record_verify"),
         patch.object(ha_review, "transition"),
@@ -439,7 +439,7 @@ def test_record_approve_error_message_mentions_block(
         ),
         patch.object(ha_review, "assert_state"),
         patch.object(ha_review, "get_active_profiles", return_value=[]),
-        patch.object(ha_review, "_extract_diff", return_value=""),
+        patch.object(ha_review, "_extract_diff", return_value=("", "test-scope")),
         patch.object(ha_review, "_collect_findings", return_value=findings_result),
     ):
         args = MagicMock()
