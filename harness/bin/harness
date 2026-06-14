@@ -791,39 +791,21 @@ def check_integrity_verbose(
             report.warn(skeleton_path.name, "```filesystem 블록이 비어있음")
     # fs_match 없으면 _check_filesystem 은 silent pass
 
-    # file_structure drift (advisory WARN)
-    profiles_dir = HARNESS_ROOT / "profiles"
-    drift_checks: list[tuple[str, list[str], list[str]]] = []
-    if profiles_dir.exists():
-        for profile_file in sorted(profiles_dir.glob("*.md")):
-            if profile_file.name in ("_base.md",):
-                continue
-            try:
-                data = parse_frontmatter(profile_file)
-            except (RuntimeError, ValueError):
-                continue
-            if not isinstance(data, dict):
-                continue
-            profile_id = data.get("id", profile_file.stem)
-            if profile_id == "_base":
-                continue
-            file_structure = data.get("file_structure", "")
-            if not isinstance(file_structure, str) or not file_structure.strip():
-                continue
-            declared = _parse_file_structure_tree(file_structure)
-            if not declared:
-                continue
-            actual = _scan_project_dirs(project, top_n=3)
-            declared_concrete = {d for d in declared if "<" not in d}
-            extras = sorted(actual - declared_concrete)
-            missing = sorted(declared_concrete - actual)
-            drift_checks.append((str(profile_id), extras, missing))
-            if extras:
-                report.warn(
-                    f"profile:{profile_id}",
-                    f"file_structure drift: extras={extras}, missing={missing} "
-                    f"— 의도적 확장이면 profile.file_structure 에 추가하거나 무시",
-                )
+    # file_structure drift (advisory WARN) — FP #17: plan 의 confirmed 프로파일만
+    # 검사 (비활성 12종 노이즈 제거). plan 에 profiles 가 없으면 None → 전 프로파일
+    # (legacy fallback). _check_file_structure_drift 단일출처에 위임.
+    plan_data = _load_plan_frontmatter(plan_path) or {}
+    confirmed_ids = {
+        p["id"]
+        for p in (plan_data.get("profiles") or [])
+        if isinstance(p, dict) and "id" in p and p.get("status", "confirmed") == "confirmed"
+    }
+    drift_checks = _check_file_structure_drift(
+        project,
+        HARNESS_ROOT / "profiles",
+        report,
+        confirmed_ids=confirmed_ids or None,
+    )
 
     return IntegrityVerboseResult(
         project=project,
@@ -852,6 +834,16 @@ _SKIP_DIRS: frozenset[str] = frozenset({
 })
 
 _INLINE_COMMENT_RE = re.compile(r"\s+#.*$")
+
+
+def _has_skip_segment(rel_path: str) -> bool:
+    """True if any path segment is a skip dir (build/test/vcs artefact).
+
+    FP #17: _scan_project_dirs skips _SKIP_DIRS, so a profile declaring e.g.
+    ``desktop/__tests__/`` would otherwise be reported missing even when it
+    exists on disk. Excluding such declared paths removes that asymmetry.
+    """
+    return any(seg in _SKIP_DIRS for seg in rel_path.strip("/").split("/"))
 
 
 def _parse_file_structure_tree(tree_text: str) -> set[str]:
@@ -935,15 +927,27 @@ def _check_file_structure_drift(
     project: Path,
     profiles_dir: Path,
     report: Report,
-) -> None:
-    """profile file_structure 와 실제 디렉토리 비교 — drift 를 WARN 으로 보고.
+    *,
+    confirmed_ids: set[str] | None = None,
+) -> list[tuple[str, list[str], list[str]]]:
+    """profile file_structure 와 실제 디렉토리 비교 — drift 를 WARN + drift_checks 반환.
 
     profiles_dir 내 *.md (비 _base, 비 _registry) 프로파일을 순회.
     각 profile 의 file_structure 필드를 파싱해 declared 디렉토리 set 계산.
     실제 project 디렉토리 (top 3) 와 비교, extras 있으면 WARN.
+
+    FP #17:
+    - ``confirmed_ids`` 가 주어지면 해당 프로파일만 검사 (비활성 12종 노이즈 제거).
+      None 이면 전 프로파일 순회 (legacy — plan 에 confirmed 프로파일 없을 때).
+    - declared 에서 _SKIP_DIRS 세그먼트(__tests__/tests 등)를 제외해 scan 이
+      skip 하는 디렉토리를 missing 으로 오보고하지 않음.
     """
+    drift_checks: list[tuple[str, list[str], list[str]]] = []
     if not profiles_dir.exists():
-        return
+        return drift_checks
+
+    # 모든 프로파일이 같은 project 디렉토리와 비교 — 1회만 스캔.
+    actual = _scan_project_dirs(project, top_n=3)
 
     for profile_file in sorted(profiles_dir.glob("*.md")):
         if profile_file.name in ("_base.md",):
@@ -958,6 +962,8 @@ def _check_file_structure_drift(
         profile_id = data.get("id", profile_file.stem)
         if profile_id == "_base":
             continue
+        if confirmed_ids is not None and profile_id not in confirmed_ids:
+            continue
 
         file_structure = data.get("file_structure", "")
         if not isinstance(file_structure, str) or not file_structure.strip():
@@ -967,12 +973,13 @@ def _check_file_structure_drift(
         if not declared:
             continue
 
-        actual = _scan_project_dirs(project, top_n=3)
-
-        # extras: dirs in actual but not in declared (after removing placeholders)
-        declared_concrete = {d for d in declared if "<" not in d}
+        # declared 에서 placeholder(<...>) 와 skip-dir 세그먼트 제외 (FP #17).
+        declared_concrete = {
+            d for d in declared if "<" not in d and not _has_skip_segment(d)
+        }
         extras = sorted(actual - declared_concrete)
         missing = sorted(declared_concrete - actual)
+        drift_checks.append((str(profile_id), extras, missing))
 
         if extras:
             report.warn(
@@ -980,6 +987,8 @@ def _check_file_structure_drift(
                 f"file_structure drift: extras={extras}, missing={missing} "
                 f"— 의도적 확장이면 profile.file_structure 에 추가하거나 무시",
             )
+
+    return drift_checks
 
 
 # ── migrate-skeleton-hash ──────────────────────────────────────────────
