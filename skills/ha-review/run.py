@@ -35,6 +35,8 @@ from utils import (  # noqa: E402, I001
 from src.orchestrator.security_hooks import (  # noqa: E402
     SecurityHooks,
     detect_local_packages,
+    parse_skeleton_stack_whitelist,
+    parse_tsconfig_path_prefixes,
     strip_doc_files_from_diff,
 )
 from src.orchestrator.context import extract_section_by_id  # noqa: E402
@@ -561,10 +563,39 @@ def _check_missing_declared_endpoints(
     return findings
 
 
+# tsconfig path-alias keys: "@shared/*": [...]. Regex-extract instead of JSON-
+# parsing because tsconfig is JSONC (comments + trailing commas) — a parser would
+# fail on real configs. Only @-prefixed aliases (scoped form) are collected; bare
+# aliases are too risky to whitelist. Advisory + fail-safe: unreadable configs
+# yield no prefixes (alias FPs remain) but never a crash.
+_TSCONFIG_ALIAS_KEY_RE = re.compile(r'"(@[A-Za-z0-9_./*-]+)"\s*:')
+
+
+def _collect_tsconfig_prefixes(project: Path) -> tuple[str, ...]:
+    """Scan tsconfig*.json files for compilerOptions.paths aliases (FP #19).
+
+    Searches the project root and one directory level down (monorepo sub-apps
+    such as desktop/tsconfig.json). Derives import prefixes from @-aliased keys
+    via :func:`parse_tsconfig_path_prefixes` (wildcard stripping reused).
+    """
+    keys: set[str] = set()
+    candidates = list(project.glob("tsconfig*.json")) + list(project.glob("*/tsconfig*.json"))
+    for cfg in candidates:
+        try:
+            raw = cfg.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        keys.update(_TSCONFIG_ALIAS_KEY_RE.findall(raw))
+    if not keys:
+        return ()
+    return parse_tsconfig_path_prefixes({k: None for k in keys})
+
+
 def _collect_findings(
     project: Path,
     profiles: list,  # list[Profile]
     diff: str,
+    skeleton_text: str = "",
 ) -> dict:
     """ai-slop, SecurityHooks, mobile 룰 모두 실행해 결과를 합산.
 
@@ -585,6 +616,11 @@ def _collect_findings(
     code_diff = strip_doc_files_from_diff(diff)
     local_pkgs = detect_local_packages(project)
 
+    # FP #19: skeleton §3 승인 라이브러리 + tsconfig paths 별칭을 frontend
+    # dependency-check whitelist 에 병합해 오탐 제거 (frontend/mobile 모드에만 적용).
+    stack_wl = parse_skeleton_stack_whitelist(skeleton_text)
+    ts_prefixes = _collect_tsconfig_prefixes(project)
+
     # 이미 처리한 mode 는 중복 실행 방지
     seen_modes: set[str] = set()
 
@@ -599,7 +635,13 @@ def _collect_findings(
 
         if mode not in seen_modes:
             seen_modes.add(mode)
-            hooks = SecurityHooks.from_profile(profile, extra_python_allowed=local_pkgs)
+            is_fe_like = mode in ("frontend", "mobile")
+            hooks = SecurityHooks.from_profile(
+                profile,
+                extra_python_allowed=local_pkgs,
+                extra_frontend_allowed=stack_wl if is_fe_like else None,
+                extra_frontend_prefixes=ts_prefixes if is_fe_like else None,
+            )
             result = hooks.run_all(
                 code_diff,
                 is_frontend=(mode == "frontend"),
@@ -733,8 +775,13 @@ def cmd_prepare(args: argparse.Namespace) -> int:
             "skipped/Phase 2 태스크로 설명되는지 확인 후 집계 (§2.9)"
         )
 
-    # 보안 훅 + ai-slop + mobile 룰 자동 실행 (prepare 는 advisory — exit 0 유지)
-    findings = _collect_findings(project, profiles, diff)
+    # 보안 훅 + ai-slop + mobile 룰 자동 실행 (prepare 는 advisory — exit 0 유지).
+    # skeleton_text 는 dependency-check FP #19 (스택 승인 라이브러리 병합) 용.
+    try:
+        skeleton_text = skel_path.read_text(encoding="utf-8") if skel_path.exists() else ""
+    except OSError:
+        skeleton_text = ""
+    findings = _collect_findings(project, profiles, diff, skeleton_text)
 
     output = {
         "project": str(project),
@@ -810,7 +857,13 @@ def cmd_record(args: argparse.Namespace) -> int:
     if verdict == "approve" and not allow_block:
         profiles = get_active_profiles(plan, project)
         diff, _diff_scope = _extract_diff(project, getattr(args, "base", None))
-        findings = _collect_findings(project, profiles, diff)
+        # skeleton_text 는 dependency-check FP #19 용 — prepare 와 동일 기준.
+        _skel_path = plan_path.parent / "skeleton.md"
+        try:
+            skeleton_text = _skel_path.read_text(encoding="utf-8") if _skel_path.exists() else ""
+        except OSError:
+            skeleton_text = ""
+        findings = _collect_findings(project, profiles, diff, skeleton_text)
         block_count = findings["block_count"]
         if block_count > 0:
             block_items = [

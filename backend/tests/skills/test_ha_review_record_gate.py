@@ -174,9 +174,13 @@ def test_collect_findings_calls_security_hooks(ha_review: ModuleType, tmp_path: 
         mock_hooks_cls.from_profile.return_value = mock_hooks_instance
         result = ha_review._collect_findings(tmp_path, [mock_profile], "some diff text")
 
-    # extra_python_allowed: tmp_path 에 로컬 패키지 없음 → 빈 frozenset (LESSON-030)
+    # extra_python_allowed: tmp_path 에 로컬 패키지 없음 → 빈 frozenset (LESSON-030).
+    # backend 모드라 frontend FP #19 채널(extra_frontend_*)은 None.
     mock_hooks_cls.from_profile.assert_called_once_with(
-        mock_profile, extra_python_allowed=frozenset()
+        mock_profile,
+        extra_python_allowed=frozenset(),
+        extra_frontend_allowed=None,
+        extra_frontend_prefixes=None,
     )
     mock_hooks_instance.run_all.assert_called_once()
     assert "security" in result
