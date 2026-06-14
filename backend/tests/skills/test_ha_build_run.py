@@ -40,6 +40,14 @@ _TASKS_TABLE = (
     "| T-001 | backend_coder | -          | desc        | done       |\n"
 )
 
+# 이슈 #16 회귀용 — T-001 이 '대기' 상태. 1차 complete 가 :<10 패딩으로 done 을
+# 쓰면, 2차 complete 는 re.sub 결과가 원본과 동일(new_text == text)해진다.
+_TASKS_TABLE_PENDING = (
+    "| ID    | Agent         | Depends On | Description | Status     |\n"
+    "|-------|---------------|------------|-------------|------------|\n"
+    "| T-001 | backend_coder | -          | desc        | 대기        |\n"
+)
+
 
 def _make_plan(frozen_status: str = "drafting") -> SimpleNamespace:
     return SimpleNamespace(
@@ -176,3 +184,26 @@ def test_complete_skip_frozen_gate(ha_build, tmp_path, monkeypatch, capsys) -> N
     assert rc == 0
     err = capsys.readouterr().err
     assert "BLOCK" not in err
+
+
+def test_complete_idempotent_when_already_done(ha_build, tmp_path, monkeypatch, capsys) -> None:
+    """이미 done 인 행을 다시 complete → '행 못 찾음' 오진 없이 멱등 통과 (이슈 #16).
+
+    run.py 자신이 쓴 `:<10` 패딩('done' + 6 spaces)이면 re.sub 결과가 원본과
+    동일(new_text == text)해, 과거엔 '행을 찾지 못했습니다' + exit 1 로 오진했다.
+    """
+    plan = _make_plan("frozen")
+    _patch_common(ha_build, monkeypatch, plan, tmp_path, _TASKS_TABLE_PENDING)
+
+    # 1차: 대기 → done (run.py 가 :<10 패딩으로 기록)
+    rc1 = ha_build.cmd_complete(_complete_args("T-001", status="done"))
+    assert rc1 == 0, "1차 done 마킹 실패"
+    capsys.readouterr()  # 버퍼 비우기
+
+    # 2차: 이미 done (패딩 포맷 일치 → new_text == text) — 멱등 재실행
+    rc2 = ha_build.cmd_complete(_complete_args("T-001", status="done"))
+
+    assert rc2 == 0, "이미 done 인 행 재완료가 '행 못 찾음' 으로 거부됨 (이슈 #16)"
+    err = capsys.readouterr().err
+    assert "찾지 못했습니다" not in err, f"멱등 케이스를 행-부재로 오진: {err}"
+    assert "idempotent" in err or "이미" in err, f"멱등 경로 미진입: {err}"

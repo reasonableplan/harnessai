@@ -465,13 +465,26 @@ def cmd_complete(args: argparse.Namespace) -> int:
         text, count=1, flags=re.MULTILINE,
     )
     if new_text == text:
-        info(
-            f"[FAIL] tasks.md 에서 태스크 '{args.task}' 행을 찾지 못했습니다.\n"
-            f"  · tasks.md 가 수동 편집으로 깨졌거나, T-ID 철자가 다를 수 있습니다.\n"
-            f"  · tasks.md 열어 '{args.task}' 행이 올바른 마크다운 테이블 형식인지 확인하세요.\n"
-            f"  · tasks.md 경로: {tasks_path}"
-        )
-        return 1
+        # new_text == text 는 두 경우다: (1) 행이 실제로 없음, (2) 행이 이미
+        # args.status 라 re.sub 가 동일 결과 — 멱등 재실행 (이슈 #16). 후자를
+        # "행 못 찾음" 으로 오진하면 부분 실패(tasks.md 만 갱신되고 plan/worklog
+        # 미기록)에서 복구 경로가 없다. 행 존재 + 상태 일치면 fall-through 해
+        # 아래 transition 로직이 plan/worklog 정합을 보충하게 둔다 (write 는 no-op).
+        existing = _parse_tasks(text)
+        cur = existing.get(args.task)
+        if cur is not None and cur["status"].strip().lower() == args.status.strip().lower():
+            info(
+                f"[idempotent] '{args.task}' 행이 이미 '{args.status}' — "
+                "tasks.md 변경 없음, plan/worklog 정합만 보충합니다."
+            )
+        else:
+            info(
+                f"[FAIL] tasks.md 에서 태스크 '{args.task}' 행을 찾지 못했습니다.\n"
+                f"  · tasks.md 가 수동 편집으로 깨졌거나, T-ID 철자가 다를 수 있습니다.\n"
+                f"  · tasks.md 열어 '{args.task}' 행이 올바른 마크다운 테이블 형식인지 확인하세요.\n"
+                f"  · tasks.md 경로: {tasks_path}"
+            )
+            return 1
 
     try:
         tasks_path.write_text(new_text, encoding="utf-8")
