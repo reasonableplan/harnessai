@@ -41,6 +41,16 @@ from src.orchestrator.skeleton_hash import (  # noqa: E402
 # placeholder 패턴: <PROJECT_NAME>, <예: ...>, _미작성_, <DOMAIN>_NNN 등
 _PLACEHOLDER_RE = re.compile(r"<[A-Z_][A-Z0-9_\s/.,'\"\-—:]*?>|_미작성_|_미정_")
 
+# TS/제네릭 타입 파라미터(<T>, <K, V>)는 placeholder 가 아님 — 코드 블록의 제네릭
+# 문법(IpcResult<T> 등)을 가짜 placeholder 로 집계하던 FP #6 차단. 단일 대문자
+# 또는 콤마 구분 대문자 조합만 제외 — <DOMAIN>/<DB_URL> 같은 실제 placeholder 는 유지.
+_GENERIC_TYPE_RE = re.compile(r"^<[A-Z](?:\s*,\s*[A-Z])*>$")
+
+
+def _find_placeholders(text: str) -> list[str]:
+    """미해결 placeholder 토큰 목록. TS 제네릭(<T>, <K, V>)은 제외 (FP #6)."""
+    return [m for m in _PLACEHOLDER_RE.findall(text) if not _GENERIC_TYPE_RE.match(m)]
+
 # LOCKED 섹션 fill 상태 감지용 (v0.10.0+ 복구 지원)
 _LOCKED_SECTION_IDS = ("requirements", "user_journey", "view.screens")
 _AI_WRITABLE_RE = re.compile(
@@ -176,7 +186,7 @@ def cmd_commit(args: argparse.Namespace) -> int:
         text,
         flags=re.DOTALL | re.MULTILINE,
     )
-    placeholders = _PLACEHOLDER_RE.findall(text_for_check)
+    placeholders = _find_placeholders(text_for_check)
 
     info(f"[check] 미해결 placeholder: {len(placeholders)} 개")
     if placeholders[:5]:
