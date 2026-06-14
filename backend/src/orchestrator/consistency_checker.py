@@ -16,11 +16,18 @@ import re
 from dataclasses import dataclass
 
 from src.orchestrator.context import split_sections_by_id
-from src.orchestrator.task_id import TASK_ROW_RE
+from src.orchestrator.task_id import SKELETON_REF_LINE_RE, SPEC_BLOCK_RE, TASK_ROW_RE
 
-# CamelCase token of length ≥4 to filter noise. Captures component/class names
-# such as GameScreen, PushToTalkButton, DetectionAlertSheet. Lower bound avoids
-# matching plain words like "ID" or "OK".
+# JSX component token: <ComponentName />, <ComponentName>, <ComponentName prop=…>.
+# Captures the PascalCase name (length ≥4 enforced at call site).
+# Matches <Header />, <DomainList>, <HomeContainer />, <Button> etc.
+# Used for *definition* extraction from view.components — prose text such as
+# "JetBrains", "PascalCase", "UnsupportedInfo" is intentionally excluded.
+_COMPONENT_TOKEN_RE = re.compile(r"<([A-Z][A-Za-z0-9]*)\b[^>]*/?>")
+
+# CamelCase token of length ≥4 — used for *reference* extraction from
+# state.flow / core.logic / task descriptions, which are prose/pseudocode and
+# may name components without angle brackets (e.g. "GameScreen 상태 전이").
 _CAMELCASE_RE = re.compile(r"\b([A-Z][a-z]+(?:[A-Z][a-z]*)+)\b")
 
 # Section reference inside text: "§13" or "§ 13".
@@ -50,9 +57,26 @@ class ConsistencyFinding:
     target: str  # the identifier (component name, T-XXX, etc.) the finding is about
 
 
-def _components_in_section(body: str) -> set[str]:
-    """Extract CamelCase identifiers (length ≥ 4) from a section body."""
-    return {m.group(1) for m in _CAMELCASE_RE.finditer(body) if len(m.group(1)) >= 4}
+def _defined_components(body: str) -> set[str]:
+    """Extract JSX component names (length ≥ 4) from a *definition* section body.
+
+    Only angle-bracket JSX tokens (<Name />, <Name>, <Name prop=…>) count.
+    Bare CamelCase prose (JetBrains, PascalCase, UnsupportedInfo) is excluded
+    to prevent false positives from design-guide text in view.components.
+    """
+    return {m.group(1) for m in _COMPONENT_TOKEN_RE.finditer(body) if len(m.group(1)) >= 4}
+
+
+def _referenced_components(body: str) -> set[str]:
+    """Extract component name candidates (length ≥ 4) from a *reference* section body.
+
+    Accepts both JSX tokens (<Name />) and bare CamelCase identifiers because
+    state.flow, core.logic, and task descriptions are prose/pseudocode that
+    typically name components without angle brackets (e.g. "GameScreen 상태 전이").
+    """
+    jsx = {m.group(1) for m in _COMPONENT_TOKEN_RE.finditer(body) if len(m.group(1)) >= 4}
+    camel = {m.group(1) for m in _CAMELCASE_RE.finditer(body) if len(m.group(1)) >= 4}
+    return jsx | camel
 
 
 def check_isolated_components(skel_text: str) -> list[ConsistencyFinding]:
@@ -60,17 +84,23 @@ def check_isolated_components(skel_text: str) -> list[ConsistencyFinding]:
 
     A defined-but-unreferenced component is the canonical drift symptom:
     re-derivation added a UI piece without wiring its trigger or behavior.
+
+    Definition extraction uses JSX tokens only (<Name />) to avoid false
+    positives from prose text (font names, type names, naming-convention
+    explanations) that happens to be PascalCase. Reference extraction accepts
+    both JSX tokens and bare CamelCase because state.flow and core.logic are
+    prose/pseudocode that names components without angle brackets.
     """
     sections = split_sections_by_id(skel_text)
     defined: set[str] = set()
     for sid in _COMPONENT_DEFINITION_IDS:
         if sid in sections:
-            defined |= _components_in_section(sections[sid])
+            defined |= _defined_components(sections[sid])
 
     referenced: set[str] = set()
     for sid in _COMPONENT_REFERENCE_IDS:
         if sid in sections:
-            referenced |= _components_in_section(sections[sid])
+            referenced |= _referenced_components(sections[sid])
 
     findings: list[ConsistencyFinding] = []
     for name in sorted(defined - referenced):
@@ -90,16 +120,25 @@ def check_isolated_components(skel_text: str) -> list[ConsistencyFinding]:
 
 
 def check_task_skeleton_references(tasks_text: str, skel_text: str) -> list[ConsistencyFinding]:
-    """Tasks with no §N reference and no view.components-component reference.
+    """Tasks with no §N reference, no view.components-component reference, and no spec-block skeleton ref.
 
-    A task that mentions neither a section number nor a known component is likely
-    isolated from the skeleton — the implementer has nothing to anchor against.
+    A task is considered anchored when ANY of the following is true:
+    1. Phase-table description contains a §N section reference.
+    2. Phase-table description mentions a known view.components component name.
+    3. The task's spec block (### T-NNN …) contains a "**skeleton 참조**" line.
+
+    Only when all three are absent is a "task-no-reference" warn emitted.
     """
     sections = split_sections_by_id(skel_text)
     known_components: set[str] = set()
     for sid in _COMPONENT_DEFINITION_IDS:
         if sid in sections:
-            known_components |= _components_in_section(sections[sid])
+            known_components |= _defined_components(sections[sid])
+
+    # Build task_id → spec-block-body mapping once for O(n) lookup.
+    spec_block_bodies: dict[str, str] = {
+        m.group(1): m.group(0) for m in SPEC_BLOCK_RE.finditer(tasks_text)
+    }
 
     findings: list[ConsistencyFinding] = []
     for m in TASK_ROW_RE.finditer(tasks_text):
@@ -107,10 +146,15 @@ def check_task_skeleton_references(tasks_text: str, skel_text: str) -> list[Cons
         description = m.group(4)
 
         has_section_ref = bool(_SECTION_REF_RE.search(description))
-        mentioned_components = _components_in_section(description)
+        # Task descriptions are prose — use _referenced_components (CamelCase + JSX).
+        mentioned_components = _referenced_components(description)
         has_component_ref = bool(mentioned_components & known_components)
 
-        if not has_section_ref and not has_component_ref:
+        # Check spec block for skeleton 참조 line (third anchor path).
+        spec_body = spec_block_bodies.get(task_id, "")
+        has_spec_block_ref = bool(spec_body and SKELETON_REF_LINE_RE.search(spec_body))
+
+        if not has_section_ref and not has_component_ref and not has_spec_block_ref:
             findings.append(
                 ConsistencyFinding(
                     severity="warn",

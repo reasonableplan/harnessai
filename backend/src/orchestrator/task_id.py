@@ -31,6 +31,19 @@ TASK_ROW_RE = re.compile(
 SKELETON_HEADING_RE = re.compile(r"^##\s+(\d+)\.\s+(.+?)\s*$", re.MULTILINE)
 
 
+# Spec block in tasks.md: "### T-001 title" … up to next spec block or EOF.
+# Single source for both consistency_checker and ha-redesign/run.py (which has
+# a local copy — keep in sync if the format ever changes).
+SPEC_BLOCK_RE = re.compile(
+    r"^###\s+(T-\d+)\b(.*?)(?=^###\s+T-\d+\b|\Z)",
+    re.MULTILINE | re.DOTALL,
+)
+
+# "- **skeleton 참조**: `section_id`" line inside a spec block.
+# Matches one or more backtick-quoted IDs on the same line (comma-separated OK).
+SKELETON_REF_LINE_RE = re.compile(r"\*\*skeleton 참조\*\*\s*:\s*(.+)")
+
+
 def validate_task_id(task_id: str) -> None:
     """Raise ValueError if ``task_id`` does not match T-NNN.
 

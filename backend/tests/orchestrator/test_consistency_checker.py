@@ -77,16 +77,21 @@ def test_no_section_13_yields_no_findings() -> None:
 
 
 def test_short_camelcase_filtered_out() -> None:
-    """4글자 미만 또는 단순 단어는 컴포넌트로 인정 안 함 (Id, Ok 등)."""
+    """3글자 이하 JSX 토큰은 컴포넌트로 인정 안 함 (<Id />, <Ok /> 등).
+
+    view.components 정의 추출은 JSX 토큰만 인식한다 (FP #7 수정).
+    <GameScreen /> 은 길이 ≥4 이고 JSX 토큰이므로 isolated-component 로 잡혀야 함.
+    bare CamelCase 산문(Id, Ok, Game, GameScreen)은 정의로 인정되지 않는다.
+    """
     skel = (
         "## 13. 컴포넌트 트리\n"
-        "Id Ok foo Game GameScreen\n"
+        "<Id /> <Ok /> <GameScreen />\n"
         "## 14. 상태 흐름\nplain text\n"
         "## 15. 도메인 로직\nplain\n"
     )
     findings = check_isolated_components(skel)
     targets = {f.target for f in findings}
-    # GameScreen 만 길이 ≥ 4 이고 CamelCase. Id/Ok/Game 은 너무 짧거나 단일 단어
+    # <GameScreen /> 만 길이 ≥ 4 이고 JSX 토큰 — isolated 로 잡혀야 함.
     assert "GameScreen" in targets
     assert "Id" not in targets
     assert "Ok" not in targets
@@ -268,3 +273,128 @@ def test_run_all_includes_design_checks() -> None:
     skel = "## 5. 에러 핸들링\n| AUTH_001 | x |\n\n## 6. 에러 처리 UX\n| ORPHAN_001 | toast |\n"
     targets = {f.target for f in run_all_checks(skeleton_text=skel)}
     assert "ORPHAN_001" in targets
+
+
+# ── FP Fix #7: JSX 토큰 기반 컴포넌트 추출 ────────────────────────────
+
+
+def test_prose_camelcase_not_flagged_as_isolated_component() -> None:
+    """FP #7: view.components prose 에 등장하는 폰트명·표기법·타입명은 isolated-component 로 잡히면 안 됨.
+
+    JetBrains, PascalCase, UnsupportedInfo 는 JSX 토큰이 아니므로 컴포넌트가 아님.
+    <HomeContainer /> 는 진짜 컴포넌트이고 state.flow 에서 참조되므로 finding 없어야 함.
+    """
+    skel = (
+        "## 13. 컴포넌트 트리\n"
+        "### App 계층\n"
+        "```\n"
+        "App\n"
+        "├─ <HomeContainer />\n"
+        "│   └─ <Header />\n"
+        "```\n"
+        "### 디자인 가이드\n"
+        "타이포그래피: JetBrains Mono 사용.\n"
+        "CVA 표기법은 PascalCase 를 쓴다.\n"
+        "오류 타입: UnsupportedInfo 참조.\n\n"
+        "## 14. 상태 흐름\n"
+        "<HomeContainer /> 마운트 시 fetch 실행.\n"
+        "<Header /> 는 nav 담당.\n\n"
+        "## 15. 도메인 로직\n"
+        "HomeContainer 초기화 로직.\n"
+    )
+    findings = check_isolated_components(skel)
+    targets = {f.target for f in findings}
+    assert "JetBrains" not in targets, f"JetBrains falsely flagged: {targets}"
+    assert "PascalCase" not in targets, f"PascalCase falsely flagged: {targets}"
+    assert "UnsupportedInfo" not in targets, f"UnsupportedInfo falsely flagged: {targets}"
+    assert "HomeContainer" not in targets, f"HomeContainer falsely flagged: {targets}"
+
+
+def test_genuine_orphan_component_still_flagged() -> None:
+    """FP #7 TP 보존: view.components 에만 있고 state.flow/core.logic 에 없는 컴포넌트는 잡혀야 함."""
+    skel = (
+        "## 13. 컴포넌트 트리\n"
+        "<HomeContainer />\n"
+        "<OrphanWidget />\n\n"
+        "## 14. 상태 흐름\n"
+        "<HomeContainer /> 상태 전이.\n\n"
+        "## 15. 도메인 로직\n"
+        "HomeContainer 초기화.\n"
+    )
+    findings = check_isolated_components(skel)
+    targets = {f.target for f in findings}
+    assert "OrphanWidget" in targets, f"OrphanWidget not flagged: {targets}"
+    assert "HomeContainer" not in targets, f"HomeContainer falsely flagged: {targets}"
+
+
+def test_paired_components_both_sides_no_finding() -> None:
+    """FP #7: 양쪽에 JSX 토큰으로 등장하는 컴포넌트는 finding 없어야 함."""
+    skel = (
+        "## 13. 컴포넌트 트리\n"
+        "<Button> <Input>\n\n"
+        "## 14. 상태 흐름\n"
+        "<Button> 클릭 시 submit.\n\n"
+        "## 15. 도메인 로직\n"
+        "<Input> onChange 핸들러.\n"
+    )
+    assert check_isolated_components(skel) == []
+
+
+# ── FP Fix #13: 스펙블록 skeleton 참조 인정 ──────────────────────────
+
+
+def test_task_specblock_skeleton_ref_suppresses_warn() -> None:
+    """FP #13: Phase 행 description 에 §N 없지만 스펙블록에 skeleton 참조 있으면 warn 없어야 함."""
+    skel = "## 13. 컴포넌트 트리\n<GameScreen>\n"
+    tasks = (
+        "| ID | Agent | Dep | Desc | Status |\n"
+        "|----|-------|-----|------|--------|\n"
+        "| T-001 | be | - | 유저 CRUD 구현 | todo |\n"
+        "\n"
+        "### T-001 유저 CRUD 구현\n"
+        "- **skeleton 참조**: `persistence.users`\n"
+        "- 구현 범위: User 모델, Repository, Service\n"
+    )
+    findings = check_task_skeleton_references(tasks, skel)
+    task_targets = [f.target for f in findings if f.pattern == "task-no-reference"]
+    assert "T-001" not in task_targets, f"T-001 falsely warned: {task_targets}"
+
+
+def test_task_no_specblock_no_section_ref_still_warned() -> None:
+    """FP #13 TP 보존: 스펙블록도 없고 description 에 §N/컴포넌트도 없으면 여전히 warn."""
+    skel = "## 13. 컴포넌트 트리\n<GameScreen>\n"
+    tasks = (
+        "| ID | Agent | Dep | Desc | Status |\n"
+        "|----|-------|-----|------|--------|\n"
+        "| T-099 | be | - | 임의 작업 | todo |\n"
+    )
+    findings = check_task_skeleton_references(tasks, skel)
+    task_targets = [f.target for f in findings if f.pattern == "task-no-reference"]
+    assert "T-099" in task_targets, f"T-099 not warned: {task_targets}"
+
+
+def test_task_section_ref_in_description_still_passes() -> None:
+    """FP #13 기존 동작 보존: description 에 §13 있으면 warn 없어야 함."""
+    skel = "## 13. 컴포넌트 트리\n<GameScreen>\n"
+    tasks = (
+        "| ID | Agent | Dep | Desc | Status |\n"
+        "|----|-------|-----|------|--------|\n"
+        "| T-042 | be | - | §13 GameScreen 구현 | todo |\n"
+    )
+    assert check_task_skeleton_references(tasks, skel) == []
+
+
+def test_task_specblock_multiple_refs_suppresses_warn() -> None:
+    """스펙블록에 skeleton 참조가 여러 개여도 한 번만 suppress."""
+    skel = "## 13. 컴포넌트 트리\n<GameScreen>\n"
+    tasks = (
+        "| ID | Agent | Dep | Desc | Status |\n"
+        "|----|-------|-----|------|--------|\n"
+        "| T-002 | fe | - | 도메인 레이어 | todo |\n"
+        "\n"
+        "### T-002 도메인 레이어\n"
+        "- **skeleton 참조**: `core.logic`, `persistence.users`\n"
+    )
+    findings = check_task_skeleton_references(tasks, skel)
+    task_targets = [f.target for f in findings if f.pattern == "task-no-reference"]
+    assert "T-002" not in task_targets
