@@ -485,6 +485,34 @@ def test_prepare_locked_section_status_empty_vs_filled(tmp_path: Path) -> None:
     assert status["view.screens"] == "not_included", f"블록 없는데 not_included 아님: {status}"
 
 
+def test_prepare_locked_section_status_real_template_marker(tmp_path: Path) -> None:
+    """실제 템플릿 마커(`HUMAN-LOCKED:id — 설명 -->`)도 정확히 판정 — 이슈 #5 회귀.
+
+    fragment 템플릿(templates/skeleton/requirements.md)의 여는 마커는 id 뒤에
+    ` — 설명` 접미사가 붙는다. 정규식이 id 바로 뒤 `-->` 만 허용하면 이 마커를
+    못 찾아 항상 not_included → LOCKED HITL 인터뷰가 통째로 스킵된다.
+    기존 fixture 가 bare 마커만 써서 새지 않았던 케이스.
+    """
+    plan = _make_plan(activation_trace={"overview": "always", "stack": "always"})
+    _write_plan(tmp_path, plan)
+    _write_skeleton(
+        tmp_path / "docs",
+        "<!-- HUMAN-LOCKED:requirements — 이 섹션은 사용자 인터뷰로만 채움. "
+        "/ha-redesign 거쳐서만 변경 허용. -->\n"
+        "<!-- AI-WRITABLE:candidates -->\n"
+        "| <후보 1> | <후보 2> | <후보 3> |\n"
+        "<!-- /AI-WRITABLE -->\n"
+        "<!-- /HUMAN-LOCKED:requirements -->\n",
+    )
+
+    output, _ = _run_prepare(tmp_path)
+
+    status = output["locked_section_status"]
+    assert status["requirements"] == "empty", (
+        f"실제 템플릿 마커(설명 접미사 포함)인데 not_included 로 새는가? {status}"
+    )
+
+
 def test_commit_freeze_called_with_locked_sections(tmp_path: Path) -> None:
     """--locked-sections requirements user_journey 박으면 frontmatter 에 frozen_status='frozen' + locked_sections 박힘."""
     plan = _make_plan(activation_trace={"overview": "always", "stack": "always"})

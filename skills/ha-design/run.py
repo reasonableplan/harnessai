@@ -60,8 +60,11 @@ def _locked_section_status(skeleton_text: str, section_id: str) -> str:
     - "empty": AI-WRITABLE 후보 표가 아직 placeholder 가득 → Step A 부터 진행 필요
     - "filled": 후보 표가 채워짐 (사용자 확정 여부는 별도 판단) → Claude 가 본문 확인 후 결정
     """
+    # 여는/닫는 마커 모두 id 뒤 ` — 설명` 접미사를 허용 — 템플릿 fragment
+    # (templates/skeleton/*.md) 의 실제 마커는 `HUMAN-LOCKED:id — 설명 -->` 형태다.
+    # `\b[^>]*` 로 id 경계 이후 `>` 직전까지 흡수 (prefix-id 오매칭은 \b 가 차단).
     block_re = re.compile(
-        rf"<!--\s*HUMAN-LOCKED:{re.escape(section_id)}\s*-->(.*?)<!--\s*/HUMAN-LOCKED:{re.escape(section_id)}\s*-->",
+        rf"<!--\s*HUMAN-LOCKED:{re.escape(section_id)}\b[^>]*-->(.*?)<!--\s*/HUMAN-LOCKED:{re.escape(section_id)}\b[^>]*-->",
         re.DOTALL,
     )
     m = block_re.search(skeleton_text)
