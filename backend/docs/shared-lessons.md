@@ -574,3 +574,25 @@ _rate_limit_store: dict[int, list[float]] = defaultdict(list)
 > 자동 추출된 LESSON. 사용자 검토 후 main 섹션으로 promote (auto_extracted 마커 제거) 또는 거부 (블록 삭제).
 
 ---
+
+
+## LESSON-032: TS project-references 루트에 bare tsc -p 는 0파일 vacuous pass — tsc -b 필수
+<!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-06-14 -->
+
+**문제**: tsconfig.json 이 'files: [] + references' (project references) 구조면 'tsc --noEmit -p tsconfig.json' 은 0개 파일만 검사하고 EXIT 0 으로 통과한다. 타입 게이트가 실제 소스를 전혀 안 보고 'tsc 0 errors' 를 보고 → 실제 타입 RED 가 built/verified/reviewed 까지 통과 (예: 라이브러리 실타입 불일치 6건 + MTEXT height 런타임버그).
+
+**규칙**: project-references 루트(files:[])에는 build mode 를 써야 leaf config 를 따라간다: 'tsc -b --noEmit' (또는 각 leaf 를 직접: 'tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json'). 게이트가 'tsc 0' 인데 검사 파일 수가 0 이면 vacuous 의심. package.json 의 typecheck 스크립트가 있으면 그걸 위임.
+
+**근거**: Mendline(electron) — harness-issues #24. 커밋된 프로파일 toolchain.type 이 bare 'tsc --noEmit' 라 03:06/03:16 ha-verify 가 vacuous pass. tsc -b 로 바꾸니 6건 RED 노출.
+
+---
+## LESSON-031: Electron dev/prod 분기는 app.isPackaged — NODE_ENV 금지
+<!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-06-13 -->
+
+**문제**: main 프로세스에서 isDev=process.env.NODE_ENV!=='production' 으로 분기하면 패키징 앱(NSIS/dmg)은 NODE_ENV 가 설정돼 있지 않아 dev 모드로 폴백 — 존재하지 않는 dev 서버 URL 로드(빈 창) + devTools 자동 오픈. E2E 가 launch env 에 NODE_ENV=production 을 주입하면 이 결함이 전 게이트(unit/E2E/smoke)에서 가려짐
+
+**규칙**: Electron main 의 dev/prod 분기는 const isDev = !app.isPackaged 사용. process.env.NODE_ENV 기반 분기는 패키징 산출물에서 fail-open. E2E launch env 에 NODE_ENV 주입 시 prod 위장임을 인지하고 별도 packaged-app smoke 권장
+
+**근거**: sosel /ha-review: desktop/electron/main.ts:10 — E2E(playwright _electron)는 env 주입으로 통과했으나 실제 NSIS 산출물은 빈 창
+
+---
