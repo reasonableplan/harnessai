@@ -195,6 +195,42 @@ def test_commit_passes_when_all_tasks_match_context(tmp_path: Path) -> None:
     )
 
 
+def test_commit_task_count_excludes_dependency_cells(tmp_path: Path) -> None:
+    """task_count 는 완전한 태스크 행만 센다 — 의존성 컬럼의 단일 T-ID 셀 제외 (이슈 #10).
+
+    순진한 `\\|\\s*(T-\\d+)\\s*\\|` 는 `| T-001 |` 같은 단일-의존 셀도 집계해
+    3행을 5로 부풀렸다. _TASK_AGENT_ROW_RE(완전한 행)로 카운트해야 정확하다.
+    """
+    plan = _make_plan(
+        profiles=[ProfileRef(id="react-native-expo", path=".")],
+        scale_axes=ScaleAxes(
+            user_scale="medium",
+            data_sensitivity="pii",
+            team_size="small",
+            availability="standard",
+            monetization="none",
+            lifecycle="mvp",
+        ),
+    )
+    _write_plan(tmp_path, plan)
+    _write_skeleton(tmp_path)
+
+    tasks_content = (
+        "### Phase 1 — MVP\n"
+        "| ID | 에이전트 | 의존성 | 설명 | 상태 |\n"
+        "|----|---------|--------|------|------|\n"
+        "| T-001 | mobile_coder_rn | - | 첫 태스크 | 대기 |\n"
+        "| T-002 | mobile_coder_rn | T-001 | 둘째 태스크 | 대기 |\n"
+        "| T-003 | mobile_coder_rn | T-002 | 셋째 태스크 | 대기 |\n"
+    )
+    returncode, out, stderr = _run_commit(tmp_path, tasks_content)
+
+    assert out is not None, f"stdout JSON 없음. stderr={stderr!r}"
+    assert out["task_count"] == 3, (
+        f"의존성 셀이 카운트에 새는가? task_count={out['task_count']} (기대 3)"
+    )
+
+
 # ── Test 2: task agent 가 context 불일치 → exit 1, stderr 에 task ID ────────
 
 

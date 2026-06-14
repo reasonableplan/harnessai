@@ -355,8 +355,10 @@ def cmd_commit(args: argparse.Namespace) -> int:
     transition(plan, "planned", completed_step="ha-plan")
     save_plan(plan, plan_path)
 
-    # 태스크 ID 카운트
-    task_ids = re.findall(r"\|\s*(T-\d+)\s*\|", args.tasks_content)
+    # 태스크 ID 카운트 — 완전한 태스크 행(첫 컬럼 T-ID)만 센다. 순진한
+    # `\|\s*(T-\d+)\s*\|` 는 의존성 컬럼의 단일 T-ID 셀(`| T-003 |`)도 집계해
+    # 행 수를 부풀린다 (이슈 #10). 검증에 쓰는 _TASK_AGENT_ROW_RE 로 통일.
+    task_ids = [m.group(1) for m in _TASK_AGENT_ROW_RE.finditer(args.tasks_content)]
 
     output = {
         "tasks_path": str(tasks_path),
