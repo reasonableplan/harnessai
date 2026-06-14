@@ -782,3 +782,313 @@ class TestDependencyStdlibAndExtraAllowed:
         hooks = SecurityHooks.from_profile(profile, extra_python_allowed=frozenset({"hijack"}))
         result = hooks.run_all("from hijack import analyzer")
         assert [f for f in result.findings if f.hook == "dependency-check"] == []
+
+
+# ---------------------------------------------------------------------------
+# #19 FP 수정: Node 빌트인 / tsconfig 별칭 / 스택 승인 라이브러리
+# ---------------------------------------------------------------------------
+
+
+class TestDependencyFrontendFP:
+    """Frontend dependency-check FP #19 regression tests."""
+
+    # --- (1) Node 빌트인 node: prefix ---
+
+    def test_node_builtin_fs_no_warn(self) -> None:
+        """node:fs import → dependency WARN 없음 (Node 빌트인)."""
+        code = "import { readFileSync } from 'node:fs'"
+        findings = check_dependency(code, is_frontend=True)
+        dep_findings = [f for f in findings if f.hook == "dependency-check"]
+        assert dep_findings == [], f"예상치 못한 findings: {dep_findings}"
+
+    def test_node_builtin_path_no_warn(self) -> None:
+        """node:path import → dependency WARN 없음 (Node 빌트인)."""
+        code = "import path from 'node:path'"
+        findings = check_dependency(code, is_frontend=True)
+        dep_findings = [f for f in findings if f.hook == "dependency-check"]
+        assert dep_findings == [], f"예상치 못한 findings: {dep_findings}"
+
+    def test_node_builtin_multiple_no_warn(self) -> None:
+        """node:fs, node:path, node:crypto 복수 import → 전부 WARN 없음."""
+        code = (
+            "import { readFileSync } from 'node:fs'\n"
+            "import path from 'node:path'\n"
+            "import { createHash } from 'node:crypto'\n"
+        )
+        findings = check_dependency(code, is_frontend=True)
+        dep_findings = [f for f in findings if f.hook == "dependency-check"]
+        assert dep_findings == [], f"예상치 못한 findings: {dep_findings}"
+
+    def test_non_node_builtin_still_warns(self) -> None:
+        """node: prefix 없는 비허용 패키지 → 여전히 WARN (TP 보존)."""
+        code = "import lodash from 'lodash'"
+        findings = check_dependency(code, is_frontend=True)
+        assert any("lodash" in f.message for f in findings)
+
+    # --- (2) tsconfig 별칭 prefix ---
+
+    def test_tsconfig_alias_with_prefix_no_warn(self) -> None:
+        """@shared/types/entity import + extra_frontend_prefixes=('@shared/',) → WARN 없음."""
+        code = "import type { Entity } from '@shared/types/entity'"
+        findings = check_dependency(
+            code, is_frontend=True, extra_frontend_prefixes=("@shared/",)
+        )
+        dep_findings = [f for f in findings if f.hook == "dependency-check"]
+        assert dep_findings == [], f"예상치 못한 findings: {dep_findings}"
+
+    def test_tsconfig_alias_without_prefix_warns(self) -> None:
+        """@shared/types/entity import + prefix 없음 → WARN 발생 (대조군)."""
+        code = "import type { Entity } from '@shared/types/entity'"
+        findings = check_dependency(code, is_frontend=True)
+        assert any("@shared/types/entity" in f.message for f in findings)
+
+    def test_multiple_tsconfig_prefixes_no_warn(self) -> None:
+        """@shared/ + @app/ 복수 prefix 주입 → 해당 import 전부 통과."""
+        code = (
+            "import { Entity } from '@shared/types/entity'\n"
+            "import { store } from '@app/store'\n"
+        )
+        findings = check_dependency(
+            code,
+            is_frontend=True,
+            extra_frontend_prefixes=("@shared/", "@app/"),
+        )
+        dep_findings = [f for f in findings if f.hook == "dependency-check"]
+        assert dep_findings == [], f"예상치 못한 findings: {dep_findings}"
+
+    # --- (3) 스택 승인 라이브러리 extra_frontend_allowed ---
+
+    def test_stack_library_dxf_parser_no_warn(self) -> None:
+        """dxf-parser import + extra_frontend_allowed → WARN 없음."""
+        code = "import DxfParser from 'dxf-parser'"
+        findings = check_dependency(
+            code,
+            is_frontend=True,
+            extra_frontend_allowed={"dxf-parser", "three", "@tarikjabiri/dxf"},
+        )
+        dep_findings = [f for f in findings if f.hook == "dependency-check"]
+        assert dep_findings == [], f"예상치 못한 findings: {dep_findings}"
+
+    def test_stack_library_three_no_warn(self) -> None:
+        """three import + extra_frontend_allowed → WARN 없음."""
+        code = "import * as THREE from 'three'"
+        findings = check_dependency(
+            code,
+            is_frontend=True,
+            extra_frontend_allowed={"dxf-parser", "three", "@tarikjabiri/dxf"},
+        )
+        dep_findings = [f for f in findings if f.hook == "dependency-check"]
+        assert dep_findings == [], f"예상치 못한 findings: {dep_findings}"
+
+    def test_stack_library_scoped_no_warn(self) -> None:
+        """@tarikjabiri/dxf import + extra_frontend_allowed → WARN 없음."""
+        code = "import { DxfWriter } from '@tarikjabiri/dxf'"
+        findings = check_dependency(
+            code,
+            is_frontend=True,
+            extra_frontend_allowed={"dxf-parser", "three", "@tarikjabiri/dxf"},
+        )
+        dep_findings = [f for f in findings if f.hook == "dependency-check"]
+        assert dep_findings == [], f"예상치 못한 findings: {dep_findings}"
+
+    def test_unlisted_package_still_warns_with_extra_allowed(self) -> None:
+        """extra_frontend_allowed 있어도 목록 외 lodash → 여전히 WARN (TP 보존)."""
+        code = "import _ from 'lodash'"
+        findings = check_dependency(
+            code,
+            is_frontend=True,
+            extra_frontend_allowed={"dxf-parser", "three"},
+        )
+        assert any("lodash" in f.message for f in findings)
+
+    # --- (4) SecurityHooks 통합: extra_frontend_allowed + extra_frontend_prefixes ---
+
+    def test_security_hooks_extra_frontend_allowed(self) -> None:
+        """SecurityHooks(extra_frontend_allowed=...) → run_all frontend mode 통과."""
+        hooks = SecurityHooks(
+            extra_frontend_allowed={"dxf-parser", "three", "@tarikjabiri/dxf"}
+        )
+        code = (
+            "import DxfParser from 'dxf-parser'\n"
+            "import * as THREE from 'three'\n"
+            "import { DxfWriter } from '@tarikjabiri/dxf'\n"
+        )
+        result = hooks.run_all(code, is_frontend=True)
+        dep_findings = [f for f in result.findings if f.hook == "dependency-check"]
+        assert dep_findings == [], f"예상치 못한 findings: {dep_findings}"
+
+    def test_security_hooks_extra_frontend_prefixes(self) -> None:
+        """SecurityHooks(extra_frontend_prefixes=...) → run_all frontend mode 통과."""
+        hooks = SecurityHooks(extra_frontend_prefixes=("@shared/", "@app/"))
+        code = (
+            "import { Entity } from '@shared/types/entity'\n"
+            "import { store } from '@app/store'\n"
+        )
+        result = hooks.run_all(code, is_frontend=True)
+        dep_findings = [f for f in result.findings if f.hook == "dependency-check"]
+        assert dep_findings == [], f"예상치 못한 findings: {dep_findings}"
+
+    def test_security_hooks_node_builtins_via_run_all(self) -> None:
+        """run_all frontend mode: node:fs, node:path → WARN 없음."""
+        hooks = SecurityHooks()
+        code = (
+            "import { readFileSync } from 'node:fs'\n"
+            "import path from 'node:path'\n"
+        )
+        result = hooks.run_all(code, is_frontend=True)
+        dep_findings = [f for f in result.findings if f.hook == "dependency-check"]
+        assert dep_findings == [], f"예상치 못한 findings: {dep_findings}"
+
+    def test_security_hooks_backward_compat_no_extra(self) -> None:
+        """SecurityHooks() 기본 생성자 — extra 없이 기존 동작 불변."""
+        hooks = SecurityHooks()
+        # react 는 기본 whitelist — 통과
+        result = hooks.run_all("import { useState } from 'react'", is_frontend=True)
+        dep_findings = [f for f in result.findings if f.hook == "dependency-check"]
+        assert dep_findings == []
+        # moment 는 비허용 — WARN
+        result2 = hooks.run_all("import moment from 'moment'", is_frontend=True)
+        assert any("moment" in f.message for f in result2.findings)
+
+    def test_from_profile_with_extra_frontend(self) -> None:
+        """from_profile + extra_frontend_allowed/prefixes → 프로파일 whitelist 에 합산."""
+        from types import SimpleNamespace
+
+        profile = SimpleNamespace(
+            whitelist=SimpleNamespace(runtime=["react"], dev=[], prefix_allowed=["@radix-ui/"])
+        )
+        hooks = SecurityHooks.from_profile(
+            profile,
+            extra_frontend_allowed=frozenset({"dxf-parser"}),
+            extra_frontend_prefixes=("@shared/",),
+        )
+        code = (
+            "import { useState } from 'react'\n"
+            "import DxfParser from 'dxf-parser'\n"
+            "import { Entity } from '@shared/types/entity'\n"
+        )
+        result = hooks.run_all(code, is_frontend=True)
+        dep_findings = [f for f in result.findings if f.hook == "dependency-check"]
+        assert dep_findings == [], f"예상치 못한 findings: {dep_findings}"
+
+
+# ---------------------------------------------------------------------------
+# parse_skeleton_stack_whitelist
+# ---------------------------------------------------------------------------
+
+_SKELETON_FIXTURE = """
+## §3 기술 스택
+
+### 허용 라이브러리 화이트리스트
+> 프로파일의 기본 whitelist 에서 가져온다.
+**추가 허용 (프로파일 기본 + 이 목록)**:
+- dxf-parser: DXF 파싱
+- three: 3D 렌더링
+- @tarikjabiri/dxf: DXF 생성
+
+### 다른 섹션
+- something: here
+"""
+
+_SKELETON_NO_SECTION = """
+## §3 기술 스택
+
+### 다른 정보
+- item: value
+"""
+
+_SKELETON_WITH_PLACEHOLDER = """
+### 허용 라이브러리 화이트리스트
+- <패키지 이름>: <사유>
+- real-pkg: 실제 라이브러리
+"""
+
+
+class TestParseSkeletonStackWhitelist:
+    def test_extracts_packages(self) -> None:
+        """§3 fixture → {dxf-parser, three, @tarikjabiri/dxf}."""
+        from src.orchestrator.security_hooks import parse_skeleton_stack_whitelist
+
+        result = parse_skeleton_stack_whitelist(_SKELETON_FIXTURE)
+        assert result == frozenset({"dxf-parser", "three", "@tarikjabiri/dxf"})
+
+    def test_no_section_returns_empty(self) -> None:
+        """허용 라이브러리 화이트리스트 헤딩 없음 → frozenset()."""
+        from src.orchestrator.security_hooks import parse_skeleton_stack_whitelist
+
+        result = parse_skeleton_stack_whitelist(_SKELETON_NO_SECTION)
+        assert result == frozenset()
+
+    def test_placeholder_excluded(self) -> None:
+        """<패키지 이름> 플레이스홀더 → 제외."""
+        from src.orchestrator.security_hooks import parse_skeleton_stack_whitelist
+
+        result = parse_skeleton_stack_whitelist(_SKELETON_WITH_PLACEHOLDER)
+        assert "<패키지 이름>" not in result
+        assert "real-pkg" in result
+
+    def test_empty_string(self) -> None:
+        """빈 문자열 → frozenset()."""
+        from src.orchestrator.security_hooks import parse_skeleton_stack_whitelist
+
+        result = parse_skeleton_stack_whitelist("")
+        assert result == frozenset()
+
+    def test_scoped_package_included(self) -> None:
+        """@scope/pkg 형태 scoped 패키지 포함 확인."""
+        from src.orchestrator.security_hooks import parse_skeleton_stack_whitelist
+
+        result = parse_skeleton_stack_whitelist(_SKELETON_FIXTURE)
+        assert "@tarikjabiri/dxf" in result
+
+
+# ---------------------------------------------------------------------------
+# parse_tsconfig_path_prefixes
+# ---------------------------------------------------------------------------
+
+
+class TestParseTsconfigPathPrefixes:
+    def test_wildcard_keys_become_prefixes(self) -> None:
+        """@shared/* → @shared/, @/* → @/ 변환."""
+        from src.orchestrator.security_hooks import parse_tsconfig_path_prefixes
+
+        result = parse_tsconfig_path_prefixes(
+            {"@shared/*": ["src/shared/$1"], "@/*": ["src/$1"]}
+        )
+        assert result == ("@/", "@shared/")  # 정렬
+
+    def test_non_wildcard_key_kept_as_is(self) -> None:
+        """와일드카드 없는 @root → @root 그대로."""
+        from src.orchestrator.security_hooks import parse_tsconfig_path_prefixes
+
+        result = parse_tsconfig_path_prefixes({"@root": ["src/root/index.ts"]})
+        assert result == ("@root",)
+
+    def test_mixed_keys(self) -> None:
+        """wildcard + non-wildcard 혼합 → 정렬된 tuple."""
+        from src.orchestrator.security_hooks import parse_tsconfig_path_prefixes
+
+        result = parse_tsconfig_path_prefixes(
+            {"@shared/*": ["x"], "@/*": ["y"], "@root": ["z"]}
+        )
+        assert result == ("@/", "@root", "@shared/")
+
+    def test_empty_dict(self) -> None:
+        """빈 dict → 빈 tuple."""
+        from src.orchestrator.security_hooks import parse_tsconfig_path_prefixes
+
+        result = parse_tsconfig_path_prefixes({})
+        assert result == ()
+
+    def test_deduplication(self) -> None:
+        """중복 prefix → 단일 항목."""
+        from src.orchestrator.security_hooks import parse_tsconfig_path_prefixes
+
+        result = parse_tsconfig_path_prefixes(
+            {"@shared/*": ["a"], "@shared/other/*": ["b"]}
+        )
+        # @shared/* → @shared/, @shared/other/* → @shared/other/ : 중복 없음
+        assert "@shared/" in result
+        assert "@shared/other/" in result
+        # 중복 여부: 같은 prefix 두 번 없어야 함
+        assert len(result) == len(set(result))

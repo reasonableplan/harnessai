@@ -394,6 +394,8 @@ def check_dependency(
     frontend_whitelist: set[str] | None = None,
     frontend_prefixes: tuple[str, ...] | None = None,
     extra_allowed: frozenset[str] | set[str] | None = None,
+    extra_frontend_allowed: frozenset[str] | set[str] | None = None,
+    extra_frontend_prefixes: tuple[str, ...] | None = None,
 ) -> list[Finding]:
     """Dependency whitelist check.
 
@@ -402,13 +404,25 @@ def check_dependency(
     the built-in defaults. ``extra_allowed`` adds project-local package names
     (see :func:`detect_local_packages`) to the Python import whitelist —
     import scan only, ``pip install <self>`` still blocks.
+
+    FP #19 fixes:
+    - ``extra_frontend_allowed``: additional frontend packages (stack libs).
+    - ``extra_frontend_prefixes``: additional prefix allowances (tsconfig paths).
+    - ``node:`` prefix imports are always skipped — Node builtins are language-
+      level and renderer boundary violations are a separate import-boundary
+      concern, out of scope for this dependency-whitelist hook (#19 scope-out).
     """
     extra = extra_allowed or frozenset()
     py_wl = python_whitelist if python_whitelist is not None else _PYTHON_WHITELIST
-    fe_wl = frontend_whitelist if frontend_whitelist is not None else _FRONTEND_WHITELIST
-    fe_prefixes = (
+    fe_wl: set[str] = set(frontend_whitelist if frontend_whitelist is not None else _FRONTEND_WHITELIST)
+    if extra_frontend_allowed:
+        fe_wl = fe_wl | set(extra_frontend_allowed)
+    base_fe_prefixes = (
         frontend_prefixes if frontend_prefixes is not None else _FRONTEND_WHITELIST_PREFIXES
     )
+    fe_prefixes: tuple[str, ...] = base_fe_prefixes
+    if extra_frontend_prefixes:
+        fe_prefixes = base_fe_prefixes + tuple(extra_frontend_prefixes)
 
     findings: list[Finding] = []
     lines = text.splitlines()
@@ -446,6 +460,11 @@ def check_dependency(
         for i, line in enumerate(lines, start=1):
             for m in _FRONTEND_IMPORT.finditer(line):
                 pkg = m.group(2)
+                # Node builtins (node: prefix) are always allowed — renderer
+                # boundary enforcement is a separate import-boundary concern
+                # and out of scope for this dependency-whitelist hook (#19).
+                if pkg.startswith("node:"):
+                    continue
                 allowed = pkg in fe_wl or any(pkg.startswith(p) for p in fe_prefixes)
                 if not allowed:
                     findings.append(
@@ -786,11 +805,15 @@ class SecurityHooks:
         frontend_whitelist: set[str] | None = None,
         frontend_prefixes: tuple[str, ...] | None = None,
         extra_python_allowed: frozenset[str] | set[str] | None = None,
+        extra_frontend_allowed: frozenset[str] | set[str] | None = None,
+        extra_frontend_prefixes: tuple[str, ...] | None = None,
     ) -> None:
         self.python_whitelist = python_whitelist
         self.frontend_whitelist = frontend_whitelist
         self.frontend_prefixes = frontend_prefixes
         self.extra_python_allowed = extra_python_allowed
+        self.extra_frontend_allowed = extra_frontend_allowed
+        self.extra_frontend_prefixes = extra_frontend_prefixes
 
     @classmethod
     def from_profile(
@@ -798,6 +821,8 @@ class SecurityHooks:
         profile: object,
         *,
         extra_python_allowed: frozenset[str] | set[str] | None = None,
+        extra_frontend_allowed: frozenset[str] | set[str] | None = None,
+        extra_frontend_prefixes: tuple[str, ...] | None = None,
     ) -> SecurityHooks:
         """Build SecurityHooks from a ``profile_loader.Profile`` instance.
 
@@ -806,6 +831,9 @@ class SecurityHooks:
 
         Note: do not reuse the same SecurityHooks instance for both backend
         and frontend — prefer one instance per profile.
+
+        FP #19: ``extra_frontend_allowed`` / ``extra_frontend_prefixes`` are
+        merged on top of profile ``prefix_allowed`` at construction time.
         """
         wl_runtime = getattr(getattr(profile, "whitelist", None), "runtime", ())
         wl_dev = getattr(getattr(profile, "whitelist", None), "dev", ())
@@ -816,6 +844,8 @@ class SecurityHooks:
             frontend_whitelist=combined,
             frontend_prefixes=tuple(wl_prefixes),
             extra_python_allowed=extra_python_allowed,
+            extra_frontend_allowed=extra_frontend_allowed,
+            extra_frontend_prefixes=extra_frontend_prefixes,
         )
 
     def run_all(
@@ -853,9 +883,79 @@ class SecurityHooks:
                 frontend_whitelist=self.frontend_whitelist,
                 frontend_prefixes=self.frontend_prefixes,
                 extra_allowed=self.extra_python_allowed,
+                extra_frontend_allowed=self.extra_frontend_allowed,
+                extra_frontend_prefixes=self.extra_frontend_prefixes,
             )
         )
         findings.extend(check_code_quality(text))
         findings.extend(check_contract_validator(text, allowed_endpoints))
         findings.extend(check_auth_guard(text, is_frontend=is_frontend, is_mobile=is_mobile))
         return SecurityResult(findings=findings)
+
+
+# ---------------------------------------------------------------------------
+# Parser helpers (FP #19)
+# ---------------------------------------------------------------------------
+
+_WHITELIST_HEADING = re.compile(r"^#{1,4}\s+허용 라이브러리 화이트리스트\s*$", re.MULTILINE)
+_NEXT_HEADING = re.compile(r"^#{1,4}\s+", re.MULTILINE)
+# Matches "- pkg: reason" or "- `pkg`: reason" lines; excludes placeholders containing '<'.
+_WHITELIST_ITEM = re.compile(r"^-\s+`?([^`:<>\s][^`:<>]*?)`?\s*:", re.MULTILINE)
+
+
+def parse_skeleton_stack_whitelist(skeleton_text: str) -> frozenset[str]:
+    """Extract approved package names from skeleton §3 whitelist subsection.
+
+    Looks for a heading matching '허용 라이브러리 화이트리스트', collects
+    '- <pkg>: <reason>' lines until the next heading, strips whitespace/backticks,
+    and excludes placeholder tokens containing '<'.
+
+    Returns an empty frozenset when the section is absent.
+    """
+    if not skeleton_text:
+        return frozenset()
+
+    m = _WHITELIST_HEADING.search(skeleton_text)
+    if not m:
+        return frozenset()
+
+    section_start = m.end()
+    # Find the next heading after the whitelist heading to bound the section.
+    next_h = _NEXT_HEADING.search(skeleton_text, section_start)
+    section_body = skeleton_text[section_start : next_h.start() if next_h else None]
+
+    pkgs: set[str] = set()
+    for item_m in _WHITELIST_ITEM.finditer(section_body):
+        pkg = item_m.group(1).strip()
+        # Exclude placeholder tokens (contain '<' or '>')
+        if "<" in pkg or ">" in pkg:
+            continue
+        if pkg:
+            pkgs.add(pkg)
+
+    return frozenset(pkgs)
+
+
+def parse_tsconfig_path_prefixes(paths: dict[str, object]) -> tuple[str, ...]:
+    """Derive import prefix strings from tsconfig compilerOptions.paths keys.
+
+    Wildcard keys like ``"@shared/*"`` become prefix ``"@shared/"``.
+    Non-wildcard keys like ``"@root"`` are kept as-is.
+    Duplicates are removed; result is sorted for determinism.
+
+    Args:
+        paths: the ``compilerOptions.paths`` dict (JSON-parsed). File I/O and
+               JSON parsing are the caller's responsibility — this function is pure.
+
+    Returns:
+        A sorted tuple of prefix strings.
+    """
+    prefixes: set[str] = set()
+    for key in paths:
+        if "/*" in key:
+            # "@shared/*" → "@shared/"  (strip the wildcard segment)
+            prefix = key[: key.index("/*") + 1]
+            prefixes.add(prefix)
+        else:
+            prefixes.add(key)
+    return tuple(sorted(prefixes))
