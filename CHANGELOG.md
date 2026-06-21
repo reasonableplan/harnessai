@@ -4,6 +4,17 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.13.0] — 2026-06-22 — "Dogfood Harvest 2: Runtime L2 & Handoff Fixes"
+
+code-mate dogfood 2차 수확 — 런타임 검증 사다리 **계층2**(떠도 라우트 깨짐) 보강 + ha-plan→ha-build→ha-redesign **단계 간 정합성** 결함 7건.
+
+### Added
+
+- **`/ha-smoke` 계층2 — 선언 엔드포인트 타격** — url 모드 기동 PASS 후 `interface.http` 의 선언 GET 경로를 실제 타격해 "프로세스는 떠도 라우트가 깨진" 산출물(404 미등록 / 5xx 핸들러 크래시)을 잡는다. `2xx/3xx/401/403/422` = OK (라우트 존재 + 핸들러 도달). path 파라미터(`{id}`/`:id`)는 실제 값이 없어 v1 skip. `run_probe(..., endpoints=[...])` + `_check_endpoints` + CLI `--endpoint`(반복). `consistency_checker._ENDPOINT_TOKEN_RE` 재활용. 회귀 +5 (probe 계약)
+- LESSON-033 (Windows cp949 콘솔 — CLI 진입점 UTF-8 강제 / 기본 출력 ASCII-safe), LESSON-034 (파생 경로·캐시키 단일 함수 = single source of truth), LESSON-035 (LLM 출력 환각 비파괴 annotate) 추출 (code-mate dogfood)
+
+---
+
 ## [0.12.0] — 2026-06-12 — "Runtime Smoke Gate"
 
 검증 사다리 최상단 보강: test/lint/type 이 전부 통과해도 **앱이 안 뜨는** 산출물을 잡는 `/ha-smoke` 신설 + dogfood P1 (untracked 파일 보안 스캔 우회) root fix.

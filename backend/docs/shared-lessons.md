@@ -576,6 +576,39 @@ _rate_limit_store: dict[int, list[float]] = defaultdict(list)
 ---
 
 
+
+
+
+## LESSON-035: LLM 출력은 결정론적 사실셋과 대조해 환각 탐지(비파괴 annotate)
+<!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-06-21 -->
+
+**문제**: LLM이 코드/도메인을 설명할 때 존재하지 않는 심볼·API를 그럴듯하게 지어냄(환각). 사용자가 틀린 설명을 사실로 학습하면 안 하느니만 못함. 그러나 자연어 전체를 검사하면 일반 단어가 오검출돼 FP 폭발.
+
+**규칙**: LLM에 코드 참조를 인라인 백틱으로 감싸라 지시 → 출력에서 백틱 토큰만 추출(코드펜스 제외) → 결정론적 known셋(AST 추출 심볼 + 직접의존 + builtin/stdlib allowlist)과 대조 → 밖의 토큰은 '환각 의심'으로 원본 보존한 채 append annotate(파괴/재생성 아님). 검사 표면을 백틱+식별자형으로 좁혀 FP 최소화. dotted 접근(a.b)은 모호하니 제외.
+
+**근거**: code-mate T-012 core/guard.py find_hallucinations — explain 사이드카에 환각 가드. eng리뷰 finding#3(틀린 설명 방지).
+
+---
+## LESSON-034: 파생 경로/캐시키는 단일 함수로 — 조회처·기록처 분리 금지
+<!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-06-21 -->
+
+**문제**: 사이드카(.explain.md) 경로를 pipeline(캐시 조회)은 with_name+stem, write_sidecar(기록)는 이중 with_suffix로 각각 계산 → multi-dot 파일명(foo.test.py)에서 두 경로가 달라져(foo.test.explain.md vs foo.explain.md) 캐시가 영원히 silent miss. 단일 dot는 우연히 일치해 테스트/일반사용서 안 드러남.
+
+**규칙**: 캐시키·파생 경로처럼 '조회'와 '기록'이 반드시 일치해야 하는 값은 단일 pure 함수(single source of truth)로 만들어 양쪽이 import해 쓴다. .py→사이드카는 path.with_suffix('.explain.md') 한 줄(마지막 suffix만 치환, stem 보존).
+
+**근거**: code-mate: pipeline._sidecar_path vs adapters.write_sidecar 불일치. core/sidecar.py sidecar_path()로 통일 + 회귀테스트 추가.
+
+---
+## LESSON-033: Windows cp949 콘솔: CLI 진입점에서 stdout/stderr UTF-8 강제
+<!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-06-21 -->
+
+**문제**: 한국어 Windows 기본 콘솔(cp949)은 em-dash(—,—) 등 non-cp949 문자 출력 시 UnicodeEncodeError로 크래시. CLI 에러 메시지/진행표시에 그런 문자가 있으면 exit code/친절메시지 계약이 깨짐. typer CliRunner 테스트는 utf-8 인메모리 버퍼라 green이어서 못 잡음(테스트 통과하나 실기동 크래시).
+
+**규칙**: CLI 진입점에서 sys.stdout/stderr.reconfigure(encoding='utf-8', errors='replace') 를 출력 전에 호출(있을 때만). rich Console은 sys.stdout 동적 참조라 런타임 reconfigure도 반영됨. 또는 메시지에서 non-ASCII 구두점 회피. 한국어/Windows 타깃이면 verify에 인코딩 스모크 포함.
+
+**근거**: code-mate cli.py — Ollama 미실행 시 친절메시지의 em-dash가 cp949 크래시(exit 1, 기대 3). _force_utf8_io()로 수정.
+
+---
 ## LESSON-032: TS project-references 루트에 bare tsc -p 는 0파일 vacuous pass — tsc -b 필수
 <!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-06-14 -->
 

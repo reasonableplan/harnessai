@@ -52,12 +52,26 @@ JSON 출력: 프로젝트 상태, 활성 프로파일별 `{id, path, cwd, smoke}
   사용 중일 수 있으니 가능하면 빈 포트를 명시적으로 지정.
 - 어떤 명령도 도출할 수 없으면 사용자에게 질문 — 임의 명령 발명 금지.
 
+### 2.5. (백엔드 url 모드) 선언 엔드포인트 추출
+
+url 모드는 root 하나만 200 이면 PASS 라 **"떠도 라우트가 깨진"** 결함 (라우터 미등록 404,
+핸들러 import 누락 크래시 5xx) 을 못 잡는다. skeleton.md 의 `interface.http` 섹션에서
+선언된 엔드포인트를 뽑아 기동 후 실제 타격한다:
+
+- `interface.http` 에서 `` `GET /path` `` 토큰만 추출 (변경계 POST/PUT/PATCH/DELETE 는
+  상태를 바꾸므로 제외 — 시나리오 스모크의 몫).
+- path 파라미터 (`/items/{id}`, `/users/:id`) 가 있는 경로는 실제 값 없이 못 때리므로
+  넘긴다 (run.py 가 자동 skip — 그대로 `--endpoint` 로 줘도 됨).
+- 각 GET 경로를 `--endpoint /api/...` 로 반복 전달. 404/5xx = FAIL,
+  2xx/3xx/401/403/422 = OK (라우트 존재 + 핸들러 도달).
+
 ### 3. probe 실행
 ```bash
-# url 모드 (dev server 류)
+# url 모드 (dev server 류) — 백엔드는 선언 GET 엔드포인트를 함께 타격
 python ~/.claude/skills/ha-smoke/run.py probe \
   --command "<smoke 명령>" --cwd "<profile.cwd>" \
-  --url "http://127.0.0.1:<port>/" --ready-timeout 60
+  --url "http://127.0.0.1:<port>/" --ready-timeout 60 \
+  --endpoint "/api/users" --endpoint "/api/issues"
 
 # exit 모드 (CLI/빌드 류)
 python ~/.claude/skills/ha-smoke/run.py probe \

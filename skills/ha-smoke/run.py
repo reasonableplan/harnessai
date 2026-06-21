@@ -21,6 +21,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "_ha_shared"))
 from utils import (  # noqa: E402, I001
@@ -94,7 +95,35 @@ def _probe_exit(cmd: str, cwd: Path, timeout: int) -> dict:
     }
 
 
-def _probe_url(cmd: str, cwd: Path, url: str, ready_timeout: int) -> dict:
+def _check_endpoints(origin: str, endpoints: list[str]) -> tuple[list[str], int]:
+    """기동한 서버의 선언 GET 엔드포인트를 타격 → (깨진 것 목록, 실제 타격 개수).
+
+    404(미등록) / 5xx(핸들러 크래시) 만 깨짐으로 본다. 2xx/3xx/401/403/422 등은
+    "라우트가 존재하고 핸들러가 도달함" 이므로 OK. path 파라미터({id}, :id) 는
+    실제 값 없이 못 때리므로 skip.
+    """
+    broken: list[str] = []
+    probed = 0
+    for path in endpoints:
+        if "{" in path or ":" in path:
+            continue  # path 파라미터 — 실제 값 필요, v1 skip
+        probed += 1
+        try:
+            with urllib.request.urlopen(origin + path, timeout=3) as resp:
+                code = resp.status
+        except urllib.error.HTTPError as e:
+            code = e.code
+        except (urllib.error.URLError, OSError) as e:
+            broken.append(f"GET {path} (연결 실패: {e})")
+            continue
+        if code == 404 or code >= 500:
+            broken.append(f"GET {path} ({code})")
+    return broken, probed
+
+
+def _probe_url(
+    cmd: str, cwd: Path, url: str, ready_timeout: int, endpoints: list[str] | None = None
+) -> dict:
     with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as log:
         kwargs: dict = {}
         if sys.platform != "win32":
@@ -122,6 +151,28 @@ def _probe_url(cmd: str, cwd: Path, url: str, ready_timeout: int) -> dict:
                     with urllib.request.urlopen(url, timeout=2) as resp:
                         status = resp.status
                     if 200 <= status < 400:
+                        if endpoints:
+                            origin = "{0.scheme}://{0.netloc}".format(urlsplit(url))
+                            broken, probed = _check_endpoints(origin, endpoints)
+                            if broken:
+                                return {
+                                    "passed": False,
+                                    "mode": "url",
+                                    "detail": (
+                                        f"기동 OK (HTTP {status} @ {url}) 이나 선언 "
+                                        f"엔드포인트 깨짐: " + ", ".join(broken)
+                                    ),
+                                    "output_tail": _read_log_tail(log),
+                                }
+                            return {
+                                "passed": True,
+                                "mode": "url",
+                                "detail": (
+                                    f"HTTP {status} @ {url}; 선언 GET 엔드포인트 "
+                                    f"{probed}개 OK"
+                                ),
+                                "output_tail": _read_log_tail(log),
+                            }
                         return {
                             "passed": True,
                             "mode": "url",
@@ -167,16 +218,18 @@ def run_probe(
     *,
     cwd: Path,
     url: str | None = None,
+    endpoints: list[str] | None = None,
     timeout: int = 120,
     ready_timeout: int = 60,
 ) -> dict:
     """smoke 명령 실행 → {"passed", "mode", "detail", "output_tail"}.
 
     url 이 주어지면 url 모드 (백그라운드 기동 + readiness 폴링 + 트리 킬),
-    아니면 exit 모드 (exit 0 = PASS).
+    아니면 exit 모드 (exit 0 = PASS). url 모드에서 endpoints 가 주어지면 기동 후
+    선언 GET 엔드포인트를 타격해 404/5xx (떠도 라우트 깨짐) 를 잡는다.
     """
     if url:
-        return _probe_url(cmd, Path(cwd), url, ready_timeout)
+        return _probe_url(cmd, Path(cwd), url, ready_timeout, endpoints)
     return _probe_exit(cmd, Path(cwd), timeout)
 
 
@@ -210,6 +263,7 @@ def cmd_probe(args: argparse.Namespace) -> int:
         args.command,
         cwd=Path(args.cwd),
         url=args.url or None,
+        endpoints=args.endpoint or None,
         timeout=args.timeout,
         ready_timeout=args.ready_timeout,
     )
@@ -246,6 +300,12 @@ def main() -> int:
     p.add_argument("--command", required=True, help="smoke 명령 (shell)")
     p.add_argument("--cwd", required=True)
     p.add_argument("--url", default="", help="지정 시 url 모드 (dev server readiness 폴링)")
+    p.add_argument(
+        "--endpoint",
+        action="append",
+        default=[],
+        help="url 모드: 기동 후 타격할 선언 GET 경로 (반복 가능, 예: --endpoint /api/users)",
+    )
     p.add_argument("--timeout", type=int, default=120, help="exit 모드 타임아웃 (초)")
     p.add_argument("--ready-timeout", type=int, default=60, help="url 모드 readiness 타임아웃 (초)")
     r = sub.add_parser("record")
