@@ -16,6 +16,8 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
+from src.orchestrator.skeleton_hash import compute_skeleton_hash
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -96,6 +98,31 @@ def test_prepare_proceeds_with_accept_flag(ha_build, tmp_path, monkeypatch, caps
     combined = cap.out + cap.err
     assert "[BLOCK]" not in combined
     assert "[WARN]" in combined and "--accept-skeleton-drift" in combined
+    assert rc == 1  # tasks.md 없음 — 게이트와 무관한 후속 실패
+    assert "tasks.md 없음" in combined
+
+
+def test_prepare_passes_when_hash_matches_after_plan_sync(
+    ha_build, tmp_path, monkeypatch, capsys
+) -> None:
+    """#5 회귀 — plan.skeleton_hash 가 실제 skeleton 과 일치하면 드리프트 게이트 통과.
+
+    #1 수정으로 ha-plan commit 이 §태스크 분해 sync 후 baseline 을 refresh 하므로,
+    정상 ha-plan→ha-build 경로에서 hash 가 일치 → BLOCK 도, --accept-skeleton-drift
+    상시 사용도 불필요해야 한다 (이전엔 매 빌드마다 BLOCK 됨).
+    """
+    skel = tmp_path / "skeleton.md"
+    skel.write_text("## 1. 개요\n내용\n\n## 11. 태스크 분해\n\n| T-001 |\n", encoding="utf-8")
+    # ha-plan 이 refresh 한 것과 동일한 정확한 hash 를 baseline 으로 설정.
+    plan = _make_plan(skeleton_hash=compute_skeleton_hash(skel))
+    _patch_prepare(ha_build, monkeypatch, plan, tmp_path)
+
+    rc = ha_build.cmd_prepare(_prepare_args())
+
+    cap = capsys.readouterr()
+    combined = cap.out + cap.err
+    assert "[BLOCK]" not in combined, f"hash 일치인데 BLOCK 됨 (#5 재발): {combined}"
+    assert "hash mismatch" not in combined
     assert rc == 1  # tasks.md 없음 — 게이트와 무관한 후속 실패
     assert "tasks.md 없음" in combined
 

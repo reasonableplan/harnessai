@@ -31,9 +31,12 @@ from src.orchestrator.profile_loader import (  # noqa: E402
     ProfileNotFoundError,
     find_consistency_violations,
 )
-from src.orchestrator.skeleton_hash import check_skeleton_hash  # noqa: E402
+from src.orchestrator.skeleton_hash import (  # noqa: E402
+    check_skeleton_hash,
+    compute_section_hashes,
+    compute_skeleton_hash,
+)
 from src.orchestrator.tasks_schema import SchemaViolation, validate_tasks_md  # noqa: E402
-
 
 # Lenient pattern that extracts every "T-..." candidate from tasks.md rows so that
 # malformed IDs surface as explicit validation errors instead of silently failing
@@ -115,7 +118,11 @@ def _validate_agent_mappings(
 
 def cmd_prepare(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
-    assert_state(plan, ["designed"], "/ha-plan")
+    # --replan: ha-redesign 은 cross-cutting 스킬이라 current_step 을 유지(planned)한다.
+    # 그래서 redesign 으로 skeleton 이 바뀐 뒤 tasks 를 재생성할 공식 경로가 없었다
+    # (issue #2). --replan 은 planned 상태에서의 재실행을 허용한다.
+    allowed = ["designed", "planned"] if args.replan else ["designed"]
+    assert_state(plan, allowed, "/ha-plan")
 
     skel_path = plan_path.parent / "skeleton.md"
     if not skel_path.exists():
@@ -211,7 +218,9 @@ def cmd_prepare(args: argparse.Namespace) -> int:
 
 def cmd_commit(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
-    assert_state(plan, ["designed"], "/ha-plan")
+    # --replan: planned 상태에서의 재실행 허용 (issue #2 — redesign 후 재-plan 경로).
+    allowed = ["designed", "planned"] if args.replan else ["designed"]
+    assert_state(plan, allowed, "/ha-plan")
 
     if not args.tasks_content:
         info("[FAIL] --tasks-content 비어 있음")
@@ -351,6 +360,15 @@ def cmd_commit(args: argparse.Namespace) -> int:
         info(f"[FAIL] tasks.md/skeleton.md 쓰기 실패 — 상태 전이 중단: {e}")
         return 1
 
+    # skeleton hash baseline 갱신 — §태스크 분해 sync 로 skeleton.md 가 바뀌었으면
+    # baseline 을 이 시점으로 refresh. 안 하면 다음 ha-redesign/ha-build 의
+    # check_skeleton_hash 가 stale baseline(= ha-design 직후 값)과 비교해 거짓
+    # "외부 수정" 경고를 띄운다 (issue #1). 태스크 분해는 ha-plan 의 산출물이지
+    # 사용자 수정 대상이 아니므로 baseline 에 흡수한다. ha-redesign apply 와 동일 패턴.
+    if new_skel != skel_text:
+        plan.skeleton_hash = compute_skeleton_hash(skel_path)
+        plan.section_hashes = compute_section_hashes(skel_path)
+
     # 상태 전이
     transition(plan, "planned", completed_step="ha-plan")
     save_plan(plan, plan_path)
@@ -382,9 +400,21 @@ def cmd_commit(args: argparse.Namespace) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(prog="ha-plan")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("prepare")
+    p = sub.add_parser("prepare")
+    p.add_argument(
+        "--replan",
+        action="store_true",
+        default=False,
+        help="planned 상태에서도 재실행 허용 (ha-redesign 후 tasks 재생성)",
+    )
     c = sub.add_parser("commit")
     c.add_argument("--tasks-content", required=True)
+    c.add_argument(
+        "--replan",
+        action="store_true",
+        default=False,
+        help="planned 상태에서도 재실행 허용 (ha-redesign 후 tasks 재생성)",
+    )
     c.add_argument(
         "--allow-agent-mismatch",
         action="store_true",

@@ -127,6 +127,54 @@ def _run_integrity_check(project: Path) -> dict:
         return {"passed": None, "skipped": True, "reason": "python 실행 불가", "output": ""}
 
 
+_SMOKE_TIMEOUT_S = 30
+
+
+def _run_smoke(
+    profile_id: str,
+    smoke_cmd: str | None,
+    cwd: Path,
+    provides: tuple[str, ...],
+) -> dict:
+    """cli_entrypoint 프로파일의 런타임 기동 스모크 (exit 모드) — issue #6.
+
+    test/lint/type 통과가 "앱이 실제로 뜬다"를 보장하지 않는다. CLI 엔트리포인트를
+    실제 subprocess 로 1회 invoke 해 import 실패·기동 크래시·콘솔 인코딩 오류
+    (Windows cp949 의 em-dash UnicodeEncodeError 등)를 verify 단계에서 잡는다.
+
+    핵심: 자식 인코딩을 강제하지 않는다(env 상속). PYTHONIOENCODING=utf-8 을 주입하면
+    타깃 콘솔(cp949) 크래시가 가려져 거짓 green 이 된다 — CliRunner 가 #6 을 놓친 이유와
+    같은 함정. 서버/UI 프로파일(url 모드)은 hang 위험이 있어 여기서 안 돌리고 /ha-smoke 에
+    위임한다.
+    """
+    if "cli_entrypoint" not in provides:
+        return {"ran": False, "passed": None, "reason": "non-cli 프로파일 — /ha-smoke 영역"}
+    if not smoke_cmd:
+        return {"ran": False, "passed": None, "reason": "toolchain.smoke 미설정"}
+    try:
+        r = subprocess.run(
+            smoke_cmd,
+            shell=True,
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=_SMOKE_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        return {"ran": True, "passed": False, "detail": f"타임아웃 {_SMOKE_TIMEOUT_S}s 초과", "output_tail": ""}
+    except OSError as e:
+        return {"ran": True, "passed": False, "detail": f"실행 불가: {e}", "output_tail": ""}
+    output = ((r.stdout or "") + (r.stderr or ""))[-2000:]
+    return {
+        "ran": True,
+        "passed": r.returncode == 0,
+        "detail": f"exit code {r.returncode}",
+        "output_tail": output,
+    }
+
+
 def cmd_prepare(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
     assert_state(plan, ["built"], "/ha-verify")
@@ -189,6 +237,37 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     for prof in output["profiles"]:
         if prof.get("test_dir_warning"):
             info(f"[WARN] {prof['id']}: {prof['test_dir_warning']}")
+
+    # 런타임 기동 스모크 (issue #6) — cli_entrypoint 프로파일 한정.
+    # test/lint/type green 이 앱 기동/인코딩 안전을 보장하지 않으므로 verify 에서 1회 invoke.
+    smoke_failures: list[str] = []
+    for prof_obj, prof_dict in zip(profiles, output["profiles"], strict=True):
+        sc = _run_smoke(
+            prof_obj.id,
+            prof_obj.toolchain.smoke,
+            Path(prof_dict["cwd"]),
+            prof_obj.provides_capabilities,
+        )
+        prof_dict["smoke_check"] = sc
+        if sc.get("ran") and sc.get("passed") is False:
+            smoke_failures.append(prof_obj.id)
+            info(
+                f"[FAIL] {prof_obj.id} 런타임 스모크 실패 ({sc.get('detail')}) — "
+                "test/lint/type 는 통과했으나 앱이 안 뜨거나 출력 시 크래시.\n"
+                f"{sc.get('output_tail', '')}"
+            )
+        elif (
+            not sc.get("ran")
+            and "cli_entrypoint" in prof_obj.provides_capabilities
+            and not prof_obj.toolchain.smoke
+        ):
+            info(
+                f"[WARN] {prof_obj.id}: 런타임 스모크 미설정 — test/lint/type 통과가 앱 기동을 "
+                "보장하지 않습니다. plan/profile 의 toolchain.smoke (예: 'python -m <pkg> --help') "
+                "설정 또는 /ha-smoke 로 기동 검증 권장 (issue #6)."
+            )
+    output["smoke_failures"] = smoke_failures
+
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0
 

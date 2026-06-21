@@ -105,6 +105,52 @@ def _parse_tasks(tasks_text: str) -> dict[str, dict[str, str]]:
     return out
 
 
+# ── 부분 완료 복구 (issue #7) ────────────────────────────────────────────
+# 서브에이전트가 태스크 도중 죽으면 status 가 '대기' 로 남고 부분 산출물이 추적되지
+# 않는다. prepare 가 착수 시 in-progress 로 마킹 → 죽으면 그 상태가 보이고, 재진입 시
+# 선언 산출 파일 존재 여부로 부분 완료를 알려 "이어서/처음부터" 판단을 돕는다.
+_INPROGRESS_STATES = ("in-progress", "진행중")
+_PENDING_STATES = ("대기", "pending", "")
+
+_SPEC_BLOCK_RE = re.compile(
+    r"^###\s+(T-\d+)\b(.*?)(?=^###\s+T-\d+\b|\Z)", re.MULTILINE | re.DOTALL
+)
+
+
+def _declared_files(tasks_text: str, tid: str) -> list[str]:
+    """tid 의 spec 블록에서 선언된 산출 파일 경로 (backtick + '/' 포함 토큰).
+
+    skeleton 참조(`persistence.users` 등 '/' 없음)·§ 섹션 ref 는 제외 — 실제 경로만.
+    """
+    for m in _SPEC_BLOCK_RE.finditer(tasks_text):
+        if m.group(1) != tid:
+            continue
+        files = [
+            tok.strip()
+            for tok in re.findall(r"`([^`]+)`", m.group(2))
+            if "/" in tok and " " not in tok.strip() and not tok.strip().startswith("§")
+        ]
+        return list(dict.fromkeys(files))
+    return []
+
+
+def _mark_in_progress(tasks_text: str, tid: str) -> str:
+    """tid 행이 대기/pending 이면 status 컬럼을 in-progress 로 교체 (그 외 상태 무변경)."""
+
+    def repl(m: re.Match[str]) -> str:
+        if m.group(2).strip().lower() in _PENDING_STATES:
+            return f"{m.group(1)}{'in-progress':<10}{m.group(3)}"
+        return m.group(0)
+
+    return re.sub(
+        rf"(\|\s*{re.escape(tid)}\s*\|.*?\|.*?\|.*?\|\s*)([^|]+)(\|\s*$)",
+        repl,
+        tasks_text,
+        count=1,
+        flags=re.MULTILINE,
+    )
+
+
 def cmd_prepare(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
     assert_state(plan, ["planned", "building"], "/ha-build")
@@ -122,7 +168,8 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         return 1
 
     # skeleton drift 게이트 — freeze 이후 외부 수정 감지 (architecture review F2).
-    # skeleton_hash 는 ha-design/ha-redesign 만 갱신하므로 mismatch = 미감사 수정.
+    # skeleton_hash 는 ha-design/ha-redesign/ha-plan 이 갱신한다 (ha-plan 은 §태스크
+    # 분해 sync 후 baseline refresh — issue #1/#5). 따라서 mismatch = 미감사 외부 수정.
     # 구현 단계가 skeleton 을 가장 많이 소비하는데 기존엔 이 검사가 없었다.
     skel_path = plan_path.parent / "skeleton.md"
     hash_check = check_skeleton_hash(plan.skeleton_hash or "", skel_path)
@@ -141,7 +188,8 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     if not tasks_path.exists():
         info(f"[FAIL] tasks.md 없음: {tasks_path}")
         return 1
-    tasks = _parse_tasks(tasks_path.read_text(encoding="utf-8"))
+    tasks_text = tasks_path.read_text(encoding="utf-8")
+    tasks = _parse_tasks(tasks_text)
 
     target_ids = args.task.split(",") if args.task else []
     if not target_ids:
@@ -183,6 +231,36 @@ def cmd_prepare(args: argparse.Namespace) -> int:
                     info(f"[FAIL] 병렬 그룹 내 의존: {tid} → {dep}. 직렬 실행 필요.")
                     return 1
 
+    # ── 부분 완료 복구 (issue #7) — 재진입 감지 + 착수 in-progress 마킹 ────
+    # 이미 in-progress 면 이전 착수가 끝나지 않은 것 (서브에이전트 중단) → 선언 산출
+    # 파일 존재로 부분 완료를 알린다. 대기 면 착수 마킹해 다음 중단 시 보이게 한다.
+    reentry_info: dict[str, dict] = {}
+    new_tasks_text = tasks_text
+    for tid in target_ids:
+        declared = _declared_files(tasks_text, tid)
+        existing = [f for f in declared if (project / f).exists()]
+        is_reentry = tasks[tid]["status"].strip().lower() in _INPROGRESS_STATES
+        reentry_info[tid] = {
+            "reentry": is_reentry,
+            "declared_files": declared,
+            "existing_files": existing,
+        }
+        if is_reentry:
+            info(
+                f"[WARN] {tid} 이전에 착수됨 (status=in-progress) — 서브에이전트 중단 후 재진입 가능성.\n"
+                f"  · 선언 산출 파일 {len(declared)}개 중 {len(existing)}개 존재"
+                + (f": {', '.join(existing)}" if existing else "")
+                + "\n  · 부분 산출물을 점검하고 '이어서' 또는 '처음부터' 결정하세요 (덮어쓰기 주의)."
+            )
+        else:
+            new_tasks_text = _mark_in_progress(new_tasks_text, tid)
+            tasks[tid]["status"] = "in-progress"
+    if new_tasks_text != tasks_text:
+        try:
+            tasks_path.write_text(new_tasks_text, encoding="utf-8")
+        except OSError as e:
+            info(f"[WARN] in-progress 착수 마킹 실패 (계속 진행): {e}")
+
     profiles = get_active_profiles(plan, project)
 
     output = {
@@ -193,6 +271,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
             {
                 "id": tid,
                 **tasks[tid],
+                **reentry_info[tid],
                 "agent_prompt": str(HARNESS_HOME / "backend" / "agents" / tasks[tid]["agent"] / "CLAUDE.md"),
                 "guideline_paths": _agent_to_guideline_paths(tasks[tid]["agent"], plan),
             }

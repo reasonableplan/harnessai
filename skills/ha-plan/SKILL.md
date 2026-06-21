@@ -46,9 +46,9 @@ prepare 출력의 `consistency_violations` 가 있으면:
      - 취소 → `/ha-redesign` 으로 plan 재정렬 후 다시 ha-plan
      - 수동 정정 → `/ha-redesign` 사용 안내
 
-본 검증은 advisory — 차단 안 함. 다만 violations 가 있으면 task 분해 시 그 영향을 §19 구현 노트의 "결정 로그" 에 기록 권고.
+본 검증은 advisory — 차단 안 함. 다만 violations 가 있으면 task 분해 시 그 영향을 skeleton 의 「구현 노트」 섹션 "결정 로그" 에 기록 권고 (섹션 번호는 프로젝트마다 다름 — 이름으로 찾을 것).
 
-**가드레일**: consistency_violations 를 자동으로 무시하지 말 것 — 사용자에게 반드시 보여주거나 §19 에 기록.
+**가드레일**: consistency_violations 를 자동으로 무시하지 말 것 — 사용자에게 반드시 보여주거나 「구현 노트」 섹션에 기록.
 
 ### 2. Orchestrator 프롬프트 + skeleton 로드
 - `<HARNESS_AI_HOME>/backend/agents/orchestrator/CLAUDE.md` 읽기
@@ -126,7 +126,24 @@ EOF
 run.py 가:
 - `docs/tasks.md` 작성
 - `docs/skeleton.md` 의 `## N. 태스크 분해` 섹션을 같은 내용으로 동기화
+- 동기화로 skeleton.md 가 바뀌면 `skeleton_hash` / `section_hashes` baseline 도 refresh (issue #1 — 안 하면 다음 ha-redesign 이 거짓 외부수정 경고)
 - `current_step` "designed" → "planned"
+
+#### `--replan` — ha-redesign 후 전체 재분해
+기본 ha-plan 은 `designed` 상태에서만 실행된다. `/ha-redesign` 은 cross-cutting 스킬이라
+`current_step` 을 `planned` 로 유지하므로, redesign 으로 skeleton 이 바뀐 뒤 **태스크 전체를
+다시 분해**하려면 `--replan` 을 붙인다:
+
+```bash
+python ~/.claude/skills/ha-plan/run.py prepare --replan
+python ~/.claude/skills/ha-plan/run.py commit --replan --tasks-content "..."
+```
+
+- `--replan` 은 `planned` 상태에서의 재실행을 허용 (issue #2).
+- **주의**: tasks.md 를 통째로 덮어쓴다 — 기존 done/in-progress 상태와 needs_rebuild 마커가
+  사라질 수 있으므로, 재분해 시 보존할 상태를 tasks-content 에 직접 반영할 것.
+- **소규모 변경**(영향 태스크 몇 개만 수정)이면 `--replan` 대신 `/ha-redesign` 의 re-derivation
+  (agent 가 tasks.md 를 surgical Edit) 을 쓰는 게 안전하다 — 둘은 목적이 다름.
 
 ### 4.5. 핸드오프 노트 전달 (Orchestrator → 사용자)
 
@@ -205,6 +222,7 @@ run.py 가:
 
 - **Agent mismatch FAIL**: tasks.md 의 task 가 활성 컨텍스트와 정합하지 않은 agent 에 배정. 해결 — agent 변경 or `plan.profiles` 추가 (paired 모드) or `--allow-agent-mismatch` 로 우회.
 - **Schema violation FAIL**: tasks.md 의 ID/컬럼/상태/의존성/Phase 헤더 형식 위반. 해결 — 위반 항목 수정 or `--allow-format-drift` 로 우회 (경고로 기록 후 진행).
+- **사전 조건 위반 (현재 상태: planned / 허용 상태: ['designed'])**: `/ha-redesign` 후 재-plan 시 발생. 해결 — `--replan` 플래그로 재실행 (issue #2). 단, tasks.md 통째 덮어쓰기 주의.
 
 ## 모바일 프로젝트 사용 예시 (Flutter)
 

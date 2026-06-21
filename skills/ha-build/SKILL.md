@@ -71,6 +71,13 @@ JSON 출력: 태스크 정보 (agent, depends_on, description, path), 활성 프
 
 **병렬 모드**: `--parallel T-001,T-002,T-003` — depends_on 없는 태스크만 허용. run.py 가 검증.
 
+**착수 마킹 + 부분 완료 복구 (issue #7)**: prepare 는 대기 태스크를 `in-progress` 로 마킹하고
+시작한다 (서브에이전트가 도중에 죽어도 status 로 흔적이 남도록). 출력 task 의:
+- `reentry: true` — 이미 in-progress 였음 = 이전 착수가 끝나지 않음 (중단 후 재진입). 이 경우
+  **새로 처음부터 만들기 전에** `existing_files` (선언 산출 중 이미 존재하는 파일) 를 점검해
+  "이어서" 할지 "처음부터" 할지 결정하라. Agent prompt 에 부분 산출물 상태를 명시할 것.
+- `declared_files` / `existing_files` — spec 의 "생성/수정 파일" 중 실재하는 것. 부분 완료 판단 근거.
+
 ### 2. 구현 — Agent 위임 (단일/병렬 공통)
 
 **prepare JSON 을 받았으면 다음 단계는 곧바로 Agent 호출입니다.** 부모는 prepare 출력을

@@ -31,10 +31,18 @@ def _today() -> str:
 
 
 def _resolve_worklog_path(project_arg: str | None) -> Path:
-    """프로젝트 root + docs/worklog.md. project_arg 없으면 HARNESS_HOME 기준."""
-    if project_arg:
-        return Path(project_arg).resolve() / "docs" / "worklog.md"
-    return HARNESS_HOME / "backend" / "docs" / "worklog.md"
+    """worklog.md 경로 해석. 기본은 docs/worklog.md 이되, 프로젝트 루트에 이미
+    worklog.md 가 있으면 그쪽을 우선한다 (issue #3 — split-brain 방지).
+
+    도구는 docs/ 에 append 하는데 사람/메모리는 루트 worklog.md 를 진실의 원천으로
+    보던 불일치를 없앤다. 기존 루트 히스토리를 가진 프로젝트는 계속 루트에 쌓이고,
+    새 프로젝트는 docs/ 를 쓴다 — 프로젝트당 한 파일로 수렴.
+    """
+    base = Path(project_arg).resolve() if project_arg else HARNESS_HOME / "backend"
+    root_worklog = base / "worklog.md"
+    if root_worklog.exists():
+        return root_worklog
+    return base / "docs" / "worklog.md"
 
 
 def append_entry(worklog_path: Path, category: str, message: str) -> None:

@@ -29,6 +29,7 @@ from src.orchestrator.plan_manager import (
     ScaleAxes,
     SkeletonSpec,
 )
+from src.orchestrator.skeleton_hash import check_skeleton_hash, compute_skeleton_hash
 
 # ha-plan/run.py 절대 경로
 _RUN_PY = Path.home() / ".claude" / "skills" / "ha-plan" / "run.py"
@@ -130,6 +131,7 @@ def _run_commit(
     *,
     allow_mismatch: bool = False,
     allow_format_drift: bool = False,
+    replan: bool = False,
 ) -> tuple[int, dict | None, str]:
     """cmd_commit 실행. (returncode, parsed_json_or_None, stderr) 반환."""
     cmd = [
@@ -143,6 +145,8 @@ def _run_commit(
         cmd.append("--allow-agent-mismatch")
     if allow_format_drift:
         cmd.append("--allow-format-drift")
+    if replan:
+        cmd.append("--replan")
     result = subprocess.run(
         cmd,
         capture_output=True,
@@ -617,4 +621,78 @@ def test_commit_passes_on_compliant_tasks_md(tmp_path: Path) -> None:
     assert out is not None, "stdout JSON 없음"
     assert out.get("schema_violations") == [], (
         f"정상 tasks.md 에서 schema_violations 비어있지 않음: {out.get('schema_violations')}"
+    )
+
+
+# ── Issue #1: commit 이 §태스크 분해 sync 후 skeleton_hash 를 refresh ────────
+
+
+def test_commit_refreshes_skeleton_hash_after_tasks_sync(tmp_path: Path) -> None:
+    """commit 이 §태스크 분해 sync 후 plan.skeleton_hash / section_hashes 를 갱신.
+
+    갱신 안 하면 다음 ha-redesign/ha-build 의 check_skeleton_hash 가 ha-design 직후
+    baseline(= sync 전)과 비교해 거짓 '외부 수정' 경고를 띄운다 (issue #1 FP).
+    """
+    plan = _make_plan(profiles=[ProfileRef(id="react-native-expo", path=".")])
+    plan_path = _write_plan(tmp_path, plan)
+    skel_path = _write_skeleton(tmp_path)
+
+    # ha-design 직후 baseline 시뮬레이션: sync 전 skeleton 의 hash 를 plan 에 기록.
+    plan.skeleton_hash = compute_skeleton_hash(skel_path)
+    PlanManager().save(plan, plan_path)
+    assert check_skeleton_hash(plan.skeleton_hash, skel_path).is_match, (
+        "사전 조건: commit 전 baseline 은 일치해야 함"
+    )
+
+    tasks_content = _make_tasks_content([("T-001", "mobile_coder_rn")])
+    returncode, out, stderr = _run_commit(tmp_path, tasks_content)
+
+    assert returncode == 0, f"commit 실패: {stderr!r}"
+    assert out is not None and out.get("skeleton_synced") is True, (
+        f"§태스크 분해 sync 가 일어나야 테스트가 유효. out={out}"
+    )
+
+    # commit 후: 재로드한 baseline 이 sync 된 skeleton 과 여전히 일치해야 한다.
+    reloaded = PlanManager().load(plan_path)
+    result = check_skeleton_hash(reloaded.skeleton_hash, skel_path)
+    assert result.is_match, (
+        "commit 이 sync 후 skeleton_hash 를 갱신하지 않음 — "
+        "다음 ha-redesign 이 거짓 외부수정 경고를 띄운다 (issue #1)"
+    )
+    assert reloaded.section_hashes, "section_hashes 도 함께 갱신되어야 함"
+
+
+# ── Issue #2: --replan 으로 planned 상태에서 재실행 허용 ─────────────────────
+
+
+def test_commit_blocked_in_planned_state_without_replan(tmp_path: Path) -> None:
+    """planned 상태에서 --replan 없이 commit → assert_state 차단 (exit 2)."""
+    plan = _make_plan(profiles=[ProfileRef(id="react-native-expo", path=".")])
+    plan = PlanManager().transition(plan, "planned", completed_step="ha-plan")
+    _write_plan(tmp_path, plan)
+    _write_skeleton(tmp_path)
+
+    tasks_content = _make_tasks_content([("T-001", "mobile_coder_rn")])
+    returncode, _out, stderr = _run_commit(tmp_path, tasks_content)
+
+    assert returncode == 2, (
+        f"planned 상태 commit 이 차단되지 않음 (재발 #2). returncode={returncode}\nstderr={stderr!r}"
+    )
+
+
+def test_commit_allowed_in_planned_state_with_replan(tmp_path: Path) -> None:
+    """planned 상태 + --replan → 재실행 허용 (exit 0, planned 유지)."""
+    plan = _make_plan(profiles=[ProfileRef(id="react-native-expo", path=".")])
+    plan = PlanManager().transition(plan, "planned", completed_step="ha-plan")
+    _write_plan(tmp_path, plan)
+    _write_skeleton(tmp_path)
+
+    tasks_content = _make_tasks_content([("T-001", "mobile_coder_rn")])
+    returncode, out, stderr = _run_commit(tmp_path, tasks_content, replan=True)
+
+    assert returncode == 0, (
+        f"--replan 인데 planned 상태에서 차단됨 (issue #2). returncode={returncode}\nstderr={stderr!r}"
+    )
+    assert out is not None and out.get("transitioned_to") == "planned", (
+        f"재-plan 후에도 planned 상태여야 함. out={out}"
     )

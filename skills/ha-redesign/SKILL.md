@@ -247,6 +247,21 @@ run.py 가 다시 한 번 검증:
      → 구현자가 anchor 없이 작업 → spec drift 위험.
    - finding 은 **블로킹 안 함** (advisory). 하지만 부모/사용자가 보고 처리할 책임.
 
+### 8. (선택) 전체 태스크 재분해 — `/ha-plan --replan`
+
+위 6단계의 re-derivation 은 affected 태스크만 **surgical Edit** 한다. 결정 변경의 여파가
+태스크 구조 전반(Phase 재배치, 의존성 그래프 재구성)에 미친다면, applied 후 태스크를
+**통째로 다시 분해**하는 게 낫다:
+
+```bash
+python ~/.claude/skills/ha-plan/run.py prepare --replan
+python ~/.claude/skills/ha-plan/run.py commit --replan --tasks-content "..."
+```
+
+`--replan` 은 ha-redesign 이 유지한 `planned` 상태에서 ha-plan 재실행을 허용한다 (issue #2).
+**주의**: tasks.md 를 덮어쓰므로 보존할 done/needs_rebuild 상태를 tasks-content 에 반영할 것.
+소규모 변경이면 6단계 surgical Edit 로 충분 — `--replan` 은 대규모 재구성용.
+
 ## 작업 일지 자동 기록 (worklog)
 
 run.py 가 applied commit 시 박는 메타 1줄 (`decision=..., sections=...`) 과 **별개로**, 이

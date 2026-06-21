@@ -107,6 +107,7 @@ lessons_applied:
   - LESSON-018   # 상수 정의 범위 vs 실제 사용 범위 불일치 (dead 상수)
   - LESSON-019   # 외부 명령 stderr → 사용자 친화 메시지 번역
   - LESSON-020   # 진행 표시 [N/M] 실제 작동 — 껍데기 금지
+  - LESSON-033   # Windows cp949 콘솔 — 기본 출력 ASCII-safe (또는 진입점 UTF-8 강제)
 ---
 
 # Python CLI Tool Profile
@@ -118,6 +119,7 @@ lessons_applied:
 - **`print()` 금지** — `click.echo()` 또는 rich 사용
 - **`sys.exit()` 금지** — `click.ClickException` 또는 `click.Abort` 사용
 - **에러는 stderr로, 결과는 stdout으로** — 파이프 호환성
+- **콘솔 출력은 인코딩-안전 (LESSON-033)** — 한국어 Windows 기본 콘솔(cp949)은 em-dash(—)·박스문자(│ └)·✓ 등 non-cp949 문자 출력 시 `UnicodeEncodeError` 로 크래시. **기본 권장: 기본 출력에서 그런 장식 문자를 ASCII(`-`, `|`, `[OK]`)로 대체** — 모든 콘솔에서 안전. (대안: CLI 진입점에서 `sys.stdout/stderr.reconfigure(encoding="utf-8", errors="replace")` 강제 — 단 cp949 터미널에선 일부 글자가 깨질 수 있음.) typer `CliRunner` 테스트는 utf-8 버퍼라 이 크래시를 못 잡으므로, `toolchain.smoke` 에 실제 invoke (`python -m <pkg> --help` + 대표 출력 경로) 설정 → `/ha-verify` 가 자동 기동 스모크로 검증.
 
 ## components.interface.cli
 
@@ -203,6 +205,7 @@ lessons_applied:
 - `sys.exit(n)` — ClickException(...).exit_code 사용
 - 전역 상태 (module-level mutable) — context에 담아 전달
 - core/에서 파일/네트워크 I/O
+- 기본 CLI 출력에 cp949 밖 문자 (em-dash —, 박스 │ └, ✓) — ASCII (`-`, `|`, `[OK]`) 로 대체 (LESSON-033)
 
 ## 검증 명령
 

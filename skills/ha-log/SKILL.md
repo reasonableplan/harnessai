@@ -27,7 +27,7 @@ python ~/.claude/skills/ha-log/run.py append \
 `--category` 기본: `discussion` (논의 / 합의).
 
 run.py 가:
-- `backend/docs/worklog.md` 찾음 (없으면 생성)
+- worklog.md 경로 해석: 프로젝트 루트에 `worklog.md` 가 이미 있으면 그쪽, 없으면 `docs/worklog.md` (기본). 프로젝트당 한 파일로 수렴 — 도구/사람 split-brain 방지 (issue #3)
 - 오늘 (UTC) 날짜 섹션 없으면 생성 (`## YYYY-MM-DD`)
 - `### 논의 / 합의` (discussion) / `### 변경` (change) / `### 다음` (next) sub-section 에 bullet 으로 박음
 - 항상 *최신이 위* - 새 날짜는 파일 *최상단* (Title 직후) 삽입

@@ -90,3 +90,25 @@ def test_append_invalid_category_raises(ha_log, tmp_path: Path) -> None:
     worklog = tmp_path / "worklog.md"
     with pytest.raises(ValueError, match="category must be one of"):
         ha_log.append_entry(worklog, "invalid_cat", "메시지")
+
+
+# ── Issue #3: worklog 경로 일원화 (루트 우선 감지) ──────────────────────────
+
+
+def test_resolve_path_defaults_to_docs_subdir(ha_log, tmp_path: Path) -> None:
+    """루트 worklog.md 가 없으면 docs/worklog.md 로 떨어진다 (기본)."""
+    resolved = ha_log._resolve_worklog_path(str(tmp_path))
+    assert resolved == tmp_path / "docs" / "worklog.md", (
+        f"기본 경로가 docs/worklog.md 가 아님: {resolved}"
+    )
+
+
+def test_resolve_path_prefers_existing_root_worklog(ha_log, tmp_path: Path) -> None:
+    """프로젝트 루트에 worklog.md 가 이미 있으면 그쪽을 우선 (split-brain 방지, #3)."""
+    root_worklog = tmp_path / "worklog.md"
+    root_worklog.write_text("# 작업 일지\n", encoding="utf-8")
+
+    resolved = ha_log._resolve_worklog_path(str(tmp_path))
+    assert resolved == root_worklog, (
+        f"기존 루트 worklog.md 를 우선하지 않음 (도구/사람 split-brain): {resolved}"
+    )

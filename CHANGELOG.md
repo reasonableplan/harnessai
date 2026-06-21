@@ -12,6 +12,16 @@ code-mate dogfood 2차 수확 — 런타임 검증 사다리 **계층2**(떠도 
 
 - **`/ha-smoke` 계층2 — 선언 엔드포인트 타격** — url 모드 기동 PASS 후 `interface.http` 의 선언 GET 경로를 실제 타격해 "프로세스는 떠도 라우트가 깨진" 산출물(404 미등록 / 5xx 핸들러 크래시)을 잡는다. `2xx/3xx/401/403/422` = OK (라우트 존재 + 핸들러 도달). path 파라미터(`{id}`/`:id`)는 실제 값이 없어 v1 skip. `run_probe(..., endpoints=[...])` + `_check_endpoints` + CLI `--endpoint`(반복). `consistency_checker._ENDPOINT_TOKEN_RE` 재활용. 회귀 +5 (probe 계약)
 - LESSON-033 (Windows cp949 콘솔 — CLI 진입점 UTF-8 강제 / 기본 출력 ASCII-safe), LESSON-034 (파생 경로·캐시키 단일 함수 = single source of truth), LESSON-035 (LLM 출력 환각 비파괴 annotate) 추출 (code-mate dogfood)
+- **#2 `/ha-plan --replan`** — `/ha-redesign`(cross-cutting 스킬이라 `planned` 유지) 후 태스크 전체를 재분해할 공식 경로 신설. prepare/commit 이 `planned` 상태 재실행 허용 (기본은 `designed` 만). `transition` 의 same-state 멱등성 활용
+- **#6 `/ha-verify` 런타임 인코딩 스모크** — test/lint/type green ≠ 앱 기동. `cli_entrypoint` 프로파일의 `toolchain.smoke` 를 verify 단계에서 실제 subprocess invoke (자식 인코딩 미강제 = cp949 재현)해 import/기동/콘솔 인코딩 크래시(em-dash `UnicodeEncodeError` 등)를 잡는다 — CliRunner(utf-8 버퍼)가 못 잡는 클래스. smoke 미설정 시 WARN. LESSON-033 을 python-cli 프로파일에 wire-in (기본 출력 ASCII-safe)
+- **#7 `/ha-build` 부분 완료 복구** — prepare 가 대기 태스크를 `in-progress` 로 착수 마킹 + 재진입(이미 in-progress) 감지 → spec 의 "생성/수정 파일" 존재 보고(`reentry`/`declared_files`/`existing_files`). 서브에이전트 중단 시 흔적 + "이어서/처음부터" 판단 근거
+- 회귀 테스트 누적 +13 (#1·#2·#3 5 + #5 1 + #6 4 + #7 3) → 전체 **1109 pass**
+
+### Fixed
+
+- **#1 · #5 ha-plan 이 §태스크 분해 sync 후 skeleton hash baseline 미갱신** — `ha-plan commit` 이 §태스크 분해를 skeleton.md 에 동기화하면서 `skeleton_hash`/`section_hashes` 를 갱신하지 않아, 후속 `/ha-redesign` 이 거짓 "외부 수정" 경고(FP) + `/ha-build` prepare 가 매 빌드 BLOCK (정상 ha-plan→ha-build 경로에서 `--accept-skeleton-drift` 상시 필요). sync 시 baseline refresh (`/ha-redesign` apply 와 동일 패턴). drift 게이트 주석 정정 (ha-plan 도 hash 갱신자임을 명시)
+- **#3 worklog split-brain** — `ha-log` 가 항상 `docs/worklog.md` 에 쓰는데 사람/메모리는 루트 `worklog.md` 를 봐 히스토리 분열. `_resolve_worklog_path` 가 루트 `worklog.md` 존재 시 우선, 없으면 `docs/worklog.md` (프로젝트당 한 파일로 수렴, backward-compatible)
+- **#4 SKILL.md 하드코딩 섹션 번호** — `§19 구현 노트`/`§16 태스크` 가 작은 skeleton(§12 까지)과 불일치(doc drift). 이름 기반 참조(「구현 노트」 섹션)로 교체
 
 ---
 

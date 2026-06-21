@@ -47,6 +47,20 @@ profile path `backend/` 로 오매칭). 그대로 돌리면 'no tests ran' 가�
   또는 경고의 힌트 (상위 경로) 가 맞으면 그 cwd 에서 실행.
 - 가짜 FAIL 이 이미 기록됐다면: 환경 문제이므로 후속 record 는 `--no-rework` 로.
 
+### 1.8. 런타임 기동 스모크 게이트 (issue #6)
+
+`prepare` 출력의 `smoke_failures` (list) 와 각 profile 의 `smoke_check` 를 확인:
+
+- **`smoke_failures` 가 비어있지 않으면** — test/lint/type 이 통과해도 앱이 실제로 안 뜨거나
+  출력 시 크래시한 것 (예: 한국어 Windows cp949 콘솔의 em-dash `UnicodeEncodeError`).
+  CliRunner(utf-8 버퍼) 테스트는 이걸 못 잡으므로 **이 스모크 실패를 verify 실패로 간주**:
+  `record --passed false --rework-tasks <entrypoint 태스크>` 로 기록하고 `/ha-build` 복귀.
+  근본 수정은 LESSON-033 (기본 출력 ASCII-safe 또는 진입점 UTF-8 강제).
+- **cli_entrypoint 인데 `smoke_check.ran=false` (toolchain.smoke 미설정) WARN** — 런타임 게이트가
+  비어 있다. plan/profile 의 `toolchain.smoke` 에 실제 invoke (`python -m <pkg> --help` +
+  대표 출력 경로) 를 설정하거나, 최소한 `/ha-smoke` 로 기동을 따로 검증.
+- 서버/UI 프로파일(non-cli)은 여기서 안 돌린다 — `/ha-smoke` 의 url 모드가 담당.
+
 ### 2. 명령 실행 (Bash)
 프로파일 순서대로:
 ```bash
