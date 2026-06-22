@@ -68,11 +68,17 @@
 | 런타임 기동 probe (exit 0 / URL readiness) — `verify_history` step=`smoke` 기록 | advisory(상태 전이 없음) | — |
 | 계층2 — 기동 후 선언 GET 엔드포인트 타격 (404/5xx=FAIL, 떠도 라우트 깨짐) | advisory | — |
 
+### /ha-converge
+| 게이트 | severity | 우회 |
+|---|---|---|
+| built/verified/reviewed 상태에서만 실행 | BLOCK(exit 2) | — |
+| 선언-미구현 엔드포인트 → tasks.md `대기` 태스크 회수 (멱등) | advisory(actionable, 상태 전이 없음) | prepare 로 의도적 skipped 걸러냄 |
+
 ### /ha-ship
 | 게이트 | severity | 우회 |
 |---|---|---|
 | reviewed 상태에서만 마킹 | BLOCK | — |
 
 ## 집계
-- BLOCK 계열: **16** · advisory/HITL 계열: **13+** (2026-06-22: ha-verify 런타임 인코딩 스모크 + ha-smoke 계층2 추가)
+- BLOCK 계열: **17** · advisory/HITL 계열: **14+** (2026-06-22: ha-verify 런타임 인코딩 스모크 + ha-smoke 계층2 + ha-converge 회수 게이트 추가)
 - 다이어그램/README 의 "8개 게이트" 는 이 표 기준으로 갱신할 것.

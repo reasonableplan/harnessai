@@ -123,10 +123,19 @@ findings 를 받아 추가 판단. 단 1차 방어선은 코드.
 
 ### A4. `ha-converge` — 코드↔스펙 미구현 회수 (흡수: `/converge`)
 
+> **상태: ✅ v1 구현 (2026-06-22)** — `backend/src/orchestrator/converge.py`(순수 로직:
+> `find_missing_endpoints`/`allocate_task_ids`/`filter_uncovered`/`append_tasks`) + 신규
+> `skills/ha-converge/` 스킬(prepare 보고 / commit 회수, 상태 전이 없음). skeleton
+> `interface.http` 선언 ↔ 소스 대조 → 미구현 엔드포인트를 tasks.md 에 신규 `대기` 태스크로
+> **멱등 append**(identifier 중복 가드). 상태 가드 built/verified/reviewed. ha-review 역방향
+> contract 와 동일 탐지 규칙(정적 prefix). 테스트 +21(모듈 17 + 스킬 4). 미러 동기.
+> 잔여: 선언 파일시스템 경로(컴포넌트) 회수는 `harness integrity` 에 위임(v1 범위 밖).
+
 **현재**: `ha-review` 의 역방향 contract(선언-미구현 엔드포인트)가 **advisory 에 그침**.
 **흡수**: 그 advisory 를 **actionable** 하게.
 - skeleton 컴포넌트(필수) ↔ 실제 파일/엔드포인트 대조 → 미구현 컴포넌트를 `tasks.md` 에
-  `needs_build` 신규 태스크로 append.
+  신규 `대기` 태스크로 append. (설계 초안의 `needs_build` 대신 기존 상태 어휘 `대기` 사용 —
+  새 상태 도입 X. 실제 빌드는 `/ha-build` 가 담당, reviewed 면 building 회귀.)
 - 위치: ✅ **신규 `skills/ha-converge/` 스킬** (Q2 확정 — 검증과 회수 책임 분리).
 - #7(부분복구)·역방향 contract 와 결이 같아 로직 일부 재사용.
 
@@ -280,7 +289,7 @@ Spec Kit 의 optional/mandatory 훅 모델 차용. 우선순위 낮음(1인 프�
 | **P2** ✅ | A2 analyze(offline/NFR critical 검사) + ha-redesign nfr_conflicts 프롬프트 | cross-artifact 게이트 | 완료 2026-06-22 |
 | **P3** | A3 clarify 확장 (A1 findings → 질문) | coverage HITL | P1 |
 | **P4** ✅ | Track B — agent_scaffold + `harness scaffold` CLI (render+context, claude/gemini/copilot) | 멀티에이전트 파일 생성 | 완료 2026-06-22 (CLI 배선 포함) |
-| **P5** | A4 ha-converge | 코드↔스펙 회수 | §9-Q2 |
+| **P5** ✅ | A4 ha-converge (선언-미구현 엔드포인트 → tasks 회수) | 코드↔스펙 회수 | 완료 2026-06-22 |
 | **P6** | Track B 전 스킬 확장 + Track C 훅 | 완성 | P4 |
 
 P1 과 P4 는 서로 독립 → 병렬 가능.
