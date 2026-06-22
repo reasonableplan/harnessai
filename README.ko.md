@@ -29,7 +29,7 @@ for i in range(max_retries):              # 그런데 2개만 사용
 
 상수는 4개를 선언했는데 루프는 2개만 읽는다. 어떤 테스트도 못 잡는 dead code — 프로그램이 정상 동작하기 때문. 실제 사례 — dogfooding 로그의 [LESSON-018](docs/benchmarks/dogfooding-catches.md).
 
-`/ha-review` 의 `ai-slop` 훅(10개 게이트 중 8번째) 이 잡아낸다:
+`/ha-review` 의 `ai-slop` 훅(보안훅 7 + ai-slop = 8번째 게이트) 이 잡아낸다:
 
 ```json
 {
@@ -209,8 +209,8 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 | | HarnessAI | Cursor / Copilot | Claude Code (plain) | aider |
 |---|---|---|---|---|
 | 범위 | 프로젝트 전체 | 파일/함수 단위 | 대화 기반 | diff 기반 |
-| 규칙 강제 | **프로파일 + 게이트 10개** | .cursorrules (선언만) | CLAUDE.md (선언만) | 커밋 스타일만 |
-| 실수 축적 | **LESSON 28** (자동 감지 + 리뷰어 참조) | ❌ | ❌ | ❌ |
+| 규칙 강제 | **프로파일 + 게이트 (BLOCK 16 + advisory 13)** | .cursorrules (선언만) | CLAUDE.md (선언만) | 커밋 스타일만 |
+| 실수 축적 | **LESSON 36** (자동 감지 + 리뷰어 참조) | ❌ | ❌ | ❌ |
 | 스택 자동감지 | **12개 기본 + 확장 가능 (web · desktop · CLI · lib · 4 mobile)** | ❌ | ❌ | ❌ |
 | 병렬 구현 | **/ha-build --task T-1,T-2** | ❌ | ❌ | ❌ |
 | 설계-구현 계약 | **skeleton.md + integrity 게이트** | ❌ | ❌ | ❌ |
@@ -241,7 +241,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 
 ---
 
-## 🧪 품질 게이트 (10개)
+## 🧪 품질 게이트 (BLOCK 16 + advisory 13)
 
 | 게이트 | 위치 | 역할 |
 |---|---|---|
@@ -333,7 +333,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 - **패키지**: uv
 - **에이전트 실행**: Claude CLI subprocess (Gemini/로컬 LLM 교체 가능)
 - **상태**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (DB 없음)
-- **테스트**: pytest **1038개** backend + **12개** install 스냅샷 (회귀 0건)
+- **테스트**: pytest **1113개** backend + **12개** install 스냅샷 (회귀 0건)
 - **타입 체크**: pyright **0 errors** (`src/` 전수)
 - **게이트 커버리지 (자기 검증)**: 10개 게이트 중 정규식/AST 기반 7개를 35 fixtures (positive/negative) 로 측정 → **precision 100% / recall 100% / accuracy 100%**. 나머지 3개 — `auth-guard` 는 test_security_hooks 단위테스트, `test-distribution`·`skeleton-integrity` 는 filesystem fixture 로 별도 검증. 상세 한계/방법: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **성능** (30 iter, LLM 제외): profile 감지 **~5 ms**, skeleton 조립 **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. [docs/benchmarks/](docs/benchmarks/)
@@ -351,10 +351,10 @@ install.sh/ps1        설치 + manifest           ─┘
 backend/
   agents/<role>/CLAUDE.md     11개 에이전트 시스템 프롬프트 (편집 가능)
   agents.yaml                 provider/model/timeout
-  docs/shared-lessons.md      28 LESSONs
+  docs/shared-lessons.md      36 LESSONs
   src/orchestrator/           profile_loader / skeleton_assembler /
                               plan_manager / security_hooks / runner
-  tests/                      1038 pytest + skills/ 회귀 방지
+  tests/                      1113 pytest + skills/ 회귀 방지
 
 docs/
   ARCHITECTURE.md             시스템 구조 30분 이해
@@ -368,7 +368,7 @@ docs/
 ```bash
 cd backend
 uv sync
-uv run pytest tests/ --rootdir=.      # 1038 tests
+uv run pytest tests/ --rootdir=.      # 1113 tests
 uv run ruff check src/                 # 0 errors
 uv run pyright src/                    # 0 errors (타입 체크)
 uv run python -m src.main              # dashboard 서버 (포트 3002)

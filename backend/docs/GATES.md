@@ -41,6 +41,7 @@
 | 가짜 FAIL 가드 (`test_dir_warning` — cwd 에 테스트 디렉토리 부재) | advisory(실행 전 경고) | profiles[].path 수정 |
 | 동일 T-ID 3회째 FAIL 루프 가드 | BLOCK | `--force-continue` |
 | skeleton hash 비교 | advisory | — |
+| 런타임 인코딩 스모크 (cli_entrypoint `toolchain.smoke` 실제 invoke — cp949 등) | advisory(WARN) | smoke 미설정 시 권고 |
 
 ### /ha-review
 | 게이트 | severity | 우회 |
@@ -65,6 +66,7 @@
 |---|---|---|
 | verified/reviewed 상태에서만 실행 | BLOCK(exit 2) | — |
 | 런타임 기동 probe (exit 0 / URL readiness) — `verify_history` step=`smoke` 기록 | advisory(상태 전이 없음) | — |
+| 계층2 — 기동 후 선언 GET 엔드포인트 타격 (404/5xx=FAIL, 떠도 라우트 깨짐) | advisory | — |
 
 ### /ha-ship
 | 게이트 | severity | 우회 |
@@ -72,5 +74,5 @@
 | reviewed 상태에서만 마킹 | BLOCK | — |
 
 ## 집계
-- BLOCK 계열: **16** · advisory/HITL 계열: **11+**
+- BLOCK 계열: **16** · advisory/HITL 계열: **13+** (2026-06-22: ha-verify 런타임 인코딩 스모크 + ha-smoke 계층2 추가)
 - 다이어그램/README 의 "8개 게이트" 는 이 표 기준으로 갱신할 것.

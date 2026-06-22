@@ -2,7 +2,7 @@
 
 🌐 **English** · [한국어](README.ko.md)
 
-![tests](https://img.shields.io/badge/tests-1038%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-1113%20passing-brightgreen)
 ![pyright](https://img.shields.io/badge/pyright-0%20errors-brightgreen)
 ![ruff](https://img.shields.io/badge/ruff-clean-brightgreen)
 ![gate coverage](https://img.shields.io/badge/gate%20coverage-100%25-brightgreen)
@@ -130,7 +130,7 @@ In a fresh Claude Code session:
   /ha-verify ─────▶ [1] harness integrity (skeleton ↔ real FS)
                     [2] profile toolchain (pytest / ruff / pyright)
                                           ▼
-  /ha-review ─────▶ Security hooks × 7 + LESSONs × 31 + ai-slop × 7 + test distribution
+  /ha-review ─────▶ Security hooks × 7 + LESSONs × 36 + ai-slop × 7 + test distribution
                                           ▼
   /ha-smoke  ─────▶ runtime launch probe (exit 0 / URL readiness) — advisory
                                           ▼
@@ -217,8 +217,8 @@ LESSONs are enforced in three ways: text reference (Reviewer agent reads them), 
 | | HarnessAI | Cursor / Copilot | Claude Code (plain) | aider |
 |---|---|---|---|---|
 | Scope | Whole project | File / function | Conversation-based | Diff-based |
-| Rule enforcement | **Profiles + 10 gates** | `.cursorrules` (advisory) | `CLAUDE.md` (advisory) | Commit style only |
-| Mistake accumulation | **28 LESSONs** (auto-detect + reviewer context) | ❌ | ❌ | ❌ |
+| Rule enforcement | **Profiles + gates (16 BLOCK + 13 advisory)** | `.cursorrules` (advisory) | `CLAUDE.md` (advisory) | Commit style only |
+| Mistake accumulation | **36 LESSONs** (auto-detect + reviewer context) | ❌ | ❌ | ❌ |
 | Stack auto-detection | **12 built-in + extensible (web · desktop · CLI · lib · 4 mobile)** | ❌ | ❌ | ❌ |
 | Parallel implementation | **`/ha-build --task T-1,T-2`** | ❌ | ❌ | ❌ |
 | Design-implementation contract | **`skeleton.md` + integrity gate** | ❌ | ❌ | ❌ |
@@ -366,7 +366,7 @@ install.sh/ps1        Install + manifest               ─┘
 backend/
   agents/<role>/CLAUDE.md     11 agent system prompts (editable)
   agents.yaml                 provider / model / timeout
-  docs/shared-lessons.md      28 LESSONs
+  docs/shared-lessons.md      36 LESSONs
   src/orchestrator/           profile_loader / skeleton_assembler /
                               plan_manager / security_hooks / runner
   tests/                      948 pytest + skills/ regression guards
