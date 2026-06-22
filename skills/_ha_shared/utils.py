@@ -48,6 +48,7 @@ if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
 from src.orchestrator.plan_manager import (  # noqa: E402
+    STATE_ORDER,
     HarnessPlan,
     PlanManager,
     PlanNotFoundError,
@@ -233,6 +234,54 @@ def assert_state(plan: HarnessPlan, allowed: list[str], skill_name: str) -> None
             file=sys.stderr,
         )
         sys.exit(2)
+
+
+def reenter_or_assert(
+    plan: HarnessPlan,
+    plan_path: Path,
+    *,
+    prerequisite_state: str,
+    working_state: str,
+    skill_name: str,
+) -> bool:
+    """phase 스킬의 상태 게이트 + 1급 반복(iteration/재진입).
+
+    forward-only 상태머신이 "리뷰/검증 이후 이전 phase 재실행"(re-plan / 추가 빌드 /
+    재설계)을 막아 같은 클래스의 버그(#2/#9/#12)를 반복 생산하던 것을, 재진입을
+    명시 허용해 해소한다. #2(--replan)·#9(_enter_build_state) 의 ad-hoc 수정을 일원화.
+
+    상태별 동작 (STATE_ORDER 기준):
+    - current < prerequisite_state  → 차단 (exit 2). 선행 phase 미완료.
+    - prerequisite_state <= current <= working_state → 그대로 진행 (정상 forward).
+    - current > working_state  → 재진입: working_state 로 regress(+save) 하여 새 작업이
+      downstream 게이트(verify/review)를 다시 거치게 한다. info 로 표면화.
+
+    Returns: regress 가 일어났으면 True (재진입), 아니면 False.
+    """
+    cur = plan.pipeline.current_step
+    ci = STATE_ORDER.index(cur)
+    pi = STATE_ORDER.index(prerequisite_state)
+    wi = STATE_ORDER.index(working_state)
+
+    if ci < pi:
+        print(
+            f"[FAIL] {skill_name} 사전 조건 위반.\n"
+            f"       현재 상태: {cur}\n"
+            f"       필요: {prerequisite_state} 이상.\n"
+            f"       선행 /ha-* 를 먼저 실행하세요.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    if ci > wi:
+        regress(plan, working_state)
+        save_plan(plan, plan_path)
+        info(
+            f"[INFO] {cur} -> {working_state} 회귀 ({skill_name} 재진입). "
+            "이후 단계(verify/review 등)를 다시 거쳐야 합니다."
+        )
+        return True
+    return False
 
 
 MOBILE_PROFILE_IDS: frozenset[str] = frozenset(

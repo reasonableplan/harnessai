@@ -20,7 +20,7 @@ from utils import (  # noqa: E402, I001
     get_active_profiles,
     info,
     load_plan,
-    regress,
+    reenter_or_assert,
     resolve_guideline_paths,
     save_plan,
     transition,
@@ -152,23 +152,20 @@ def _mark_in_progress(tasks_text: str, tid: str) -> str:
     )
 
 
-# 빌드 진입 허용 상태. planned/building 은 정상 흐름, built/verified/reviewed 는
-# Phase 추가 빌드(iteration) — 그 경우 building 으로 회귀시켜 새 코드가 verify/review
-# 게이트를 다시 거치게 한다 (issue #9 — forward-only 가 reviewed 에 가둠).
-_BUILD_ALLOWED_STATES = ["planned", "building", "built", "verified", "reviewed"]
-
-
 def _enter_build_state(plan, plan_path) -> None:
-    """빌드 사전 조건(상태) 확인 + Phase 추가 빌드 시 building 회귀."""
-    assert_state(plan, _BUILD_ALLOWED_STATES, "/ha-build")
-    if plan.pipeline.current_step in ("built", "verified", "reviewed"):
-        prev = plan.pipeline.current_step
-        regress(plan, "building")
-        save_plan(plan, plan_path)
-        info(
-            f"[INFO] {prev} -> building 회귀 (Phase 추가 빌드). "
-            "이후 /ha-verify, /ha-review 재실행 필요."
-        )
+    """빌드 사전 조건(상태) 확인 + Phase 추가 빌드 시 building 회귀.
+
+    공유 유틸 reenter_or_assert 로 일원화 (issue #9 + 축A 패턴1). planned 이상이면
+    진입, built/verified/reviewed 등 이후 상태는 building 으로 회귀시켜 새 코드가
+    verify/review 게이트를 다시 거치게 한다.
+    """
+    reenter_or_assert(
+        plan,
+        plan_path,
+        prerequisite_state="planned",
+        working_state="building",
+        skill_name="/ha-build",
+    )
 
 
 def cmd_prepare(args: argparse.Namespace) -> int:

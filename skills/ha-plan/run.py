@@ -16,6 +16,7 @@ from utils import (  # noqa: E402
     get_active_profiles,
     info,
     load_plan,
+    reenter_or_assert,
     resolve_guideline_paths,
     save_plan,
     transition,
@@ -118,11 +119,16 @@ def _validate_agent_mappings(
 
 def cmd_prepare(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
-    # --replan: ha-redesign 은 cross-cutting 스킬이라 current_step 을 유지(planned)한다.
-    # 그래서 redesign 으로 skeleton 이 바뀐 뒤 tasks 를 재생성할 공식 경로가 없었다
-    # (issue #2). --replan 은 planned 상태에서의 재실행을 허용한다.
-    allowed = ["designed", "planned"] if args.replan else ["designed"]
-    assert_state(plan, allowed, "/ha-plan")
+    # --replan: ha-redesign 은 cross-cutting 스킬이라 current_step 을 유지한다. 그래서
+    # redesign 후 tasks 재생성 경로가 없던 #2 를, reenter_or_assert 로 일원화(축A 패턴1):
+    # designed 이상이면 진입, planned 초과 상태는 planned 로 회귀해 재-plan.
+    if args.replan:
+        reenter_or_assert(
+            plan, plan_path,
+            prerequisite_state="designed", working_state="planned", skill_name="/ha-plan",
+        )
+    else:
+        assert_state(plan, ["designed"], "/ha-plan")
 
     skel_path = plan_path.parent / "skeleton.md"
     if not skel_path.exists():
@@ -218,9 +224,14 @@ def cmd_prepare(args: argparse.Namespace) -> int:
 
 def cmd_commit(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
-    # --replan: planned 상태에서의 재실행 허용 (issue #2 — redesign 후 재-plan 경로).
-    allowed = ["designed", "planned"] if args.replan else ["designed"]
-    assert_state(plan, allowed, "/ha-plan")
+    # --replan: redesign 후 재-plan 경로 (issue #2). reenter_or_assert 로 일원화(축A 패턴1).
+    if args.replan:
+        reenter_or_assert(
+            plan, plan_path,
+            prerequisite_state="designed", working_state="planned", skill_name="/ha-plan",
+        )
+    else:
+        assert_state(plan, ["designed"], "/ha-plan")
 
     if not args.tasks_content:
         info("[FAIL] --tasks-content 비어 있음")

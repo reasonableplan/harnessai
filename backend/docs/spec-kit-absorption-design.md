@@ -172,6 +172,13 @@ HarnessAI dogfood 반복 버그를 **클래스**로 묶으면, Spec Kit 의 설�
 회피/처리하는 패턴이 보인다. (기술 기능 흡수 A1~A5 와 별개의 **아키텍처 교훈**.)
 
 ### 패턴 1 — 상태머신 경직 (#2·#9·#12, 같은 뿌리 3회 반복) → 아티팩트-선행조건 모델
+
+> **상태: ✅ 바운디드 v1 구현 (2026-06-22)** — 공유 유틸 `utils.reenter_or_assert(prerequisite_state,
+> working_state)`: prerequisite 미만 차단 / working 이하 진행 / working 초과는 working 으로 regress
+> (재진입). #2(`--replan`)·#9(`_enter_build_state`) 두 밴드에이드를 이 하나로 일원화 — 이제 어떤 phase
+> 든 "자기 상태 이상에서 재실행 가능, 이후 상태는 회귀해 downstream 게이트 재통과". 테스트 +6.
+> **풀 마이그레이션(글로벌 current_step 제거)은 보류** — 사용자 결정 = 바운디드. 잔여: ha-verify/
+> ha-review 재진입 적용(미보고 갭, 선택), A5(태스크 분할)를 `[X]` resume 으로.
 HarnessAI 는 forward-only 글로벌 state machine(init→…→shipped, 역행은 `regress()` 만). 이게
 #2(redesign 후 re-plan 막힘)·#9(reviewed 후 추가 빌드 막힘)·#12(태스크 분할 불가)를 **반복
 생산**한다. **Spec Kit 엔 글로벌 `current_step` 게이트가 아예 없다** — 각 명령은 "필요한 선행

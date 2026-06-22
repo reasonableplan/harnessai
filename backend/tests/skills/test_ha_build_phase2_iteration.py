@@ -48,39 +48,27 @@ def _plan(step: str) -> SimpleNamespace:
     )
 
 
-def test_enter_build_regresses_from_reviewed(ha_build, monkeypatch) -> None:
-    """reviewed → building 회귀 + 저장."""
-    plan = _plan("reviewed")
-    saved: dict = {}
-    monkeypatch.setattr(ha_build, "save_plan", lambda p, pp: saved.update(step=p.pipeline.current_step))
+def test_enter_build_delegates_to_reenter_or_assert(ha_build, monkeypatch) -> None:
+    """_enter_build_state 는 공유 유틸 reenter_or_assert 에 올바른 파라미터로 위임한다.
 
-    ha_build._enter_build_state(plan, Path("x"))
+    재진입/회귀/차단의 실제 동작은 test_reenter_or_assert.py 에서 직접 검증.
+    여기서는 ha-build 가 prerequisite=planned, working=building 으로 배선했는지만 본다.
+    """
+    captured: dict = {}
 
-    assert plan.pipeline.current_step == "building", "reviewed 에서 building 회귀 실패 (#9 재발)"
-    assert saved.get("step") == "building", "회귀 후 save_plan 미호출"
+    def _fake(plan, plan_path, *, prerequisite_state, working_state, skill_name):
+        captured.update(
+            prerequisite_state=prerequisite_state,
+            working_state=working_state,
+            skill_name=skill_name,
+        )
+        return False
 
+    monkeypatch.setattr(ha_build, "reenter_or_assert", _fake)
+    ha_build._enter_build_state(_plan("reviewed"), Path("x"))
 
-def test_enter_build_regresses_from_verified(ha_build, monkeypatch) -> None:
-    """verified 도 동일하게 building 회귀."""
-    plan = _plan("verified")
-    monkeypatch.setattr(ha_build, "save_plan", lambda p, pp: None)
-    ha_build._enter_build_state(plan, Path("x"))
-    assert plan.pipeline.current_step == "building"
-
-
-def test_enter_build_noop_from_planned(ha_build, monkeypatch) -> None:
-    """planned 는 정상 빌드 상태 — 회귀/저장 없음."""
-    plan = _plan("planned")
-    called = {"save": False}
-    monkeypatch.setattr(ha_build, "save_plan", lambda p, pp: called.update(save=True))
-    ha_build._enter_build_state(plan, Path("x"))
-    assert plan.pipeline.current_step == "planned"
-    assert called["save"] is False, "planned 에서 불필요한 회귀/저장 발생"
-
-
-def test_enter_build_blocks_from_designed(ha_build) -> None:
-    """designed 는 빌드 불가 상태 → assert_state 가 exit 2."""
-    plan = _plan("designed")
-    with pytest.raises(SystemExit) as exc:
-        ha_build._enter_build_state(plan, Path("x"))
-    assert exc.value.code == 2
+    assert captured == {
+        "prerequisite_state": "planned",
+        "working_state": "building",
+        "skill_name": "/ha-build",
+    }, f"ha-build 의 빌드 상태 배선 오류: {captured}"
