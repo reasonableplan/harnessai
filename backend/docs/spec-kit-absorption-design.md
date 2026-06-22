@@ -45,6 +45,10 @@ Spec Kit의 4종은 전부 "LLM이 마크다운 지시를 따르는" 신뢰 기�
 
 ### A1. `skeleton_checklist.py` — 스켈레톤 품질 게이트 (흡수: `/checklist`, **최우선**)
 
+> **상태: ✅ v1 구현 (2026-06-22)** — clarity(미정량 표현) + edge_case(I/O 경계 실패경로 누락)
+> 2종, advisory(Q3=B). `ha-design commit` 배선(`checklist_findings` 출력 + WARN). 테스트 22.
+> 잔여: consistency(용어 미정의)·acceptance(수용기준)·#11(boundary mock-only)은 v2.
+
 **위치**: `backend/src/orchestrator/skeleton_checklist.py` (형제: `consistency_checker.py`)
 **호출 지점**: `skills/ha-design/run.py::cmd_commit` (commit 직전, placeholder 검사 다음)
 **데이터 모델** (consistency_checker 의 Finding 형태 재사용):
@@ -245,7 +249,7 @@ Spec Kit 의 optional/mandatory 훅 모델 차용. 우선순위 낮음(1인 프�
 
 | Phase | 내용 | 산출 | 의존 |
 |---|---|---|---|
-| **P1** | A1 `skeleton_checklist.py` + ha-design 배선 + 테스트 | 설계품질 게이트 | — |
+| **P1** ✅ | A1 `skeleton_checklist.py` + ha-design 배선 + 테스트 (v1: clarity+edge_case) | 설계품질 게이트 | 완료 2026-06-22 |
 | **P2** | A2 analyze 승격 + constitution 권위 | cross-artifact 게이트 | P1, §9-Q1 |
 | **P3** | A3 clarify 확장 (A1 findings → 질문) | coverage HITL | P1 |
 | **P4** | Track B PoC (ha-verify × Gemini) | 멀티에이전트 검증 | — (독립) |

@@ -212,6 +212,18 @@ def cmd_commit(args: argparse.Namespace) -> int:
         for df in design_findings[:8]:
             info(f"  - [{df['severity']}] {df['pattern']}: {df['target']}")
 
+    # 스켈레톤 품질 게이트 (Spec Kit /checklist 흡수 A1) — advisory. 명료성(미정량
+    # 표현) + 엣지케이스(I/O 경계 실패경로 누락) 를 결정론으로 표면화. 차단 안 함.
+    from src.orchestrator.skeleton_checklist import check_skeleton_quality  # noqa: PLC0415
+    checklist_findings = [
+        {"severity": cf.severity, "category": cf.category, "section_id": cf.section_id, "message": cf.message}
+        for cf in check_skeleton_quality(text)
+    ]
+    if checklist_findings:
+        info(f"[WARN] 스켈레톤 품질 advisory {len(checklist_findings)}건 (검토 권장):")
+        for cf in checklist_findings[:8]:
+            info(f"  - [{cf['category']}] {cf['section_id']}: {cf['message']}")
+
     # LESSON reference 검증
     lessons_path = HARNESS_HOME / "backend" / "docs" / "shared-lessons.md"
     unknown_lesson_refs: list[dict] = []
@@ -332,6 +344,7 @@ def cmd_commit(args: argparse.Namespace) -> int:
         "placeholders_remaining": len(placeholders),
         "unknown_lesson_references": unknown_lesson_refs,
         "design_findings": design_findings,
+        "checklist_findings": checklist_findings,
         "transitioned_to": plan.pipeline.current_step,
         "next": "/ha-plan",
         "frozen_status": plan.frozen_status,
