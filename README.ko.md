@@ -209,8 +209,8 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 | | HarnessAI | Cursor / Copilot | Claude Code (plain) | aider |
 |---|---|---|---|---|
 | 범위 | 프로젝트 전체 | 파일/함수 단위 | 대화 기반 | diff 기반 |
-| 규칙 강제 | **프로파일 + 게이트 (BLOCK 16 + advisory 13)** | .cursorrules (선언만) | CLAUDE.md (선언만) | 커밋 스타일만 |
-| 실수 축적 | **LESSON 36** (자동 감지 + 리뷰어 참조) | ❌ | ❌ | ❌ |
+| 규칙 강제 | **프로파일 + 게이트 (BLOCK 17 + advisory 14)** | .cursorrules (선언만) | CLAUDE.md (선언만) | 커밋 스타일만 |
+| 실수 축적 | **LESSON 37** (자동 감지 + 리뷰어 참조) | ❌ | ❌ | ❌ |
 | 스택 자동감지 | **12개 기본 + 확장 가능 (web · desktop · CLI · lib · 4 mobile)** | ❌ | ❌ | ❌ |
 | 병렬 구현 | **/ha-build --task T-1,T-2** | ❌ | ❌ | ❌ |
 | 설계-구현 계약 | **skeleton.md + integrity 게이트** | ❌ | ❌ | ❌ |
@@ -241,7 +241,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 
 ---
 
-## 🧪 품질 게이트 (BLOCK 16 + advisory 13)
+## 🧪 품질 게이트 (BLOCK 17 + advisory 14)
 
 | 게이트 | 위치 | 역할 |
 |---|---|---|
@@ -311,7 +311,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 
 **Phase 12 — v0.12.0 (완료, 2026-06-12)**: **런타임 스모크 게이트 + 디폴트 guidelines**. `/ha-smoke` — 검증 사다리 최상단: test/lint/type 전부 통과해도 앱이 안 뜨는 산출물을 잡는다. exit 모드 (exit 0 = PASS) / URL readiness probe + 프로세스 트리 정리, `verify_history` step=`smoke` 기록 (advisory, 스키마 변경 0) + `toolchain.smoke` optional 프로파일 필드. untracked 파일 스캔 우회 봉합 — 방금 생성된 파일이 의사 diff 합성으로 `/ha-build` 보안 게이트 + `/ha-review` 스캔에 합류. cp949 디코딩 크래시 root fix (6지점). `electron` / `nextjs` / `nestjs` 디폴트 guidelines 11파일 (sosel dogfood 검증 kalpie 계열 규칙 역수출). ha-design `locked_section_status` 백포트 (미러 전수 해시 감사로 명세-코드 격차 적발). 신규 테스트 +23 (1015 → 1038).
 
-**Phase 13 — v0.13.0 (완료, 2026-06-22)**: **Dogfood Harvest 2 — 런타임 L2 & 단계 정합성**. `/ha-smoke` 계층2: 기동 후 선언 `interface.http` GET 엔드포인트를 실제 타격해 "프로세스는 떠도 라우트 깨짐"(404 미등록 / 5xx 핸들러 크래시)을 잡는다. ha-plan→build→review→redesign 단계 정합성 수정: ha-plan 이 §태스크 sync 후 skeleton hash baseline refresh(거짓 drift WARN + 매 빌드 BLOCK 제거), `/ha-plan --replan`(redesign 후 재-plan), worklog 루트 우선(split-brain), `/ha-verify` cli_entrypoint 런타임 인코딩 스모크(CliRunner 가 못 잡는 cp949 `UnicodeEncodeError`), `/ha-build` in-progress 마킹 + 부분복구 + reviewed→building 회귀(Phase 2 iteration), `/ha-review` 빈 diff full-source 폴백(vacuous APPROVE 차단). LESSON-033~036 추출. Spec Kit 흡수 설계서(`docs/spec-kit-absorption-design.md` — 설계품질 게이트 + 멀티에이전트 Gemini/Copilot). 신규 테스트 +75 (1038 → 1113).
+**Phase 13 — v0.13.0 (완료, 2026-06-22)**: **Dogfood Harvest 2 — 런타임 L2 & 단계 정합성**. `/ha-smoke` 계층2: 기동 후 선언 `interface.http` GET 엔드포인트를 실제 타격해 "프로세스는 떠도 라우트 깨짐"(404 미등록 / 5xx 핸들러 크래시)을 잡는다. ha-plan→build→review→redesign 단계 정합성 수정: ha-plan 이 §태스크 sync 후 skeleton hash baseline refresh(거짓 drift WARN + 매 빌드 BLOCK 제거), `/ha-plan --replan`(redesign 후 재-plan), worklog 루트 우선(split-brain), `/ha-verify` cli_entrypoint 런타임 인코딩 스모크(CliRunner 가 못 잡는 cp949 `UnicodeEncodeError`), `/ha-build` in-progress 마킹 + 부분복구 + reviewed→building 회귀(Phase 2 iteration), `/ha-review` 빈 diff full-source 폴백(vacuous APPROVE 차단). LESSON-033~037 추출. Spec Kit 흡수 설계서(`docs/spec-kit-absorption-design.md` — 설계품질 게이트 + 멀티에이전트 Gemini/Copilot) 작성 후 구현: **A1** skeleton 품질 체크리스트(clarity / edge-case advisory, `/ha-design`), **A2** offline/NFR 위반 검사(cross-artifact critical) + `/ha-redesign` nfr_conflicts, **축A** `reenter_or_assert`(상태머신 재진입 일원화, #2/#9), **Track B** `harness scaffold` 멀티에이전트 파일 생성(claude / gemini / copilot 명령 + 컨텍스트 파일), **A4** `/ha-converge`(코드↔스펙 미구현 엔드포인트 회수 → tasks.md). 신규 테스트 +165 (1038 → 1203).
 
 **v1.0.0 백로그**:
 - Live LESSONS 자동 학습 (ha-review 반복 패턴 → 후보 등록)
@@ -333,7 +333,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 - **패키지**: uv
 - **에이전트 실행**: Claude CLI subprocess (Gemini/로컬 LLM 교체 가능)
 - **상태**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (DB 없음)
-- **테스트**: pytest **1113개** backend + **12개** install 스냅샷 (회귀 0건)
+- **테스트**: pytest **1203개** backend + **12개** install 스냅샷 (회귀 0건)
 - **타입 체크**: pyright **0 errors** (`src/` 전수)
 - **게이트 커버리지 (자기 검증)**: 10개 게이트 중 정규식/AST 기반 7개를 35 fixtures (positive/negative) 로 측정 → **precision 100% / recall 100% / accuracy 100%**. 나머지 3개 — `auth-guard` 는 test_security_hooks 단위테스트, `test-distribution`·`skeleton-integrity` 는 filesystem fixture 로 별도 검증. 상세 한계/방법: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **성능** (30 iter, LLM 제외): profile 감지 **~5 ms**, skeleton 조립 **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. [docs/benchmarks/](docs/benchmarks/)
@@ -351,10 +351,10 @@ install.sh/ps1        설치 + manifest           ─┘
 backend/
   agents/<role>/CLAUDE.md     11개 에이전트 시스템 프롬프트 (편집 가능)
   agents.yaml                 provider/model/timeout
-  docs/shared-lessons.md      36 LESSONs
+  docs/shared-lessons.md      37 LESSONs
   src/orchestrator/           profile_loader / skeleton_assembler /
                               plan_manager / security_hooks / runner
-  tests/                      1113 pytest + skills/ 회귀 방지
+  tests/                      1203 pytest + skills/ 회귀 방지
 
 docs/
   ARCHITECTURE.md             시스템 구조 30분 이해
@@ -368,7 +368,7 @@ docs/
 ```bash
 cd backend
 uv sync
-uv run pytest tests/ --rootdir=.      # 1113 tests
+uv run pytest tests/ --rootdir=.      # 1203 tests
 uv run ruff check src/                 # 0 errors
 uv run pyright src/                    # 0 errors (타입 체크)
 uv run python -m src.main              # dashboard 서버 (포트 3002)
