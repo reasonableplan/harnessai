@@ -166,6 +166,15 @@ mock 테스트만 있고 비-mock 스모크가 없으면"** WARN. + ha-plan 테�
 
 ### A5. done 보존 태스크 분할 (#12, 신규)
 
+> **상태: ✅ resume v1 구현 (2026-06-22)** — §4.6 패턴2 재설계 방향대로 "분할 연산" 대신
+> **status 기반 resume** 으로 착수. `skills/ha-build/run.py::select_ready_tasks` (순수: status
+> 대기/in-progress + depends_on done, in-progress 우선→대기, T-ID 순) + `ha-build prepare --resume`
+> (--task 생략 시 다음 ready 태스크 자동 선택, 없으면 exit 0 — `_enter_build_state` 회귀 전 처리).
+> 범위지정 빌드는 기존 `--task T-001,T-002` CSV 가 이미 제공 → resume + 범위지정으로 #7·#12 의
+> "다음 뭘 빌드?" 절반 해결. 테스트 +9(select_ready_tasks 6 + cmd_prepare --resume 3). 미러 동기.
+> **잔여**: 과대 태스크를 실제 하위로 쪼개는 분할 연산(T-014 → T-014a/b/c)은 미구현 — resume 은
+> "이어서/다음" 만 해결, "쪼개기" 는 별도(필요 시 dogfood 후 재고).
+
 ha-plan/ha-redesign 에 **"기존 done 보존 + 특정 태스크를 하위로 분할(T-014 → T-014a/b/c)"** 연산 추가.
 - 현재: re-derivation 은 "신규 태스크 추가 범위 밖", `ha-plan --replan`(#2)은 전체 덮어쓰기라 done 리셋
   → 과대 태스크를 안전하게 쪼갤 경로 없음.

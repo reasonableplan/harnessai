@@ -71,6 +71,8 @@ JSON 출력: 태스크 정보 (agent, depends_on, description, path), 활성 프
 
 **병렬 모드**: `--task T-001,T-002,T-003` (콤마 구분 CSV) — depends_on 없는 태스크만 허용. run.py 가 검증. (`--parallel` 플래그는 없음.)
 
+**resume 모드** (`--task` 생략): `prepare --resume` — 다음 ready 태스크(status 대기/in-progress + depends_on 전부 done)를 자동 선택. in-progress 우선(부분복구), 그다음 대기, T-ID 오름차순. 빌드할 게 없으면(전부 done) exit 0. "다음 뭘 빌드?" 를 tasks.md 수동 독해 없이 해결 (#7 부분복구·iteration 후 유용). 선택된 단일 태스크로 이후 단계 진행.
+
 **착수 마킹 + 부분 완료 복구 (issue #7)**: prepare 는 대기 태스크를 `in-progress` 로 마킹하고
 시작한다 (서브에이전트가 도중에 죽어도 status 로 흔적이 남도록). 출력 task 의:
 - `reentry: true` — 이미 in-progress 였음 = 이전 착수가 끝나지 않음 (중단 후 재진입). 이 경우

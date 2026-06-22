@@ -106,6 +106,37 @@ def _parse_tasks(tasks_text: str) -> dict[str, dict[str, str]]:
     return out
 
 
+_DONE_STATES = ("done", "완료", "completed")
+
+
+def select_ready_tasks(tasks: dict[str, dict[str, str]]) -> list[str]:
+    """지금 빌드 가능한 태스크 ID 목록 (A5 / `--resume`).
+
+    조건: status 가 대기/in-progress 이고 depends_on 이 전부 done.
+    정렬: in-progress 먼저(부분복구 우선, #7) → 대기, 각 그룹 내 T-ID 오름차순.
+    blocked/skipped/done 은 제외.
+    """
+
+    def deps_done(tid: str) -> bool:
+        return all(
+            tasks.get(dep, {}).get("status", "").strip().lower() in _DONE_STATES
+            for dep in tasks[tid]["depends_on"]
+        )
+
+    def tid_num(tid: str) -> int:
+        return int(tid.split("-")[1])
+
+    inprogress = sorted(
+        (t for t in tasks if tasks[t]["status"].strip().lower() in _INPROGRESS_STATES and deps_done(t)),
+        key=tid_num,
+    )
+    pending = sorted(
+        (t for t in tasks if tasks[t]["status"].strip().lower() in _PENDING_STATES and deps_done(t)),
+        key=tid_num,
+    )
+    return inprogress + pending
+
+
 # ── 부분 완료 복구 (issue #7) ────────────────────────────────────────────
 # 서브에이전트가 태스크 도중 죽으면 status 가 '대기' 로 남고 부분 산출물이 추적되지
 # 않는다. prepare 가 착수 시 in-progress 로 마킹 → 죽으면 그 상태가 보이고, 재진입 시
@@ -170,6 +201,25 @@ def _enter_build_state(plan, plan_path) -> None:
 
 def cmd_prepare(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
+
+    # --resume (A5): --task 미지정 시 다음 ready 태스크 자동 선택. _enter_build_state
+    # (상태 회귀 가능) 호출 전에 처리해, ready 가 없을 때 built/verified/reviewed 플랜을
+    # 불필요하게 building 으로 회귀시키지 않는다.
+    if not args.task and getattr(args, "resume", False):
+        _tasks_path = plan_path.parent / "tasks.md"
+        if not _tasks_path.exists():
+            info(f"[FAIL] tasks.md 없음: {_tasks_path}")
+            return 1
+        _ready = select_ready_tasks(_parse_tasks(_tasks_path.read_text(encoding="utf-8")))
+        if not _ready:
+            info("[OK] /ha-build --resume — 빌드할 ready 태스크 없음 (전부 done 또는 의존성 미충족).")
+            return 0
+        args.task = _ready[0]
+        info(
+            f"[OK] /ha-build --resume — 다음 태스크 자동 선택: {_ready[0]}\n"
+            f"  · ready 큐: {', '.join(_ready)}"
+        )
+
     _enter_build_state(plan, plan_path)
 
     # v0.10.0 HITL gate — frozen_status="drafting" 이면 /ha-build 진입 차단.
@@ -210,7 +260,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
 
     target_ids = args.task.split(",") if args.task else []
     if not target_ids:
-        info("[FAIL] --task <T-ID> 또는 --task T-001,T-002 필요")
+        info("[FAIL] --task <T-ID> 또는 --task T-001,T-002 필요 (또는 --resume 로 다음 ready 태스크 자동 선택)")
         return 2
 
     # Validate ID format up front so a malformed --task arg surfaces as a
@@ -668,7 +718,13 @@ def main() -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("prepare")
-    p.add_argument("--task", required=True, help="T-001 또는 T-001,T-002 (병렬)")
+    p.add_argument("--task", help="T-001 또는 T-001,T-002 (병렬). 생략 시 --resume 필요")
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        default=False,
+        help="--task 생략 시 다음 ready 태스크(대기/in-progress + depends_on done) 자동 선택",
+    )
     p.add_argument(
         "--accept-skeleton-drift",
         action="store_true",
