@@ -28,6 +28,7 @@ backend/.venv/
 backend/docs/skeleton.md
 backend/docs/tasks.md
 backend/docs/harness-plan.md
+backend/docs/worklog.md   # ha-* default-path 가 dogfood 시 여기 누수 (#3) — HarnessAI 자체 artifact 아님
 
 # Local-only working files (scratch, PoC, agent state snapshots)
 .context/

@@ -579,6 +579,17 @@ _rate_limit_store: dict[int, list[float]] = defaultdict(list)
 
 
 
+
+## LESSON-036: 다언어 파이프라인: 언어 특정 도구는 파일타입으로 게이트
+<!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-06-22 -->
+
+**문제**: 다언어 파일을 처리하는 파이프라인에서 언어 특정 정적분석 도구(ruff=Python, eslint=JS 등)를 파일 타입 구분 없이 모든 파일에 돌리면, 그 도구가 다른 언어 파일을 자기 언어로 파싱해 가짜 결과(예: ruff가 .ts를 파이썬으로 파싱해 invalid-syntax 46개)를 생성하고 산출물(사이드카/리포트)을 오염시킨다. 유닛테스트가 그 도구 호출을 mock하면 verify가 green이라 못 잡는다.
+
+**규칙**: 언어 특정 외부 도구는 호출 전 파일 확장자/타입으로 게이트: if path.suffix=='.py': run_ruff(path). 도구가 자기 언어 외 입력에 빈 결과를 준다고 가정하지 말 것(실제로는 파싱오류를 뱉을 수 있음). mock 테스트 외에 실제 도구를 비-자기-언어 파일에 1회 돌려보는 스모크로 검증.
+
+**근거**: code-mate T-014: pipeline이 모든 파일에 run_ruff 호출 → .ts 사이드카가 파이썬 invalid-syntax로 오염. 점검 스모크로 발견, .py 게이트+회귀테스트로 수정.
+
+---
 ## LESSON-035: LLM 출력은 결정론적 사실셋과 대조해 환각 탐지(비파괴 annotate)
 <!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-06-21 -->
 

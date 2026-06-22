@@ -20,6 +20,7 @@ from utils import (  # noqa: E402, I001
     get_active_profiles,
     info,
     load_plan,
+    regress,
     resolve_guideline_paths,
     save_plan,
     transition,
@@ -151,9 +152,28 @@ def _mark_in_progress(tasks_text: str, tid: str) -> str:
     )
 
 
+# 빌드 진입 허용 상태. planned/building 은 정상 흐름, built/verified/reviewed 는
+# Phase 추가 빌드(iteration) — 그 경우 building 으로 회귀시켜 새 코드가 verify/review
+# 게이트를 다시 거치게 한다 (issue #9 — forward-only 가 reviewed 에 가둠).
+_BUILD_ALLOWED_STATES = ["planned", "building", "built", "verified", "reviewed"]
+
+
+def _enter_build_state(plan, plan_path) -> None:
+    """빌드 사전 조건(상태) 확인 + Phase 추가 빌드 시 building 회귀."""
+    assert_state(plan, _BUILD_ALLOWED_STATES, "/ha-build")
+    if plan.pipeline.current_step in ("built", "verified", "reviewed"):
+        prev = plan.pipeline.current_step
+        regress(plan, "building")
+        save_plan(plan, plan_path)
+        info(
+            f"[INFO] {prev} -> building 회귀 (Phase 추가 빌드). "
+            "이후 /ha-verify, /ha-review 재실행 필요."
+        )
+
+
 def cmd_prepare(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
-    assert_state(plan, ["planned", "building"], "/ha-build")
+    _enter_build_state(plan, plan_path)
 
     # v0.10.0 HITL gate — frozen_status="drafting" 이면 /ha-build 진입 차단.
     # /ha-design 의 LOCKED 섹션 (requirements/user_journey/view.screens) 인터뷰 통과 필수.

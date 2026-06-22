@@ -158,7 +158,7 @@ python ~/.claude/skills/ha-plan/run.py commit --replan --tasks-content "..."
 
 다음:
   /ha-build T-XXX  — 단일 태스크 구현
-  /ha-build --parallel T-XXX,T-YYY  — 병렬 (의존성 없을 때)
+  /ha-build --task T-XXX,T-YYY  — 병렬 (콤마 구분, 의존성 없을 때)
 ```
 
 ### 출력의 guideline_paths 도 읽으세요

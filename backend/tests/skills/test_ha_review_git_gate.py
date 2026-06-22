@@ -191,11 +191,12 @@ def test_extract_diff_explicit_base_override(ha_review: ModuleType, tmp_path: Pa
     assert base_sha[:7] in scope or base_sha in scope, f"scope 에 base ref 없음: {scope}"
 
 
-def test_extract_diff_working_tree_scope_when_committed_no_remote(
+def test_extract_diff_full_source_fallback_when_committed_no_remote(
     ha_review: ModuleType, tmp_path: Path
 ) -> None:
-    """main 직작업 + 커밋 완료 + 원격 없음 → base 미결정 → 워킹트리 collapse 를
-    scope 라벨로 표면화 (silent 아님 — 이슈 #18 정직성)."""
+    """main 직작업 + 커밋 완료 + 원격 없음 → base 미결정 + 워킹트리/untracked 빔 →
+    빈 입력으로 보안훅이 vacuous pass 하던 결함(issue #8) 차단: 전체 트래킹 소스를
+    검토 입력으로 폴백한다."""
     git = _git_init_repo(tmp_path)
     (tmp_path / "a.txt").write_text("base\n", encoding="utf-8")
     git("add", ".")
@@ -204,6 +205,8 @@ def test_extract_diff_working_tree_scope_when_committed_no_remote(
     git("add", ".")
     git("commit", "-m", "T-001")
 
-    _diff, scope = ha_review._extract_diff(tmp_path)
+    diff, scope = ha_review._extract_diff(tmp_path)
 
-    assert scope.startswith("working-tree"), f"collapse 가 scope 에 안 드러남: {scope}"
+    assert diff.strip(), f"빈 입력 폴백 실패 — 보안훅이 vacuous pass 함. scope={scope}"
+    assert "b.py" in diff and "a.txt" in diff, f"전체 소스 폴백 누락: scope={scope}"
+    assert "full-source" in scope, f"full-source 폴백 scope 아님: {scope}"

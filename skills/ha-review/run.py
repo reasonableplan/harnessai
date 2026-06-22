@@ -430,6 +430,11 @@ def _check_rn_cli(diff: str, profile_id: str) -> list[dict[str, str]]:
 
 _TRUNK_NAMES = ("main", "master")
 
+# git 의 빈 트리 해시 — `git diff _EMPTY_TREE HEAD` = 전체 트래킹 소스를 diff 로 합성.
+# base 미결정 + 커밋/워킹트리/untracked 모두 빈 경우(예: main 직작업+전부 커밋+원격 없음)
+# 보안훅이 빈 입력으로 vacuous pass(false-green APPROVE)하던 결함(issue #8)의 폴백.
+_EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
 
 def _git_capture(project: Path, args: list[str]) -> str | None:
     """git 명령 stdout 반환 (exit 0). 실패/미설치/타임아웃 시 None."""
@@ -498,7 +503,16 @@ def _extract_diff(project: Path, base: str | None = None) -> tuple[str, str]:
             scope = f"working-tree(HEAD) — base '{resolved}...HEAD' 빈 결과"
 
     # untracked 신규 파일은 git diff 에 없음 — 의사 diff 로 같은 스캔 입력에 합류
-    return diff + untracked_pseudo_diff(project), scope
+    combined = diff + untracked_pseudo_diff(project)
+    if combined.strip():
+        return combined, scope
+
+    # base 미결정 + 커밋/워킹트리/untracked 모두 빔 → 빈 입력으로 보안훅이 vacuous
+    # pass 하던 false-green(issue #8) 차단: 전체 트래킹 소스를 검토 입력으로 폴백.
+    full = _git_capture(project, ["diff", _EMPTY_TREE, "HEAD"]) or ""
+    if full.strip():
+        return full, "full-source — base 미결정/빈 diff (전체 트래킹 소스 검토)"
+    return combined, scope
 
 
 # 역방향 contract 검증 (architecture review F7-1) — contract-validator 훅은

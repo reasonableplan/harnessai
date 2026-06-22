@@ -2,7 +2,7 @@
 name: ha-build
 description: |
   HarnessAI v2 — 단일 태스크 구현 (Backend/Frontend Coder 역할).
-  태스크 의존성 그래프 기반 병렬 실행 지원 (--parallel).
+  태스크 의존성 그래프 기반 병렬 실행 지원 (--task 에 CSV: T-001,T-002).
   코드 작성은 Agent tool (model="sonnet") 위임 — 부모 세션 모델/extra-usage 무관.
   Use when: /ha-plan 완료 후 태스크별 구현, "T-001 만들어줘", "/ha-build T-001"
 allowed-tools:
@@ -69,7 +69,7 @@ python ~/.claude/skills/ha-build/run.py prepare --task T-001
 ```
 JSON 출력: 태스크 정보 (agent, depends_on, description, path), 활성 프로파일, 에이전트 프롬프트 경로, depends_on 만족 여부.
 
-**병렬 모드**: `--parallel T-001,T-002,T-003` — depends_on 없는 태스크만 허용. run.py 가 검증.
+**병렬 모드**: `--task T-001,T-002,T-003` (콤마 구분 CSV) — depends_on 없는 태스크만 허용. run.py 가 검증. (`--parallel` 플래그는 없음.)
 
 **착수 마킹 + 부분 완료 복구 (issue #7)**: prepare 는 대기 태스크를 `in-progress` 로 마킹하고
 시작한다 (서브에이전트가 도중에 죽어도 status 로 흔적이 남도록). 출력 task 의:
