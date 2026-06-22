@@ -10,6 +10,7 @@ from src.orchestrator.consistency_checker import (
     ConsistencyFinding,
     check_error_ux_codes_defined,
     check_isolated_components,
+    check_offline_network_violation,
     check_screen_api_references,
     check_screen_auth_column,
     check_task_skeleton_references,
@@ -398,3 +399,95 @@ def test_task_specblock_multiple_refs_suppresses_warn() -> None:
     findings = check_task_skeleton_references(tasks, skel)
     task_targets = [f.target for f in findings if f.pattern == "task-no-reference"]
     assert "T-002" not in task_targets
+
+
+# ── 오프라인/네트워크 제약 위반 검사 (NFR #10) ───────────────────────
+
+
+def test_offline_constraint_external_url_flagged() -> None:
+    """오프라인 선언 + 비-루프백 실제 호스트 URL → critical finding."""
+    skel = (
+        "## 1. NFR\n오프라인 전용 앱 — 외부 인터넷 호출 없음.\n\n"
+        "## 9. HTTP API\n런타임에 https://api.example.com/data 를 호출한다.\n"
+    )
+    findings = check_offline_network_violation(skel)
+    assert len(findings) >= 1
+    assert all(f.severity == "critical" for f in findings)
+    assert all(f.pattern == "offline-constraint-violation" for f in findings)
+    targets = [f.target for f in findings]
+    assert any("api.example.com" in t for t in targets)
+
+
+def test_offline_constraint_loopback_url_excluded() -> None:
+    """오프라인 선언 + localhost:3002 만 → finding 0 (루프백 제외)."""
+    skel = (
+        "## 1. NFR\n네트워크 호출 없음. 로컬 루프백만 허용.\n\n"
+        "## 9. HTTP API\nGET http://localhost:3002/api/status\n"
+        "또는 http://127.0.0.1:8080/health 로 헬스체크.\n"
+    )
+    findings = check_offline_network_violation(skel)
+    assert findings == []
+
+
+def test_offline_constraint_download_verb_flagged() -> None:
+    """오프라인 선언 + 다운로드 동사 → critical finding."""
+    skel = (
+        "## 1. NFR\noffline only — no network.\n\n"
+        "## 7. 배포\n런타임에 그래마 파일을 다운로드해서 파서를 초기화한다.\n"
+    )
+    findings = check_offline_network_violation(skel)
+    assert len(findings) >= 1
+    assert all(f.severity == "critical" for f in findings)
+    assert any("다운로드" in f.target for f in findings)
+
+
+def test_no_offline_constraint_external_url_ignored() -> None:
+    """오프라인 선언 없음 + 외부 URL 많음 → finding 0 (제약 없으면 미적용)."""
+    skel = (
+        "## 1. 개요\n일반 웹 앱.\n\n"
+        "## 9. HTTP API\nhttps://api.openai.com/v1/chat 호출.\n"
+        "https://cdn.jsdelivr.net/npm/foo.js 로드.\n"
+    )
+    findings = check_offline_network_violation(skel)
+    assert findings == []
+
+
+def test_offline_constraint_url_in_codefence_ignored() -> None:
+    """오프라인 선언 + 코드펜스 안 URL → 무시 (FP 방지)."""
+    skel = (
+        "## 1. NFR\n외부 인터넷 호출 없음 — air-gapped 환경.\n\n"
+        "## 9. 예시\n아래는 *사용하지 않는* 예시:\n"
+        "```\n"
+        "curl https://api.external.com/data\n"
+        "```\n"
+        "실제로는 로컬 DB 에서만 읽는다.\n"
+    )
+    findings = check_offline_network_violation(skel)
+    assert findings == []
+
+
+def test_offline_constraint_empty_skeleton_no_crash() -> None:
+    """빈 skeleton → [] (크래시 없음)."""
+    assert check_offline_network_violation("") == []
+
+
+def test_offline_constraint_dedup_same_marker() -> None:
+    """동일 마커가 여러 번 등장해도 dedup — finding 1개만."""
+    skel = (
+        "## 1. NFR\nno network — offline only.\n\n"
+        "## 9. API\nhttps://remote.server.io/a 사용.\nhttps://remote.server.io/a 재사용.\n"
+    )
+    findings = check_offline_network_violation(skel)
+    targets = [f.target for f in findings]
+    assert len(targets) == len(set(targets)), "중복 target 이 dedup 되지 않음"
+
+
+def test_run_all_includes_offline_check() -> None:
+    """run_all_checks 가 offline 검사를 집계에 포함한다."""
+    skel = (
+        "## 1. NFR\n외부 인터넷 호출 없음.\n\n"
+        "## 9. API\nhttps://api.remote.io/v1 호출.\n"
+    )
+    findings = run_all_checks(skeleton_text=skel)
+    patterns = {f.pattern for f in findings}
+    assert "offline-constraint-violation" in patterns

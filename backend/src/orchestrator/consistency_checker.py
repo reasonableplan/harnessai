@@ -5,9 +5,15 @@ where re-derivation or task additions break the implicit reference graph between
 sections — the structural defect that the v0.7.0 mutation-propagation track was
 created to address.
 
-Findings are advisory (severity="info"|"warn") — never blocking. The point is to
-give the next agent or reviewer a concrete checklist, not to gate progress with
-heuristic rules. A blocker would need stronger guarantees than regex can provide.
+Findings are advisory (severity="info"|"warn"|"critical") — never blocking. The
+point is to give the next agent or reviewer a concrete checklist, not to gate
+progress with heuristic rules. A blocker would need stronger guarantees than regex
+can provide.
+
+severity levels:
+    "info":     informational — likely benign drift, surface for review.
+    "warn":     probable issue — re-derivation may have missed a section.
+    "critical": principle/constraint violation — NFR or architectural rule broken.
 """
 
 from __future__ import annotations
@@ -47,12 +53,13 @@ class ConsistencyFinding:
     """Single consistency check result.
 
     severity:
-        - "info":   informational — likely benign drift, surface for review.
-        - "warn":   probable issue — re-derivation may have missed a section.
+        - "info":     informational — likely benign drift, surface for review.
+        - "warn":     probable issue — re-derivation may have missed a section.
+        - "critical": principle/constraint violation — NFR or architectural rule broken.
     """
 
     severity: str
-    pattern: str  # short label: "isolated-component" | "task-no-reference"
+    pattern: str  # short label: "isolated-component" | "task-no-reference" | "offline-constraint-violation"
     message: str
     target: str  # the identifier (component name, T-XXX, etc.) the finding is about
 
@@ -261,6 +268,109 @@ def check_screen_auth_column(skel_text: str) -> list[ConsistencyFinding]:
     return findings
 
 
+# ── 오프라인/네트워크 제약 위반 검사 (NFR #10) ──────────────────────
+# skeleton 에 오프라인 제약이 선언됐음에도 비-루프백 외부 URL 이나
+# 다운로드/원격 fetch 동사가 등장하면 critical finding 을 발행한다.
+# 제약이 없는 프로젝트에는 적용하지 않는다(조건부 검사).
+
+# 오프라인/네트워크 금지 제약 선언을 탐지하는 정규식.
+_OFFLINE_CONSTRAINT_RE = re.compile(
+    r"오프라인|외부\s*(?:인터넷\s*)?호출\s*없|네트워크\s*(?:호출\s*)?없"
+    r"|로컬\s*(?:루프백|loopback)\s*만|no\s*network|offline\s*only"
+    r"|air-?gapped|key-?free|시크릿\s*없",
+    re.IGNORECASE,
+)
+
+# 루프백/플레이스홀더 호스트 — 이 패턴은 비-위반으로 제외한다.
+_LOOPBACK_HOST_RE = re.compile(
+    r"^(?:localhost|127\.0\.0\.1|0\.0\.0\.0|::1|example\.|<|\{)",
+    re.IGNORECASE,
+)
+
+# 비-루프백 외부 URL: http(s):// 뒤 호스트 추출.
+_EXTERNAL_URL_RE = re.compile(r"https?://([^\s/\"'`>]+)")
+
+# 다운로드/원격 fetch 동사 — URL 없이도 선언 위반.
+_DOWNLOAD_VERB_RE = re.compile(
+    r"다운로드|download|원격\s*(?:에서\s*)?(?:가져|fetch|받)"
+    r"|fetch(?:es|ing)?\s+from\s+https?"
+    r"|CDN|S3|업로드|upload",
+    re.IGNORECASE,
+)
+
+# 코드펜스 내용 제거 — 예시 URL FP 방지.
+_CODEFENCE_RE = re.compile(r"```.*?```", re.DOTALL)
+# 인라인 백틱 제거.
+_INLINE_TICK_RE = re.compile(r"`[^`\n]+`")
+
+
+def check_offline_network_violation(skel_text: str) -> list[ConsistencyFinding]:
+    """오프라인/네트워크 제약이 선언된 skeleton 에서 모순 마커를 탐지한다.
+
+    1. skeleton 전체 텍스트에서 오프라인 제약 선언을 탐지한다.
+    2. 제약이 없으면 즉시 [] 반환 — 이 검사는 제약을 선언한 프로젝트에만 적용.
+    3. 제약이 있으면 코드펜스·인라인 백틱을 제거한 텍스트에서 모순 마커를 스캔:
+       - 비-루프백 외부 URL (루프백/플레이스홀더 제외)
+       - 다운로드/원격 fetch 동사
+    4. 매칭된 마커마다 critical finding 을 생성하고, 동일 target 은 dedup 한다.
+    """
+    if not skel_text:
+        return []
+
+    if not _OFFLINE_CONSTRAINT_RE.search(skel_text):
+        return []
+
+    # 코드펜스 및 인라인 백틱 제거 — 예시 코드 내 URL/동사 FP 방지.
+    stripped = _CODEFENCE_RE.sub("", skel_text)
+    stripped = _INLINE_TICK_RE.sub("", stripped)
+
+    # 섹션 ID 맵 — target 메시지에 섹션 정보 포함용.
+    sections = split_sections_by_id(skel_text)
+    # 섹션별 줄 범위를 미리 계산하지 않고, 섹션 ID 목록만 참조한다.
+    # (split_sections_by_id 는 섹션 본문만 반환하므로 줄 번호 대신 섹션 ID 활용)
+    section_ids = list(sections.keys())
+
+    _VIOLATION_MSG = (
+        "오프라인/네트워크 제약 선언됨에도 외부 네트워크 마커 발견 — "
+        "NFR(#10) 위반 가능, 검증 필요"
+    )
+
+    seen: set[str] = set()
+    findings: list[ConsistencyFinding] = []
+
+    def _add(marker: str) -> None:
+        truncated = marker[:60]
+        if truncated in seen:
+            return
+        seen.add(truncated)
+        # 어느 섹션인지 확인 — 섹션 본문에 마커가 포함된 첫 섹션.
+        section_hint = ""
+        for sid in section_ids:
+            if marker in sections.get(sid, ""):
+                section_hint = f" [섹션: {sid}]"
+                break
+        findings.append(
+            ConsistencyFinding(
+                severity="critical",
+                pattern="offline-constraint-violation",
+                target=truncated,
+                message=_VIOLATION_MSG + section_hint,
+            )
+        )
+
+    # 비-루프백 외부 URL 스캔.
+    for m in _EXTERNAL_URL_RE.finditer(stripped):
+        host = m.group(1).split("/")[0].split(":")[0]
+        if not _LOOPBACK_HOST_RE.match(host):
+            _add(m.group(0))
+
+    # 다운로드/원격 fetch 동사 스캔.
+    for m in _DOWNLOAD_VERB_RE.finditer(stripped):
+        _add(m.group(0))
+
+    return findings
+
+
 def run_all_checks(
     *, skeleton_text: str, tasks_text: str | None = None
 ) -> list[ConsistencyFinding]:
@@ -274,6 +384,7 @@ def run_all_checks(
     findings.extend(check_error_ux_codes_defined(skeleton_text))
     findings.extend(check_screen_api_references(skeleton_text))
     findings.extend(check_screen_auth_column(skeleton_text))
+    findings.extend(check_offline_network_violation(skeleton_text))
     # Distinguish "no tasks file" (None) from "empty tasks file" (""). The empty
     # case yields zero findings naturally, but running the check preserves the
     # type contract that callers expect.

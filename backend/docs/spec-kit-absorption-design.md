@@ -90,6 +90,13 @@ findings 를 받아 추가 판단. 단 1차 방어선은 코드.
 
 ### A2. `/analyze` 독립 게이트 승격 + Constitution 권위 (흡수: `/analyze` + constitution)
 
+> **상태: ✅ v1 구현 (2026-06-22)** — (a) 결정론: `consistency_checker.check_offline_network_violation`
+> — 오프라인/네트워크/시크릿 제약 선언 시 비-루프백 URL·다운로드 동사를 **critical** 로 표면화
+> (run_all_checks 배선 → ha-design/ha-plan/ha-redesign 자동 흐름). (b) 프롬프트: ha-redesign
+> impact-analysis 에 `nfr_conflicts` 필수 단계(#10 정조준 — 신규 의존성/외부호출 ↔ NFR 위반).
+> constitution 권위 = skeleton 제약 선언을 critical 권위로 취급(Q1=B). 테스트 +8.
+> 잔여: 시크릿 외 §6 일반 제약 확장, "critical→BLOCK" 승격은 FP 관찰 후(Q3=B).
+
 **현재**: `consistency_checker.run_all_checks` 가 `ha-plan`/`ha-redesign` **내부 advisory**로만 돈다.
 **흡수**:
 1. **독립 체크포인트화**: `ha-plan commit` 직후(또는 `ha-verify prepare` 직전) cross-artifact
@@ -250,7 +257,7 @@ Spec Kit 의 optional/mandatory 훅 모델 차용. 우선순위 낮음(1인 프�
 | Phase | 내용 | 산출 | 의존 |
 |---|---|---|---|
 | **P1** ✅ | A1 `skeleton_checklist.py` + ha-design 배선 + 테스트 (v1: clarity+edge_case) | 설계품질 게이트 | 완료 2026-06-22 |
-| **P2** | A2 analyze 승격 + constitution 권위 | cross-artifact 게이트 | P1, §9-Q1 |
+| **P2** ✅ | A2 analyze(offline/NFR critical 검사) + ha-redesign nfr_conflicts 프롬프트 | cross-artifact 게이트 | 완료 2026-06-22 |
 | **P3** | A3 clarify 확장 (A1 findings → 질문) | coverage HITL | P1 |
 | **P4** | Track B PoC (ha-verify × Gemini) | 멀티에이전트 검증 | — (독립) |
 | **P5** | A4 ha-converge | 코드↔스펙 회수 | §9-Q2 |

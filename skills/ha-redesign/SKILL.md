@@ -112,6 +112,13 @@ Agent({
   ],
   "preservation_check": [
     "<이 결정 변경으로 영향 안 받는 결정 목록 — '다른 결정 보존' 원칙 검증용>"
+  ],
+  "nfr_conflicts": [
+    {
+      "decision_part": "<새 결정이 도입하는 의존성/외부호출/런타임 동작>",
+      "violates": "<위반하는 skeleton 제약: §보안(시크릿)·§네트워크/오프라인·기타 NFR>",
+      "severity": "blocker|warning"
+    }
   ]
 }
 
@@ -120,6 +127,11 @@ Agent({
 - 영향 태스크는 status 가 dormant/blocked 로 바뀌거나 spec 가 갱신될 것만.
 - ambiguities 는 (4) Coder dry-run 의 흡수판 — 충돌이 보이는 즉시 기록.
 - preservation_check 는 "이 결정과 무관한 다른 결정들이 그대로 유지됨" 을 명시 — 전면 재설계 방지.
+- **nfr_conflicts (필수, #10)**: 새 결정이 도입하는 **의존성·외부호출·런타임 동작**이 skeleton 의
+  보안(시크릿 금지)·네트워크/오프라인·기타 NFR 제약을 위반하는지 **명시 검사**. 예: 오프라인
+  선언 프로젝트에 런타임 그래마/모델을 네트워크 다운로드하는 패키지 채택 = blocker. preservation_check
+  에 제약을 넣고도 위반 검증을 빠뜨리는 게 #10 의 결함 — 절차 완결만으로 내용 위반을 통과시키지 말 것.
+  blocker 가 있으면 사용자 승인 전 반드시 표면화(대안 패키지/제약 완화 결정).
 ```
 
 부모 세션은 Agent 결과 (JSON) 를 받아 다음 단계로.
