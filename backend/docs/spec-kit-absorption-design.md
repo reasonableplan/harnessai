@@ -212,13 +212,18 @@ divergence' 명시 경고). HarnessAI 의 hash 게이트는 더 강하지만 **�
 
 ## 5. Track B — 멀티 에이전트 호환 (흡수: Spec Kit `integrations/` 패턴)
 
-> **상태: ✅ PoC 구현 (2026-06-22)** — `backend/src/orchestrator/agent_scaffold.py`:
-> `AGENT_SPECS`(claude/gemini/copilot 3종) + `parse_skill_md` + `render(skill, desc, body, agent)`.
-> SKILL.md(중립 소스) → 에이전트별 포맷 변환: args 토큰($ARGUMENTS↔{{args}}) + run.py 경로
-> (~/.claude/skills → ${HARNESS_AI_HOME}/skills, claude 제외) 치환, gemini=TOML literal,
-> copilot/claude=md+frontmatter. 실제 ha-verify SKILL.md → Gemini TOML 이 tomllib 파싱 통과(스모크).
-> 테스트 22. **잔여(다음 증분)**: CLI 배선(`harness scaffold --agent X` 로 실제 파일 생성/install),
-> Tier 2/3 스킬(AskUserQuestion/Agent 서브에이전트 의존)의 에이전트별 대체, context_file(GEMINI.md 등) 생성.
+> **상태: ✅ CLI 배선 완료 (2026-06-22)** — `backend/src/orchestrator/agent_scaffold.py`:
+> `AGENT_SPECS`(claude/gemini/copilot 3종) + `parse_skill_md` + `render(skill, desc, body, agent)`
+> + `render_context(agent)`(GEMINI.md / .github/copilot-instructions.md).
+> SKILL.md(중립 소스) → 에이전트별 포맷 변환: args 토큰($ARGUMENTS↔{{args}}) + `~/.claude/` 경로
+> (→ ${HARNESS_AI_HOME}/, claude 제외) 치환 — **skills/ + harness/bin 둘 다** 포함. gemini=TOML literal,
+> copilot/claude=md+frontmatter.
+> **CLI**: `harness scaffold --agent {claude|gemini|copilot|all} [--skill ha-X] [--out DIR] [--dry-run]`
+> — 중립 SKILL.md 소스를 읽어 실제 파일 생성. agent_scaffold 를 standalone 로드(orchestrator 패키지
+> __init__ 우회 → pydantic/yaml 불필요). HARNESS_AI_HOME 필수(미설정 시 exit 3).
+> 테스트 37 (모듈 29 + CLI e2e 8, tomllib 파싱 검증 + 실제 미러 CLI subprocess).
+> **잔여(다음 증분)**: Tier 2/3 스킬(AskUserQuestion/Agent 서브에이전트 의존)의 에이전트별 상호작용 대체
+> — run.py 백엔드는 그대로 동작하나 질문/위임 UX 는 에이전트마다 다름.
 
 **Spec Kit 패턴**: agent-agnostic 명령 본문 1벌 + per-agent 어댑터(경로/포맷/args 토큰 3속성).
 Claude Code 통합 = `.claude/skills/<name>/SKILL.md` + `$ARGUMENTS` → **HarnessAI 현행과 동일**.
@@ -274,7 +279,7 @@ Spec Kit 의 optional/mandatory 훅 모델 차용. 우선순위 낮음(1인 프�
 | **P1** ✅ | A1 `skeleton_checklist.py` + ha-design 배선 + 테스트 (v1: clarity+edge_case) | 설계품질 게이트 | 완료 2026-06-22 |
 | **P2** ✅ | A2 analyze(offline/NFR critical 검사) + ha-redesign nfr_conflicts 프롬프트 | cross-artifact 게이트 | 완료 2026-06-22 |
 | **P3** | A3 clarify 확장 (A1 findings → 질문) | coverage HITL | P1 |
-| **P4** ✅ | Track B PoC — agent_scaffold (render: claude/gemini/copilot) | 멀티에이전트 검증 | 완료 2026-06-22 (CLI 배선은 다음) |
+| **P4** ✅ | Track B — agent_scaffold + `harness scaffold` CLI (render+context, claude/gemini/copilot) | 멀티에이전트 파일 생성 | 완료 2026-06-22 (CLI 배선 포함) |
 | **P5** | A4 ha-converge | 코드↔스펙 회수 | §9-Q2 |
 | **P6** | Track B 전 스킬 확장 + Track C 훅 | 완성 | P4 |
 

@@ -122,8 +122,11 @@ def parse_skill_md(text: str) -> tuple[str, str]:
 # Path helper
 # ---------------------------------------------------------------------------
 
-_CLAUDE_PATH_RE = re.compile(r"~/\.claude/skills/")
-_HARNESS_REPLACEMENT = "${HARNESS_AI_HOME}/skills/"
+# Both skills/ and harness/ live under ~/.claude (and equally under the repo
+# root that HARNESS_AI_HOME points at), so a single prefix rewrite covers the
+# run.py invocations AND the `harness` CLI invocations skill bodies contain.
+_CLAUDE_PATH_RE = re.compile(r"~/\.claude/")
+_HARNESS_REPLACEMENT = "${HARNESS_AI_HOME}/"
 
 
 def _substitute_body(body: str, spec: AgentSpec) -> str:
@@ -131,8 +134,9 @@ def _substitute_body(body: str, spec: AgentSpec) -> str:
 
     1. args token: replace $ARGUMENTS with spec.args_token.
        (For claude and copilot the token is identical, so effectively a no-op.)
-    2. run.py path: replace ~/.claude/skills/ with ${HARNESS_AI_HOME}/skills/
-       for every agent except claude (claude uses ~/.claude natively).
+    2. paths: replace the ~/.claude/ prefix with ${HARNESS_AI_HOME}/ for every
+       agent except claude (claude uses ~/.claude natively).  This covers both
+       ~/.claude/skills/ha-*/run.py and ~/.claude/harness/bin/harness.
     """
     result = body.replace("$ARGUMENTS", spec.args_token)
 
@@ -233,3 +237,59 @@ def render(skill_name: str, description: str, body: str, agent: str) -> tuple[st
         content = _render_md_frontmatter(description, transformed_body)
 
     return output_path, content
+
+
+# ---------------------------------------------------------------------------
+# Context file (agent orientation)
+# ---------------------------------------------------------------------------
+
+_CONTEXT_BODY = """\
+# HarnessAI commands
+
+These slash commands wrap the HarnessAI v2 pipeline. Each command runs a Python
+backend located at `${HARNESS_AI_HOME}/skills/ha-*/run.py` — set the
+`HARNESS_AI_HOME` environment variable to your HarnessAI repo's absolute path
+before invoking any of them.
+
+Pipeline order:
+  ha-init → ha-design → ha-plan → ha-build → ha-verify → ha-review → ha-smoke → ha-ship
+
+Cross-cutting: ha-redesign (propagate decision changes), ha-deepinit (existing
+codebase → skeleton), ha-log (worklog append).
+
+State is tracked in `docs/harness-plan.md`; the project contract lives in
+`docs/skeleton.md`. Run commands in pipeline order — each gate blocks until its
+prerequisite state is reached.
+"""
+
+
+def render_context(agent: str) -> tuple[str, str]:
+    """Render the per-agent orientation/context file.
+
+    Parameters
+    ----------
+    agent:
+        ``"gemini"`` or ``"copilot"``.  ``"claude"`` is rejected — Claude uses
+        its native ``~/.claude`` install and CLAUDE.md (generating one would
+        clobber the user's file).
+
+    Returns
+    -------
+    (relative_output_path, file_content)
+
+    Raises
+    ------
+    ValueError
+        If *agent* is unknown, or is ``"claude"``.
+    """
+    if agent not in AGENT_SPECS:
+        raise ValueError(
+            f"unknown agent {agent!r} — must be one of {sorted(AGENT_SPECS)}"
+        )
+    if agent == "claude":
+        raise ValueError(
+            "claude uses native ~/.claude — no generated context file "
+            "(would clobber the user's CLAUDE.md)"
+        )
+
+    return AGENT_SPECS[agent].context_file, _CONTEXT_BODY

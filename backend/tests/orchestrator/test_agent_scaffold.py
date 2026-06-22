@@ -15,6 +15,7 @@ from src.orchestrator.agent_scaffold import (
     AgentSpec,
     parse_skill_md,
     render,
+    render_context,
 )
 
 # ---------------------------------------------------------------------------
@@ -196,6 +197,62 @@ class TestRenderClaude:
         _, content = self._render()
         assert "~/.claude/skills/" in content
         assert "${HARNESS_AI_HOME}/skills/" not in content
+
+
+# ---------------------------------------------------------------------------
+# render — harness/bin path substitution (not just skills/)
+# ---------------------------------------------------------------------------
+
+
+class TestHarnessPathSubstitution:
+    """Skill bodies also reference ~/.claude/harness/bin/harness — non-claude
+    agents must rewrite that to ${HARNESS_AI_HOME}/harness/ too."""
+
+    _BODY = "Run `python ~/.claude/harness/bin/harness integrity` then done."
+
+    def test_gemini_substitutes_harness_path(self) -> None:
+        _, content = render("ha-verify", "d", self._BODY, "gemini")
+        assert "~/.claude/harness/" not in content
+        assert "${HARNESS_AI_HOME}/harness/bin/harness" in content
+
+    def test_copilot_substitutes_harness_path(self) -> None:
+        _, content = render("ha-verify", "d", self._BODY, "copilot")
+        assert "~/.claude/harness/" not in content
+        assert "${HARNESS_AI_HOME}/harness/bin/harness" in content
+
+    def test_claude_keeps_harness_path(self) -> None:
+        _, content = render("ha-verify", "d", self._BODY, "claude")
+        assert "~/.claude/harness/bin/harness" in content
+        assert "${HARNESS_AI_HOME}/harness/" not in content
+
+
+# ---------------------------------------------------------------------------
+# render_context — per-agent orientation file
+# ---------------------------------------------------------------------------
+
+
+class TestRenderContext:
+    def test_gemini_context_path_and_content(self) -> None:
+        path, content = render_context("gemini")
+        assert path == "GEMINI.md"
+        assert "${HARNESS_AI_HOME}" in content
+        # Pipeline order must be discoverable for the agent.
+        assert "ha-init" in content and "ha-ship" in content
+
+    def test_copilot_context_path(self) -> None:
+        path, content = render_context("copilot")
+        assert path == ".github/copilot-instructions.md"
+        assert "${HARNESS_AI_HOME}" in content
+
+    def test_claude_context_raises(self) -> None:
+        # Claude uses native ~/.claude — no generated context file (would
+        # clobber the user's CLAUDE.md).
+        with pytest.raises(ValueError, match="claude"):
+            render_context("claude")
+
+    def test_unknown_agent_raises(self) -> None:
+        with pytest.raises(ValueError, match="unknown agent"):
+            render_context("openai")
 
 
 # ---------------------------------------------------------------------------

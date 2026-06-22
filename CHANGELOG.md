@@ -17,6 +17,13 @@ code-mate dogfood 2차 수확 — 런타임 검증 사다리 **계층2**(떠도 
 - **#7 `/ha-build` 부분 완료 복구** — prepare 가 대기 태스크를 `in-progress` 로 착수 마킹 + 재진입(이미 in-progress) 감지 → spec 의 "생성/수정 파일" 존재 보고(`reentry`/`declared_files`/`existing_files`). 서브에이전트 중단 시 흔적 + "이어서/처음부터" 판단 근거
 - 회귀 테스트 누적 +13 (#1·#2·#3 5 + #5 1 + #6 4 + #7 3) → 전체 **1109 pass**
 
+#### Spec Kit 흡수 (설계품질 게이트 + 멀티에이전트)
+
+- **A1 — `skeleton_checklist.py` (설계품질 advisory 게이트)** — Spec Kit `/checklist` 흡수. `check_skeleton_quality()` 가 skeleton.md 에서 (1) clarity: 정량 수치 없는 모호 표현(빠른/적절한/fast 등), (2) edge_case: I/O 경계 섹션의 실패 경로 키워드 누락 을 advisory(WARN)로 표면화. 코드펜스/인라인백틱/태스크분해·구현노트 섹션은 skip. `/ha-design` commit 에 `checklist_findings` 배선. Q3 결정대로 advisory 시작(FP 관찰 후 BLOCK 승격). 테스트 +22 → 1135
+- **A2 — `consistency_checker.check_offline_network_violation` (cross-artifact critical)** — Spec Kit `/analyze` 흡수. skeleton 이 오프라인/무네트워크/시크릿금지 제약을 선언했는데 본문에 비-루프백 URL·다운로드 동사가 있으면 `critical` 보고(`run_all_checks` → `/ha-design` 자동). + `/ha-redesign` impact-analysis 프롬프트에 `nfr_conflicts` 단계 추가(신규 의존/외부호출 ↔ NFR 제약 충돌 = blocker, dogfood #10 정조준). 테스트 +8 → 1143
+- **축A 패턴1 — `utils.reenter_or_assert` (상태머신 재진입 일원화, bounded)** — 설계서 §4.6 버그-처리 패턴1(forward-only 경직, #2/#9/#12). prerequisite 미만 차단 / working 이하 진행 / working 초과는 regress(재진입). `--replan`(#2)·`_enter_build_state`(#9) 두 밴드에이드를 한 함수로 통합. 풀 마이그레이션은 보류(사용자 결정=bounded). 테스트 +6 → 1145
+- **Track B — `agent_scaffold` + `harness scaffold` CLI (멀티에이전트 호환)** — Spec Kit `integrations/` 패턴 흡수. 중립 SKILL.md 1벌 → Claude(`.claude/skills/{n}/SKILL.md`)·Gemini(`.gemini/commands/{n}.toml`)·Copilot(`.github/prompts/{n}.prompt.md`) 명령 파일 + 컨텍스트 파일(GEMINI.md / copilot-instructions.md) 생성. args 토큰($ARGUMENTS↔{{args}}) + `~/.claude/` 경로(skills/ **및** harness/bin → `${HARNESS_AI_HOME}/`, claude 제외) 치환. `harness scaffold --agent {claude|gemini|copilot|all} [--skill] [--out] [--dry-run]`. agent_scaffold 는 standalone 로드(orchestrator 패키지 __init__ 우회). 테스트: agent_scaffold 모듈 29 + CLI e2e 8 → 전체 **1182**
+
 ### Fixed
 
 - **#1 · #5 ha-plan 이 §태스크 분해 sync 후 skeleton hash baseline 미갱신** — `ha-plan commit` 이 §태스크 분해를 skeleton.md 에 동기화하면서 `skeleton_hash`/`section_hashes` 를 갱신하지 않아, 후속 `/ha-redesign` 이 거짓 "외부 수정" 경고(FP) + `/ha-build` prepare 가 매 빌드 BLOCK (정상 ha-plan→ha-build 경로에서 `--accept-skeleton-drift` 상시 필요). sync 시 baseline refresh (`/ha-redesign` apply 와 동일 패턴). drift 게이트 주석 정정 (ha-plan 도 hash 갱신자임을 명시)

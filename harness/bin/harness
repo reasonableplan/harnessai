@@ -1502,6 +1502,118 @@ def print_integrity_report(
         print("[FAIL] Validation failed — fix errors above")
 
 
+def _resolve_harness_ai_home() -> Path | None:
+    """Resolve the HarnessAI repo root (contains backend/ + skills/).
+
+    Priority: HARNESS_AI_HOME env → HARNESS_ROOT.parent (repo layout).
+    Returns None when neither yields a directory containing backend/.
+    """
+    env = os.environ.get("HARNESS_AI_HOME")
+    if env:
+        home = Path(env).expanduser().resolve()
+        return home if (home / "backend").is_dir() else None
+    candidate = HARNESS_ROOT.parent
+    return candidate if (candidate / "backend").is_dir() else None
+
+
+def _load_agent_scaffold(home: Path):  # type: ignore[no-untyped-def]
+    """Load agent_scaffold.py standalone (no orchestrator package __init__).
+
+    The module imports only stdlib, so a direct file load avoids pulling in
+    the heavy orchestration engine (pydantic/yaml) that scaffolding never needs.
+    """
+    import importlib.util  # noqa: PLC0415
+
+    mod_path = home / "backend" / "src" / "orchestrator" / "agent_scaffold.py"
+    if not mod_path.is_file():
+        raise FileNotFoundError(f"agent_scaffold.py not found at {mod_path}")
+    spec = importlib.util.spec_from_file_location("ha_agent_scaffold", mod_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load agent_scaffold from {mod_path}")
+    module = importlib.util.module_from_spec(spec)
+    # Register before exec: @dataclass forward-ref resolution looks the module
+    # up in sys.modules via cls.__module__.
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def cmd_scaffold(agent: str, skill: str | None, out_dir: Path, dry_run: bool) -> int:
+    """Generate per-agent command files from neutral SKILL.md sources."""
+    home = _resolve_harness_ai_home()
+    if home is None:
+        print(
+            "[FAIL] HARNESS_AI_HOME 환경변수 필요 — HarnessAI 레포 절대 경로를 가리켜야 함.\n"
+            "  예: $env:HARNESS_AI_HOME = 'C:\\path\\to\\harnessai'  (PowerShell)",
+            file=sys.stderr,
+        )
+        return 3
+
+    try:
+        scaffold = _load_agent_scaffold(home)
+    except (FileNotFoundError, ImportError) as e:
+        print(f"[FAIL] {e}", file=sys.stderr)
+        return 3
+
+    known = set(scaffold.AGENT_SPECS)
+    agents = sorted(known) if agent == "all" else [agent]
+    for a in agents:
+        if a not in known:
+            print(
+                f"[FAIL] unknown agent {a!r} — must be one of {sorted(known)} or 'all'",
+                file=sys.stderr,
+            )
+            return 2
+
+    skills_root = home / "skills"
+    if skill:
+        skill_dirs = [skills_root / skill]
+        if not (skill_dirs[0] / "SKILL.md").is_file():
+            print(f"[FAIL] SKILL.md 없음: {skill_dirs[0] / 'SKILL.md'}", file=sys.stderr)
+            return 3
+    else:
+        skill_dirs = sorted(
+            d for d in skills_root.glob("ha-*") if (d / "SKILL.md").is_file()
+        )
+        if not skill_dirs:
+            print(f"[FAIL] ha-* 스킬 없음: {skills_root}", file=sys.stderr)
+            return 3
+
+    written = 0
+    skipped = 0
+    for a in agents:
+        for sdir in skill_dirs:
+            name = sdir.name
+            text = (sdir / "SKILL.md").read_text(encoding="utf-8")
+            desc, body = scaffold.parse_skill_md(text)
+            try:
+                rel, content = scaffold.render(name, desc, body, a)
+            except ValueError as e:
+                print(f"  [SKIP] {a}/{name}: {e}")
+                skipped += 1
+                continue
+            written += _write_scaffold_file(out_dir / rel, content, rel, dry_run)
+        if a != "claude":
+            crel, ccontent = scaffold.render_context(a)
+            written += _write_scaffold_file(out_dir / crel, ccontent, crel, dry_run)
+
+    verb = "would write" if dry_run else "wrote"
+    extra = f", {skipped} skipped" if skipped else ""
+    print(f"---\n[OK] {verb} {written} file(s){extra} → {out_dir}")
+    return 0
+
+
+def _write_scaffold_file(path: Path, content: str, rel: str, dry_run: bool) -> int:
+    """Write one scaffold file (or print in dry-run). Returns 1 if written."""
+    if dry_run:
+        print(f"  [DRY] {rel}")
+        return 1
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    print(f"  [WRITE] {rel}")
+    return 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="harness")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -1567,6 +1679,34 @@ def main() -> int:
         help="Phase subgraph 그룹 생략 (평면 노드 리스트)",
     )
 
+    sc = sub.add_parser(
+        "scaffold",
+        help="중립 SKILL.md → 에이전트별 명령 파일 생성 (claude/gemini/copilot)",
+    )
+    sc.add_argument(
+        "--agent",
+        required=True,
+        help="대상 에이전트: claude|gemini|copilot|all",
+    )
+    sc.add_argument(
+        "--skill",
+        default=None,
+        help="단일 스킬명 (예: ha-verify). 생략 시 모든 ha-* 스킬",
+    )
+    sc.add_argument(
+        "--out",
+        type=Path,
+        default=Path.cwd(),
+        help="출력 프로젝트 루트 (default: cwd)",
+    )
+    sc.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        dest="dry_run",
+        help="파일 쓰지 않고 생성될 경로만 출력",
+    )
+
     mv10 = sub.add_parser(
         "migrate-v10",
         help="v0.9.x → v0.10.0 마이그레이션 (frozen_status 필드 추가)",
@@ -1610,6 +1750,14 @@ def main() -> int:
             tasks_path=args.tasks_path.expanduser().resolve(),
             inject=args.inject,
             no_phases=args.no_phases,
+        )
+
+    if args.cmd == "scaffold":
+        return cmd_scaffold(
+            agent=args.agent,
+            skill=args.skill,
+            out_dir=args.out.expanduser().resolve(),
+            dry_run=args.dry_run,
         )
 
     if args.cmd == "migrate-v10":
