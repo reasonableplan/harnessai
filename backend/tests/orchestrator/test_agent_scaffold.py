@@ -31,15 +31,7 @@ class TestParseSkillMd:
         assert body.strip() == "body text here"
 
     def test_block_description(self) -> None:
-        text = (
-            "---\n"
-            "name: ha-foo\n"
-            "description: |\n"
-            "  Line one\n"
-            "  Line two\n"
-            "---\n\n"
-            "body content"
-        )
+        text = "---\nname: ha-foo\ndescription: |\n  Line one\n  Line two\n---\n\nbody content"
         desc, body = parse_skill_md(text)
         # Block scalar: leading spaces stripped, joined by space or newline — we
         # preserve content; caller may strip.  At minimum both lines present.
@@ -82,9 +74,7 @@ class TestAgentSpecs:
 class TestRenderGemini:
     _SKILL = "ha-verify"
     _DESC = "HarnessAI v2 — verify toolchain"
-    _BODY_TEMPLATE = (
-        "Run `python ~/.claude/skills/ha-verify/run.py prepare` with $ARGUMENTS"
-    )
+    _BODY_TEMPLATE = "Run `python ~/.claude/skills/ha-verify/run.py prepare` with $ARGUMENTS"
 
     def _render(self, body: str | None = None) -> tuple[str, str]:
         b = body if body is not None else self._BODY_TEMPLATE
@@ -132,9 +122,7 @@ class TestRenderGemini:
 class TestRenderCopilot:
     _SKILL = "ha-verify"
     _DESC = "HarnessAI v2 — verify toolchain"
-    _BODY = (
-        "Run `python ~/.claude/skills/ha-verify/run.py prepare` with $ARGUMENTS"
-    )
+    _BODY = "Run `python ~/.claude/skills/ha-verify/run.py prepare` with $ARGUMENTS"
 
     def _render(self) -> tuple[str, str]:
         return render(self._SKILL, self._DESC, self._BODY, "copilot")
@@ -173,9 +161,7 @@ class TestRenderCopilot:
 class TestRenderClaude:
     _SKILL = "ha-verify"
     _DESC = "HarnessAI v2 — verify toolchain"
-    _BODY = (
-        "Run `python ~/.claude/skills/ha-verify/run.py prepare` with $ARGUMENTS"
-    )
+    _BODY = "Run `python ~/.claude/skills/ha-verify/run.py prepare` with $ARGUMENTS"
 
     def _render(self) -> tuple[str, str]:
         return render(self._SKILL, self._DESC, self._BODY, "claude")
@@ -274,9 +260,7 @@ class TestRenderUnknownAgent:
 class TestRealSkillMdSmoke:
     """Read the actual ha-verify SKILL.md and verify the full round-trip."""
 
-    _SKILL_PATH = (
-        Path.home() / ".claude" / "skills" / "ha-verify" / "SKILL.md"
-    )
+    _SKILL_PATH = Path.home() / ".claude" / "skills" / "ha-verify" / "SKILL.md"
 
     def test_real_skill_parses_and_renders_to_valid_toml(self) -> None:
         if not self._SKILL_PATH.exists():
@@ -290,7 +274,9 @@ class TestRealSkillMdSmoke:
 
         # skip toml render if body contains ''' (literal triple-quote)
         if "'''" in body:
-            pytest.skip("body contains TOML literal-string delimiter — render would raise by design")
+            pytest.skip(
+                "body contains TOML literal-string delimiter — render would raise by design"
+            )
 
         _, content = render("ha-verify", desc, body, "gemini")
         parsed = tomllib.loads(content)

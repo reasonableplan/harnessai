@@ -20,9 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _load_ha_build() -> ModuleType:
-    loader = SourceFileLoader(
-        "ha_build_phase2", str(REPO_ROOT / "skills" / "ha-build" / "run.py")
-    )
+    loader = SourceFileLoader("ha_build_phase2", str(REPO_ROOT / "skills" / "ha-build" / "run.py"))
     spec = importlib.util.spec_from_loader("ha_build_phase2", loader)
     assert spec is not None
     mod = importlib.util.module_from_spec(spec)
@@ -42,7 +40,16 @@ def _plan(step: str) -> SimpleNamespace:
             current_step=step,
             completed_steps=("ha-design", "ha-plan"),
             skipped_steps=(),
-            steps=("init", "designed", "planned", "building", "built", "verified", "reviewed", "shipped"),
+            steps=(
+                "init",
+                "designed",
+                "planned",
+                "building",
+                "built",
+                "verified",
+                "reviewed",
+                "shipped",
+            ),
             gstack_mode="manual",
         )
     )

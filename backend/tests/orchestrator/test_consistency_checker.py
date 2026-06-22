@@ -484,10 +484,7 @@ def test_offline_constraint_dedup_same_marker() -> None:
 
 def test_run_all_includes_offline_check() -> None:
     """run_all_checks 가 offline 검사를 집계에 포함한다."""
-    skel = (
-        "## 1. NFR\n외부 인터넷 호출 없음.\n\n"
-        "## 9. API\nhttps://api.remote.io/v1 호출.\n"
-    )
+    skel = "## 1. NFR\n외부 인터넷 호출 없음.\n\n## 9. API\nhttps://api.remote.io/v1 호출.\n"
     findings = run_all_checks(skeleton_text=skel)
     patterns = {f.pattern for f in findings}
     assert "offline-constraint-violation" in patterns

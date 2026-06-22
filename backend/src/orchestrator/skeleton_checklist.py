@@ -134,9 +134,7 @@ def _check_clarity(title: str, body: str) -> list[ChecklistFinding]:
                 severity="warn",
                 category="clarity",
                 section_id=title,
-                message=(
-                    f"'{vague_word}' 미정량 - 목표치(예: ms, 건수) 명시 권장"
-                ),
+                message=(f"'{vague_word}' 미정량 - 목표치(예: ms, 건수) 명시 권장"),
             )
         )
         # One finding per line maximum — avoid duplicate findings for a line
@@ -188,9 +186,7 @@ def _check_edge_case(title: str, body: str) -> list[ChecklistFinding]:
             severity="warn",
             category="edge_case",
             section_id=title,
-            message=(
-                f"'{title}' I/O 경계인데 실패/에러 경로 미기술"
-            ),
+            message=(f"'{title}' I/O 경계인데 실패/에러 경로 미기술"),
         )
     ]
 

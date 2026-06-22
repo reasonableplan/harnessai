@@ -104,7 +104,9 @@ def test_prepare_marks_pending_task_in_progress(ha_build, tmp_path, monkeypatch,
     assert task["status"] == "in-progress"
 
 
-def test_prepare_detects_reentry_with_partial_output(ha_build, tmp_path, monkeypatch, capsys) -> None:
+def test_prepare_detects_reentry_with_partial_output(
+    ha_build, tmp_path, monkeypatch, capsys
+) -> None:
     """이미 in-progress + 선언 파일 일부 존재 → 재진입 감지 + 부분 산출 보고."""
     plan = _plan()
     plan_path = _patch(ha_build, monkeypatch, plan, tmp_path)

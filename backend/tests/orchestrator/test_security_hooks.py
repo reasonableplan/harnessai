@@ -830,9 +830,7 @@ class TestDependencyFrontendFP:
     def test_tsconfig_alias_with_prefix_no_warn(self) -> None:
         """@shared/types/entity import + extra_frontend_prefixes=('@shared/',) → WARN 없음."""
         code = "import type { Entity } from '@shared/types/entity'"
-        findings = check_dependency(
-            code, is_frontend=True, extra_frontend_prefixes=("@shared/",)
-        )
+        findings = check_dependency(code, is_frontend=True, extra_frontend_prefixes=("@shared/",))
         dep_findings = [f for f in findings if f.hook == "dependency-check"]
         assert dep_findings == [], f"예상치 못한 findings: {dep_findings}"
 
@@ -844,10 +842,7 @@ class TestDependencyFrontendFP:
 
     def test_multiple_tsconfig_prefixes_no_warn(self) -> None:
         """@shared/ + @app/ 복수 prefix 주입 → 해당 import 전부 통과."""
-        code = (
-            "import { Entity } from '@shared/types/entity'\n"
-            "import { store } from '@app/store'\n"
-        )
+        code = "import { Entity } from '@shared/types/entity'\nimport { store } from '@app/store'\n"
         findings = check_dependency(
             code,
             is_frontend=True,
@@ -905,9 +900,7 @@ class TestDependencyFrontendFP:
 
     def test_security_hooks_extra_frontend_allowed(self) -> None:
         """SecurityHooks(extra_frontend_allowed=...) → run_all frontend mode 통과."""
-        hooks = SecurityHooks(
-            extra_frontend_allowed={"dxf-parser", "three", "@tarikjabiri/dxf"}
-        )
+        hooks = SecurityHooks(extra_frontend_allowed={"dxf-parser", "three", "@tarikjabiri/dxf"})
         code = (
             "import DxfParser from 'dxf-parser'\n"
             "import * as THREE from 'three'\n"
@@ -920,10 +913,7 @@ class TestDependencyFrontendFP:
     def test_security_hooks_extra_frontend_prefixes(self) -> None:
         """SecurityHooks(extra_frontend_prefixes=...) → run_all frontend mode 통과."""
         hooks = SecurityHooks(extra_frontend_prefixes=("@shared/", "@app/"))
-        code = (
-            "import { Entity } from '@shared/types/entity'\n"
-            "import { store } from '@app/store'\n"
-        )
+        code = "import { Entity } from '@shared/types/entity'\nimport { store } from '@app/store'\n"
         result = hooks.run_all(code, is_frontend=True)
         dep_findings = [f for f in result.findings if f.hook == "dependency-check"]
         assert dep_findings == [], f"예상치 못한 findings: {dep_findings}"
@@ -931,10 +921,7 @@ class TestDependencyFrontendFP:
     def test_security_hooks_node_builtins_via_run_all(self) -> None:
         """run_all frontend mode: node:fs, node:path → WARN 없음."""
         hooks = SecurityHooks()
-        code = (
-            "import { readFileSync } from 'node:fs'\n"
-            "import path from 'node:path'\n"
-        )
+        code = "import { readFileSync } from 'node:fs'\nimport path from 'node:path'\n"
         result = hooks.run_all(code, is_frontend=True)
         dep_findings = [f for f in result.findings if f.hook == "dependency-check"]
         assert dep_findings == [], f"예상치 못한 findings: {dep_findings}"
@@ -1052,9 +1039,7 @@ class TestParseTsconfigPathPrefixes:
         """@shared/* → @shared/, @/* → @/ 변환."""
         from src.orchestrator.security_hooks import parse_tsconfig_path_prefixes
 
-        result = parse_tsconfig_path_prefixes(
-            {"@shared/*": ["src/shared/$1"], "@/*": ["src/$1"]}
-        )
+        result = parse_tsconfig_path_prefixes({"@shared/*": ["src/shared/$1"], "@/*": ["src/$1"]})
         assert result == ("@/", "@shared/")  # 정렬
 
     def test_non_wildcard_key_kept_as_is(self) -> None:
@@ -1068,9 +1053,7 @@ class TestParseTsconfigPathPrefixes:
         """wildcard + non-wildcard 혼합 → 정렬된 tuple."""
         from src.orchestrator.security_hooks import parse_tsconfig_path_prefixes
 
-        result = parse_tsconfig_path_prefixes(
-            {"@shared/*": ["x"], "@/*": ["y"], "@root": ["z"]}
-        )
+        result = parse_tsconfig_path_prefixes({"@shared/*": ["x"], "@/*": ["y"], "@root": ["z"]})
         assert result == ("@/", "@root", "@shared/")
 
     def test_empty_dict(self) -> None:
@@ -1084,9 +1067,7 @@ class TestParseTsconfigPathPrefixes:
         """중복 prefix → 단일 항목."""
         from src.orchestrator.security_hooks import parse_tsconfig_path_prefixes
 
-        result = parse_tsconfig_path_prefixes(
-            {"@shared/*": ["a"], "@shared/other/*": ["b"]}
-        )
+        result = parse_tsconfig_path_prefixes({"@shared/*": ["a"], "@shared/other/*": ["b"]})
         # @shared/* → @shared/, @shared/other/* → @shared/other/ : 중복 없음
         assert "@shared/" in result
         assert "@shared/other/" in result

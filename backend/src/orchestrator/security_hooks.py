@@ -414,7 +414,9 @@ def check_dependency(
     """
     extra = extra_allowed or frozenset()
     py_wl = python_whitelist if python_whitelist is not None else _PYTHON_WHITELIST
-    fe_wl: set[str] = set(frontend_whitelist if frontend_whitelist is not None else _FRONTEND_WHITELIST)
+    fe_wl: set[str] = set(
+        frontend_whitelist if frontend_whitelist is not None else _FRONTEND_WHITELIST
+    )
     if extra_frontend_allowed:
         fe_wl = fe_wl | set(extra_frontend_allowed)
     base_fe_prefixes = (

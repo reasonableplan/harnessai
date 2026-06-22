@@ -46,9 +46,7 @@ def test_gemini_single_skill_writes_valid_toml(tmp_path: Path) -> None:
 def test_gemini_path_substitution(tmp_path: Path) -> None:
     r = _run_scaffold("--agent", "gemini", "--skill", "ha-verify", out=tmp_path)
     assert r.returncode == 0, r.stderr
-    content = (tmp_path / ".gemini" / "commands" / "ha-verify.toml").read_text(
-        encoding="utf-8"
-    )
+    content = (tmp_path / ".gemini" / "commands" / "ha-verify.toml").read_text(encoding="utf-8")
     assert "~/.claude/" not in content
     assert "${HARNESS_AI_HOME}/skills/" in content
     assert "${HARNESS_AI_HOME}/harness/bin/harness" in content
@@ -68,17 +66,15 @@ def test_all_agents_single_skill_writes_five_files(tmp_path: Path) -> None:
 def test_claude_keeps_native_paths(tmp_path: Path) -> None:
     r = _run_scaffold("--agent", "claude", "--skill", "ha-verify", out=tmp_path)
     assert r.returncode == 0, r.stderr
-    content = (
-        tmp_path / ".claude" / "skills" / "ha-verify" / "SKILL.md"
-    ).read_text(encoding="utf-8")
+    content = (tmp_path / ".claude" / "skills" / "ha-verify" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
     assert "~/.claude/skills/" in content
     assert "${HARNESS_AI_HOME}" not in content
 
 
 def test_dry_run_writes_nothing(tmp_path: Path) -> None:
-    r = _run_scaffold(
-        "--agent", "gemini", "--skill", "ha-verify", "--dry-run", out=tmp_path
-    )
+    r = _run_scaffold("--agent", "gemini", "--skill", "ha-verify", "--dry-run", out=tmp_path)
     assert r.returncode == 0, r.stderr
     assert not (tmp_path / ".gemini").exists()
     assert "[DRY]" in r.stdout

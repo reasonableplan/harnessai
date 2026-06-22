@@ -40,7 +40,16 @@ def _plan(step: str) -> SimpleNamespace:
             current_step=step,
             completed_steps=(),
             skipped_steps=(),
-            steps=("init", "designed", "planned", "building", "built", "verified", "reviewed", "shipped"),
+            steps=(
+                "init",
+                "designed",
+                "planned",
+                "building",
+                "built",
+                "verified",
+                "reviewed",
+                "shipped",
+            ),
             gstack_mode="manual",
         )
     )
@@ -51,7 +60,11 @@ def test_blocks_when_before_prerequisite(utils) -> None:
     plan = _plan("init")
     with pytest.raises(SystemExit) as exc:
         utils.reenter_or_assert(
-            plan, Path("x"), prerequisite_state="planned", working_state="building", skill_name="/ha-build"
+            plan,
+            Path("x"),
+            prerequisite_state="planned",
+            working_state="building",
+            skill_name="/ha-build",
         )
     assert exc.value.code == 2
 
@@ -62,7 +75,11 @@ def test_passes_at_prerequisite_no_regress(utils, monkeypatch) -> None:
     saved = {"called": False}
     monkeypatch.setattr(utils, "save_plan", lambda p, pp: saved.update(called=True))
     out = utils.reenter_or_assert(
-        plan, Path("x"), prerequisite_state="planned", working_state="building", skill_name="/ha-build"
+        plan,
+        Path("x"),
+        prerequisite_state="planned",
+        working_state="building",
+        skill_name="/ha-build",
     )
     assert out is False
     assert plan.pipeline.current_step == "planned"
@@ -74,7 +91,11 @@ def test_passes_at_working_no_regress(utils, monkeypatch) -> None:
     plan = _plan("building")
     monkeypatch.setattr(utils, "save_plan", lambda p, pp: None)
     out = utils.reenter_or_assert(
-        plan, Path("x"), prerequisite_state="planned", working_state="building", skill_name="/ha-build"
+        plan,
+        Path("x"),
+        prerequisite_state="planned",
+        working_state="building",
+        skill_name="/ha-build",
     )
     assert out is False
     assert plan.pipeline.current_step == "building"
@@ -84,9 +105,15 @@ def test_regresses_when_after_working(utils, monkeypatch) -> None:
     """current > working → working 으로 regress + save, True 반환 (재진입)."""
     plan = _plan("reviewed")
     saved = {"step": None}
-    monkeypatch.setattr(utils, "save_plan", lambda p, pp: saved.update(step=p.pipeline.current_step))
+    monkeypatch.setattr(
+        utils, "save_plan", lambda p, pp: saved.update(step=p.pipeline.current_step)
+    )
     out = utils.reenter_or_assert(
-        plan, Path("x"), prerequisite_state="planned", working_state="building", skill_name="/ha-build"
+        plan,
+        Path("x"),
+        prerequisite_state="planned",
+        working_state="building",
+        skill_name="/ha-build",
     )
     assert out is True
     assert plan.pipeline.current_step == "building"
@@ -98,7 +125,11 @@ def test_ha_plan_replan_from_building_regresses_to_planned(utils, monkeypatch) -
     plan = _plan("building")
     monkeypatch.setattr(utils, "save_plan", lambda p, pp: None)
     out = utils.reenter_or_assert(
-        plan, Path("x"), prerequisite_state="designed", working_state="planned", skill_name="/ha-plan"
+        plan,
+        Path("x"),
+        prerequisite_state="designed",
+        working_state="planned",
+        skill_name="/ha-plan",
     )
     assert out is True
     assert plan.pipeline.current_step == "planned"

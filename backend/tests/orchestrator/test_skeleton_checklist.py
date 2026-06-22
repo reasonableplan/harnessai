@@ -15,6 +15,7 @@ from src.orchestrator.skeleton_checklist import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _skel(*sections: tuple[str, str]) -> str:
     """Build a minimal skeleton text from (title, body) pairs."""
     parts: list[str] = []
@@ -196,8 +197,8 @@ def test_finding_dataclass_fields() -> None:
 def test_multiple_sections_findings_aggregated() -> None:
     """여러 섹션에서 finding 이 aggregate 됨."""
     skel = _skel(
-        ("HTTP API", "API는 빠르게 응답."),   # clarity + edge_case
-        ("프로젝트 개요", "간단한 앱."),        # clarity only
+        ("HTTP API", "API는 빠르게 응답."),  # clarity + edge_case
+        ("프로젝트 개요", "간단한 앱."),  # clarity only
     )
     all_findings = check_skeleton_quality(skel)
     categories = {f.category for f in all_findings}

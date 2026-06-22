@@ -33,14 +33,12 @@ _DESC_TEMPLATE = "선언-미구현 엔드포인트 구현: {identifier}"
 class ConvergeFinding:
     """A component declared in the skeleton but missing from the source tree."""
 
-    kind: str          # "missing_endpoint"
-    identifier: str    # 사람이 읽는 식별자, e.g. "GET /api/users"
-    detail: str        # 매칭에 쓴 정적 prefix, e.g. "/api/users"
+    kind: str  # "missing_endpoint"
+    identifier: str  # 사람이 읽는 식별자, e.g. "GET /api/users"
+    detail: str  # 매칭에 쓴 정적 prefix, e.g. "/api/users"
 
 
-def find_missing_endpoints(
-    skeleton_text: str, source_texts: list[str]
-) -> list[ConvergeFinding]:
+def find_missing_endpoints(skeleton_text: str, source_texts: list[str]) -> list[ConvergeFinding]:
     """skeleton interface.http 에 선언됐지만 소스 어디에도 없는 엔드포인트.
 
     path 의 정적 prefix ("{param}" 앞부분) 가 소스 전체에서 한 번도 안 보이면 보고.
@@ -50,9 +48,7 @@ def find_missing_endpoints(
     section = extract_section_by_id(skeleton_text, "interface.http")
     if not section:
         return []
-    declared = sorted(
-        {(m.group(1), m.group(2)) for m in _HTTP_METHOD_PATH_RE.finditer(section)}
-    )
+    declared = sorted({(m.group(1), m.group(2)) for m in _HTTP_METHOD_PATH_RE.finditer(section)})
     findings: list[ConvergeFinding] = []
     for method, path_str in declared:
         prefix = path_str.split("{")[0].rstrip("/") or path_str
@@ -74,9 +70,7 @@ def allocate_task_ids(tasks_text: str, count: int) -> list[str]:
     return [f"T-{n:03d}" for n in range(start, start + count)]
 
 
-def filter_uncovered(
-    findings: list[ConvergeFinding], tasks_text: str
-) -> list[ConvergeFinding]:
+def filter_uncovered(findings: list[ConvergeFinding], tasks_text: str) -> list[ConvergeFinding]:
     """이미 태스크로 존재하는 finding 제거 (멱등성).
 
     회수 태스크 설명에 identifier 를 그대로 박으므로, identifier 가 tasks.md 에
@@ -120,9 +114,7 @@ def append_tasks(
         if _TASK_ROW_LINE_RE.match(line):
             last_row_idx = i
     if last_row_idx == -1:
-        raise ValueError(
-            "tasks.md 에 태스크 행(| T-NNN |)이 없음 — /ha-plan 을 먼저 실행하세요."
-        )
+        raise ValueError("tasks.md 에 태스크 행(| T-NNN |)이 없음 — /ha-plan 을 먼저 실행하세요.")
 
     lines[last_row_idx + 1 : last_row_idx + 1] = new_rows
     return "\n".join(lines), added

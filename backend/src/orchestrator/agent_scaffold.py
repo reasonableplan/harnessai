@@ -23,10 +23,10 @@ class AgentSpec:
     """Per-agent adapter: output path template, format, and token mappings."""
 
     key: str
-    commands_dir: str     # e.g. ".gemini/commands"
-    file_template: str    # e.g. "{name}.toml"  (claude uses "{name}/SKILL.md")
-    fmt: str              # "toml" | "md_frontmatter"
-    args_token: str       # $ARGUMENTS is replaced with this in body
+    commands_dir: str  # e.g. ".gemini/commands"
+    file_template: str  # e.g. "{name}.toml"  (claude uses "{name}/SKILL.md")
+    fmt: str  # "toml" | "md_frontmatter"
+    args_token: str  # $ARGUMENTS is replaced with this in body
     context_file: str
 
 
@@ -36,7 +36,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         commands_dir=".claude/skills",
         file_template="{name}/SKILL.md",
         fmt="md_frontmatter",
-        args_token="$ARGUMENTS",          # no substitution for claude
+        args_token="$ARGUMENTS",  # no substitution for claude
         context_file="CLAUDE.md",
     ),
     "gemini": AgentSpec(
@@ -52,7 +52,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         commands_dir=".github/prompts",
         file_template="{name}.prompt.md",
         fmt="md_frontmatter",
-        args_token="$ARGUMENTS",          # same token as claude
+        args_token="$ARGUMENTS",  # same token as claude
         context_file=".github/copilot-instructions.md",
     ),
 }
@@ -177,7 +177,7 @@ def _render_toml(description: str, body: str) -> str:
     # Escape double-quotes in description for the basic string value.
     safe_desc = first_line.replace('"', '\\"')
 
-    return f'description = "{safe_desc}"\n\nprompt = \'\'\'\n{body}\n\'\'\'\n'
+    return f"description = \"{safe_desc}\"\n\nprompt = '''\n{body}\n'''\n"
 
 
 def _render_md_frontmatter(description: str, body: str) -> str:
@@ -217,9 +217,7 @@ def render(skill_name: str, description: str, body: str, agent: str) -> tuple[st
         delimiter conflict is detected.
     """
     if agent not in AGENT_SPECS:
-        raise ValueError(
-            f"unknown agent {agent!r} — must be one of {sorted(AGENT_SPECS)}"
-        )
+        raise ValueError(f"unknown agent {agent!r} — must be one of {sorted(AGENT_SPECS)}")
 
     spec = AGENT_SPECS[agent]
 
@@ -283,9 +281,7 @@ def render_context(agent: str) -> tuple[str, str]:
         If *agent* is unknown, or is ``"claude"``.
     """
     if agent not in AGENT_SPECS:
-        raise ValueError(
-            f"unknown agent {agent!r} — must be one of {sorted(AGENT_SPECS)}"
-        )
+        raise ValueError(f"unknown agent {agent!r} — must be one of {sorted(AGENT_SPECS)}")
     if agent == "claude":
         raise ValueError(
             "claude uses native ~/.claude — no generated context file "

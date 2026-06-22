@@ -331,8 +331,7 @@ def check_offline_network_violation(skel_text: str) -> list[ConsistencyFinding]:
     section_ids = list(sections.keys())
 
     _VIOLATION_MSG = (
-        "오프라인/네트워크 제약 선언됨에도 외부 네트워크 마커 발견 — "
-        "NFR(#10) 위반 가능, 검증 필요"
+        "오프라인/네트워크 제약 선언됨에도 외부 네트워크 마커 발견 — NFR(#10) 위반 가능, 검증 필요"
     )
 
     seen: set[str] = set()

@@ -59,7 +59,7 @@ def test_iter_source_texts_respects_skip_dirs_and_exts(ha_converge, tmp_path) ->
 
     assert "code here" in texts
     assert "vendor" not in texts  # node_modules skipped
-    assert "docs" not in texts    # .md not a source ext
+    assert "docs" not in texts  # .md not a source ext
 
 
 def _setup_project(tmp_path: Path) -> Path:
@@ -76,9 +76,7 @@ def _setup_project(tmp_path: Path) -> Path:
 
 def _patch_plan(ha_converge, monkeypatch, tmp_path: Path, plan_path: Path) -> None:
     fake_plan = SimpleNamespace(pipeline=SimpleNamespace(current_step="reviewed"))
-    monkeypatch.setattr(
-        ha_converge, "load_plan", lambda: (fake_plan, plan_path, tmp_path)
-    )
+    monkeypatch.setattr(ha_converge, "load_plan", lambda: (fake_plan, plan_path, tmp_path))
     monkeypatch.setattr(ha_converge, "assert_state", lambda *a, **kw: None)
 
 

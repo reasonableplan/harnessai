@@ -93,7 +93,7 @@ def _run(ha_verify, capsys) -> tuple[int, dict, str]:
 def test_smoke_passes_on_clean_cli(ha_verify, tmp_path, monkeypatch, capsys) -> None:
     """정상 기동 (exit 0) → smoke_check.passed True, smoke_failures 비어있음."""
     plan = _plan()
-    prof = _profile(smoke='python -c "print(\'ok\')"')
+    prof = _profile(smoke="python -c \"print('ok')\"")
     _patch(ha_verify, monkeypatch, plan, [prof], tmp_path)
 
     rc, out, _err = _run(ha_verify, capsys)

@@ -21,9 +21,7 @@ import yaml
 def _write_profile(profiles_dir: Path, pid: str, file_structure: str) -> None:
     md = (
         "---\n"
-        + yaml.safe_dump(
-            {"id": pid, "file_structure": file_structure}, allow_unicode=True
-        )
+        + yaml.safe_dump({"id": pid, "file_structure": file_structure}, allow_unicode=True)
         + "---\n"
     )
     (profiles_dir / f"{pid}.md").write_text(md, encoding="utf-8")

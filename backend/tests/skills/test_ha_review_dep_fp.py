@@ -67,7 +67,7 @@ def test_tsconfig_alias_not_warned_with_tsconfig(ha_review: ModuleType, tmp_path
     (tmp_path / "tsconfig.json").write_text(
         '{\n  // 주석 (JSONC)\n  "compilerOptions": {\n'
         '    "paths": {\n      "@shared/*": ["./src/shared/*"],\n'
-        '    },\n  },\n}\n',
+        "    },\n  },\n}\n",
         encoding="utf-8",
     )
     diff = _ts_diff("import { Entity } from '@shared/types/entity'")
@@ -91,7 +91,9 @@ def test_skeleton_stack_lib_not_warned(ha_review: ModuleType, tmp_path: Path) ->
         "- dxf-parser: DXF 파싱\n"
         "- three: 3D 렌더링\n"
     )
-    diff = _ts_diff("import DxfParser from 'dxf-parser'") + _ts_diff("import * as THREE from 'three'")
+    diff = _ts_diff("import DxfParser from 'dxf-parser'") + _ts_diff(
+        "import * as THREE from 'three'"
+    )
     result = ha_review._collect_findings(tmp_path, [_fe_profile()], diff, skeleton)
     assert _dep_warns(result) == []
 
@@ -110,7 +112,7 @@ def test_collect_tsconfig_prefixes_jsonc(ha_review: ModuleType, tmp_path: Path) 
         '{\n  /* block comment */\n  "compilerOptions": {\n'
         '    "paths": {\n'
         '      "@shared/*": ["x"],\n      "@/*": ["y"],\n      "@root": ["z"],\n'
-        '    },\n  },\n}\n',
+        "    },\n  },\n}\n",
         encoding="utf-8",
     )
     prefixes = ha_review._collect_tsconfig_prefixes(tmp_path)
