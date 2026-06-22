@@ -152,6 +152,45 @@ ha-plan/ha-redesign 에 **"기존 done 보존 + 특정 태스크를 하위로 �
 - 설계: `tasks.md` 의 한 태스크 행을 N개 하위 행으로 치환하되 **done/needs_rebuild 상태와 무관 태스크는 보존**.
   #2(--replan)·#7(부분복구)와 같은 **iteration-보존 계열**.
 - 우선순위: **P5+** (구조 변경, 런타임/설계 게이트보다 후순위).
+- **재고(§4.6 패턴2)**: 별도 "분할 연산"보다 **`[X]`/status resume + 범위지정 빌드**가 #7·#12 를
+  동시에 더 단순히 해결 → A5 를 그 방향으로 재설계 검토.
+
+## 4.6 Spec Kit 버그-처리 패턴 (구조적 흡수 — dogfood 반복 클래스 대응)
+
+HarnessAI dogfood 반복 버그를 **클래스**로 묶으면, Spec Kit 의 설계가 그 클래스를 구조적으로
+회피/처리하는 패턴이 보인다. (기술 기능 흡수 A1~A5 와 별개의 **아키텍처 교훈**.)
+
+### 패턴 1 — 상태머신 경직 (#2·#9·#12, 같은 뿌리 3회 반복) → 아티팩트-선행조건 모델
+HarnessAI 는 forward-only 글로벌 state machine(init→…→shipped, 역행은 `regress()` 만). 이게
+#2(redesign 후 re-plan 막힘)·#9(reviewed 후 추가 빌드 막힘)·#12(태스크 분할 불가)를 **반복
+생산**한다. **Spec Kit 엔 글로벌 `current_step` 게이트가 아예 없다** — 각 명령은 "필요한 선행
+아티팩트(spec/plan/tasks)가 존재하는가"만 확인. 반복(iteration)이 예외가 아니라 기본:
+flow-forward(새 feature 디렉토리) / living-spec(spec 수정→하위 재생성) / flow-back(아무
+아티팩트나 편집→reconcile) 중 사용자 선택.
+→ **흡수**: HarnessAI 의 상태 강제를 "선행 아티팩트 존재 확인"으로 완화하거나, 최소한
+re-plan/추가 빌드/분할을 **1급 동작**으로. 이번 #2(`--replan`)·#9(building 회귀)는 **땜질** —
+근본은 state machine 완화. (가장 큰 구조적 교훈; 현재 HarnessAI 버그 1순위 양산처.)
+
+### 패턴 2 — 부분완료·과대태스크 (#7·#12) → `[X]` 마커 + 런당 범위 스코핑
+Spec Kit: 완료 태스크를 tasks.md 에 `[X]` 로 마킹 → 다음 `/implement` 가 거기서 이어감. 대형
+기능은 `/implement only execute T001-T010, then stop` 으로 **런당 범위를 좁힘**(툴 변경 0).
+context 소진(=서브에이전트 degrade)을 명시적으로 다루고, 서브에이전트 위임도 옵션 안내.
+→ HarnessAI 의 #7(in-progress 마킹 머신)·A5(분할 연산)는 더 무거운 재발명. **`[X]`/status 기반
+resume + ha-build 범위지정("T-001..T-005 만")** 하나로 #7·#12 동시 해결이 더 단순.
+
+### 패턴 3 — silent divergence·vacuous (#1·#8) → clean tree + reflect-back 규율
+Spec Kit 은 drift 를 코드 게이트가 아니라 "**clean working tree 에서 시작 → 모든 생성 변경이
+리뷰 가능 + 결정을 spec 에 반영(reflect-back)**" 규율로 다룸(spec-persistence 의 'silent
+divergence' 명시 경고). HarnessAI 의 hash 게이트는 더 강하지만 **도구 자기 변경을 외부수정으로
+오판**(#1/#5)하는 자해. → 교훈: 게이트는 도구 산출(§태스크 sync)을 baseline 에 흡수해야 함
+(이미 #1 수정). spec-as-source 방향(skeleton→spec, v1.0 백로그)은 reflect-back 을 자연스럽게 함.
+
+### 종합
+기술 기능(A1~A4)은 *추가*고, **패턴 1(상태머신 완화)이 가장 근본적인 흡수** — HarnessAI 의
+강점(코드 강제 게이트)은 유지하되, **상태 전이를 forward-only 가 아니라 아티팩트-선행조건 +
+명시 iteration**으로 바꾸면 #2/#9/#12 클래스가 통째로 사라진다. Spec Kit 의 "게이트 없음"을
+그대로 베끼면 HarnessAI 의 검증 강점을 잃으므로, **선행조건 확인은 코드로 강제하되 글로벌
+선형 상태는 완화**하는 절충이 정답.
 
 ## 5. Track B — 멀티 에이전트 호환 (흡수: Spec Kit `integrations/` 패턴)
 
