@@ -45,7 +45,7 @@ claude   # Claude Code 실행
 /ha-init            # 프로파일 자동감지 + 인터뷰 → harness-plan.md + skeleton.md
 /ha-design          # Architect+Designer 역할로 skeleton 채움
 /ha-plan            # Orchestrator 역할로 tasks.md
-/ha-build T-001     # 태스크 구현 (병렬: --parallel T-001,T-002)
+/ha-build T-001     # 태스크 구현 (병렬: --task T-001,T-002 콤마 구분)
 /ha-verify          # 프로파일 toolchain 실행 (test/lint/type)
 /ha-review          # 보안/LESSON/AI-slop 종합 리뷰
 /ha-smoke           # 런타임 기동 검증 (advisory) — 앱이 실제로 뜨는지

@@ -125,7 +125,7 @@ In a fresh Claude Code session:
   /ha-plan   ─────▶ Orchestrator ─▶ tasks.md (dependency graph)
                                           ▼
   /ha-build  ─────▶ Backend/Frontend Coder ─▶ source files
-    │                                 [--parallel T-001,T-002  ← ultrawork]
+    │                                 [--task T-001,T-002  ← parallel]
     ▼
   /ha-verify ─────▶ [1] harness integrity (skeleton ↔ real FS)
                     [2] profile toolchain (pytest / ruff / pyright)
@@ -220,7 +220,7 @@ LESSONs are enforced in three ways: text reference (Reviewer agent reads them), 
 | Rule enforcement | **Profiles + 10 gates** | `.cursorrules` (advisory) | `CLAUDE.md` (advisory) | Commit style only |
 | Mistake accumulation | **28 LESSONs** (auto-detect + reviewer context) | ❌ | ❌ | ❌ |
 | Stack auto-detection | **12 built-in + extensible (web · desktop · CLI · lib · 4 mobile)** | ❌ | ❌ | ❌ |
-| Parallel implementation | **`/ha-build --parallel`** | ❌ | ❌ | ❌ |
+| Parallel implementation | **`/ha-build --task T-1,T-2`** | ❌ | ❌ | ❌ |
 | Design-implementation contract | **`skeleton.md` + integrity gate** | ❌ | ❌ | ❌ |
 
 **Where HarnessAI fits**: multiple small-to-medium projects built to the same quality bar, where you want the system to remember mistakes so you don't have to.
@@ -325,6 +325,8 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 
 **Phase 12 — v0.12.0 (completed, 2026-06-12)**: **runtime smoke gate + default guidelines**. `/ha-smoke` — top of the validation ladder: catches builds where test/lint/type all pass but the app doesn't start. exit-mode (exit 0 = PASS) / URL-readiness probe with process-tree cleanup, recorded as `verify_history` step=`smoke` (advisory, zero schema change) + optional `toolchain.smoke` profile field. Untracked-file scan bypass closed — freshly written files now join the `/ha-build` security gate and `/ha-review` scans via synthesized pseudo-diff. cp949 decode crashes root-fixed (6 subprocess sites). Default guidelines for `electron` / `nextjs` / `nestjs` (11 files — kalpie-lineage rules validated in sosel dogfooding, re-exported). ha-design `locked_section_status` backported (mirror→repo spec-code gap caught by full mirror hash audit). +23 tests (1015 → 1038).
 
+**Phase 13 — v0.13.0 (completed, 2026-06-22)**: **Dogfood Harvest 2 — Runtime L2 & Handoff Fixes**. `/ha-smoke` layer-2: after launch, hits declared `interface.http` GET endpoints to catch "process up but route broken" (404 unregistered / 5xx handler crash). Handoff-consistency fixes across ha-plan→build→review→redesign: ha-plan refreshes skeleton-hash baseline after §tasks sync (kills false drift WARN + every-build BLOCK), `/ha-plan --replan` (re-plan after redesign), worklog root-preference (split-brain), `/ha-verify` cli_entrypoint runtime encoding smoke (cp949 `UnicodeEncodeError` CliRunner can't catch), `/ha-build` in-progress marking + partial-recovery + reviewed→building regress for Phase-2 iteration, `/ha-review` full-source fallback on empty diff (no more vacuous APPROVE). LESSON-033~036 extracted. Spec Kit absorption design doc (`docs/spec-kit-absorption-design.md` — design-quality gates + multi-agent Gemini/Copilot). +75 tests (1038 → 1113).
+
 **v1.0.0 backlog**:
 - Live LESSONS auto-learning (ha-review repeated pattern → LESSON candidate)
 - Multi-provider (Gemini / OpenAI backend) — `providers/gemini_*.py` foundation in place, full validation pending
@@ -333,7 +335,8 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 - Claude Code plugin manifest distribution
 - Vector memory (CrewAI-style) — per-project LESSON embedding
 - Execution sandbox (OpenHands-style) — isolated subprocess environment
-- `ha-smoke` extensions — declared-endpoint liveness sweep + user_journey browser smoke (GWT acceptance criteria as checklist). Core runtime launch gate shipped in v0.12.0
+- `ha-smoke` extensions — user_journey browser smoke (GWT acceptance criteria as checklist). Declared-endpoint liveness sweep shipped in v0.13.0; core launch gate in v0.12.0
+- Spec Kit absorption — design-quality gates (`/checklist`-style skeleton quality, `/analyze` + constitution authority, `ha-converge`) + multi-agent (Gemini/Copilot adapters). Design: `docs/spec-kit-absorption-design.md`
 - `/ha-export` — read-only 기술명세서 / 화면설계서 / 페르소나 renders from skeleton (single source of truth preserved)
 
 ---

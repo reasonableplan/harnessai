@@ -118,7 +118,7 @@ export HARNESS_AI_HOME="$(pwd)"       # (설치 스크립트가 안내)
   /ha-plan   ─────▶ Orchestrator ─▶ tasks.md (의존성 그래프)
                                          ▼
   /ha-build  ─────▶ Backend/Frontend Coder ─▶ 구현 파일
-    │                                 [--parallel T-001,T-002  ← ultrawork]
+    │                                 [--task T-001,T-002  ← parallel]
     ▼
   /ha-verify ─────▶ [1] harness integrity (skeleton ↔ 실재 FS)
                     [2] profile toolchain (pytest/ruff/pyright)
@@ -212,7 +212,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 | 규칙 강제 | **프로파일 + 게이트 10개** | .cursorrules (선언만) | CLAUDE.md (선언만) | 커밋 스타일만 |
 | 실수 축적 | **LESSON 28** (자동 감지 + 리뷰어 참조) | ❌ | ❌ | ❌ |
 | 스택 자동감지 | **12개 기본 + 확장 가능 (web · desktop · CLI · lib · 4 mobile)** | ❌ | ❌ | ❌ |
-| 병렬 구현 | **/ha-build --parallel** | ❌ | ❌ | ❌ |
+| 병렬 구현 | **/ha-build --task T-1,T-2** | ❌ | ❌ | ❌ |
 | 설계-구현 계약 | **skeleton.md + integrity 게이트** | ❌ | ❌ | ❌ |
 
 **HarnessAI 가 어울리는 곳**: 여러 개 중소 프로젝트를 같은 품질로 양산. 반복하는 실수를 시스템이 기억하기를 원할 때.
@@ -311,6 +311,8 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 
 **Phase 12 — v0.12.0 (완료, 2026-06-12)**: **런타임 스모크 게이트 + 디폴트 guidelines**. `/ha-smoke` — 검증 사다리 최상단: test/lint/type 전부 통과해도 앱이 안 뜨는 산출물을 잡는다. exit 모드 (exit 0 = PASS) / URL readiness probe + 프로세스 트리 정리, `verify_history` step=`smoke` 기록 (advisory, 스키마 변경 0) + `toolchain.smoke` optional 프로파일 필드. untracked 파일 스캔 우회 봉합 — 방금 생성된 파일이 의사 diff 합성으로 `/ha-build` 보안 게이트 + `/ha-review` 스캔에 합류. cp949 디코딩 크래시 root fix (6지점). `electron` / `nextjs` / `nestjs` 디폴트 guidelines 11파일 (sosel dogfood 검증 kalpie 계열 규칙 역수출). ha-design `locked_section_status` 백포트 (미러 전수 해시 감사로 명세-코드 격차 적발). 신규 테스트 +23 (1015 → 1038).
 
+**Phase 13 — v0.13.0 (완료, 2026-06-22)**: **Dogfood Harvest 2 — 런타임 L2 & 단계 정합성**. `/ha-smoke` 계층2: 기동 후 선언 `interface.http` GET 엔드포인트를 실제 타격해 "프로세스는 떠도 라우트 깨짐"(404 미등록 / 5xx 핸들러 크래시)을 잡는다. ha-plan→build→review→redesign 단계 정합성 수정: ha-plan 이 §태스크 sync 후 skeleton hash baseline refresh(거짓 drift WARN + 매 빌드 BLOCK 제거), `/ha-plan --replan`(redesign 후 재-plan), worklog 루트 우선(split-brain), `/ha-verify` cli_entrypoint 런타임 인코딩 스모크(CliRunner 가 못 잡는 cp949 `UnicodeEncodeError`), `/ha-build` in-progress 마킹 + 부분복구 + reviewed→building 회귀(Phase 2 iteration), `/ha-review` 빈 diff full-source 폴백(vacuous APPROVE 차단). LESSON-033~036 추출. Spec Kit 흡수 설계서(`docs/spec-kit-absorption-design.md` — 설계품질 게이트 + 멀티에이전트 Gemini/Copilot). 신규 테스트 +75 (1038 → 1113).
+
 **v1.0.0 백로그**:
 - Live LESSONS 자동 학습 (ha-review 반복 패턴 → 후보 등록)
 - multi-provider (Gemini/OpenAI backend)
@@ -319,7 +321,8 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 - Claude Code plugin manifest 로 배포
 - 벡터 메모리 (CrewAI 방식) — 프로젝트별 LESSON embedding
 - 실행 sandbox (OpenHands 방식) — 격리된 subprocess 환경
-- `ha-smoke` 확장 — 선언 엔드포인트 liveness 일괄 점검 + user_journey 브라우저 스모크 (GWT 수용 기준 체크리스트). 기동 게이트 코어는 v0.12.0 출시
+- `ha-smoke` 확장 — user_journey 브라우저 스모크 (GWT 수용 기준 체크리스트). 선언 엔드포인트 liveness 일괄 점검은 v0.13.0 출시; 기동 게이트 코어는 v0.12.0
+- Spec Kit 흡수 — 설계품질 게이트 (skeleton 품질 checklist, analyze + constitution 권위, ha-converge) + 멀티에이전트 (Gemini/Copilot 어댑터). 설계: `docs/spec-kit-absorption-design.md`
 
 ---
 
