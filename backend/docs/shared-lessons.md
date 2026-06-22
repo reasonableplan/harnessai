@@ -580,6 +580,17 @@ _rate_limit_store: dict[int, list[float]] = defaultdict(list)
 
 
 
+
+## LESSON-037: LLM 출력 검증: 실재 심볼에 대한 거짓 부정주장도 탐지
+<!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-06-22 -->
+
+**문제**: 코드 설명 LLM이 AST에 실재하는 함수/클래스를 '존재하지 않는다/정의되지 않았다'고 거짓 단언할 수 있다(약한 모델일수록). 발명된 심볼만 잡는 환각가드(find_hallucinations)는 이걸 못 잡는다 — 심볼이 known이라 통과. 결과: 명백히 틀린 설명에 경고 플래그 0, bottom-up으로 의존 파일에 전파.
+
+**규칙**: 환각 검증을 2축으로: (1)발명된 심볼 언급(known셋 밖) (2)실재 심볼에 대한 거짓 부정주장(known 심볼+존재/정의 부정문구 인접). 후자는 부정패턴을 '존재하지 않/정의되지 않/does not exist/not defined'로 좁히고 '없음/없이/없습니다'(=기능부재·조건 서술, 정상)는 제외해 FP 최소화. 프롬프트도 'AST 심볼은 실재함, 없다고 말하지 말 것'으로 강화.
+
+**근거**: code-mate find_false_negations(guard.py). 전체점검 실제 Ollama explain서 qwen2.5-coder:7b가 def add를 '존재하지 않습니다' 환각한 사례 실증.
+
+---
 ## LESSON-036: 다언어 파이프라인: 언어 특정 도구는 파일타입으로 게이트
 <!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-06-22 -->
 
