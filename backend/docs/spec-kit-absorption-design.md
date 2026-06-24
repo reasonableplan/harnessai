@@ -304,9 +304,17 @@ Spec Kit 의 optional/mandatory 훅 모델 차용. 우선순위 낮음(1인 프�
 | **P3** ✅ | A3 clarify 확장 (A1 findings → 질문) + read-only `clarify` 서브커맨드 | coverage HITL | 완료 2026-06-24 |
 | **P4** ✅ | Track B — agent_scaffold + `harness scaffold` CLI (render+context, claude/gemini/copilot) | 멀티에이전트 파일 생성 | 완료 2026-06-22 (CLI 배선 포함) |
 | **P5** ✅ | A4 ha-converge (선언-미구현 엔드포인트 → tasks 회수) | 코드↔스펙 회수 | 완료 2026-06-22 |
-| **P6** | Track B 전 스킬 확장 + Track C 훅 | 완성 | P4 |
+| **P6** ⏸ | Track B Tier2/3 상호작용 치환 + Track C 훅 | 완성 | **보류 2026-06-24** |
 
 P1 과 P4 는 서로 독립 → 병렬 가능.
+
+> **로드맵 마감 (2026-06-24)**: 핵심 가치(설계 게이트 A1~A5 + Track B 스캐폴딩 P4 + A3
+> clarify)는 **완료**. **P6 은 보류** — 사유 3가지: (1) Tier2/3(AskUserQuestion·Agent 위임)의
+> 에이전트별 치환은 런타임 어댑터가 필요한 열린 난제(등급 3), (2) Track C 훅은 1인 프로젝트라
+> 후순위(§6), (3) **실전 주력 에이전트 미정**(Q4 잔여) 상태에서 Gemini/Copilot 상호작용 어댑터를
+> 짓는 건 YAGNI. 멀티에이전트를 실제로 쓸지/어느 것을 쓸지 정해지면 그 1종에 한해 Tier2/3 치환을
+> 구체화하는 것이 정답. **스캐폴더(P4)는 이미 모든 스킬을 3종 포맷으로 산출하므로 "파일 생성"
+> 차원의 멀티에이전트 호환은 이미 확보됨.**
 
 ## 9. 결정사항 (2026-06-22 확정)
 
