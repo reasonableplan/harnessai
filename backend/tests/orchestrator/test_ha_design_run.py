@@ -605,3 +605,70 @@ def test_commit_no_locked_sections_skips_freeze(tmp_path: Path) -> None:
     )
     assert out["locked_sections"] == [], f"locked_sections 비어있어야: {out['locked_sections']}"
     assert out["transitioned_to"] == "designed", "상태 전이 미작동"
+
+
+# ── A3: clarify 서브커맨드 통합 테스트 ─────────────────────────────────────────
+
+
+def _run_clarify(
+    project_dir: Path,
+    *,
+    max_n: int | None = None,
+) -> tuple[int, dict | None, str]:
+    """cmd_clarify 실행. (returncode, parsed_json_or_None, stderr) 반환."""
+    cmd = [sys.executable, str(_RUN_PY), "clarify"]
+    if max_n is not None:
+        cmd += ["--max", str(max_n)]
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        cwd=str(project_dir),
+        env=_make_env(),
+    )
+    try:
+        parsed = json.loads(result.stdout) if result.stdout.strip() else None
+    except json.JSONDecodeError:
+        parsed = None
+    return result.returncode, parsed, result.stderr
+
+
+def test_clarify_with_vague_skeleton_returns_candidates(tmp_path: Path) -> None:
+    """skeleton 에 애매어(빠르게) + I/O 경계(HTTP API) 있으면 clarification_candidates 존재 + exit 0."""
+    plan = _make_plan(activation_trace={"overview": "always", "stack": "always"})
+    _write_plan(tmp_path, plan)
+    # Write skeleton with vague word + I/O boundary section lacking failure path
+    (tmp_path / "docs").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs" / "skeleton.md").write_text(
+        "## 1. 성능 목표\nAPI는 빠르게 응답해야 한다.\n\n"
+        "## 2. HTTP API\nPOST /api/users 사용자 생성. 200 OK 반환.\n",
+        encoding="utf-8",
+    )
+
+    returncode, out, stderr = _run_clarify(tmp_path)
+
+    assert returncode == 0, f"clarify 실패: stderr={stderr!r}\nstdout={out}"
+    assert out is not None, "stdout JSON 없음"
+    assert "checklist_findings" in out, "checklist_findings 필드 누락"
+    assert "clarification_candidates" in out, "clarification_candidates 필드 누락"
+    assert isinstance(out["clarification_candidates"], list)
+    assert len(out["clarification_candidates"]) > 0, "후보가 0개인데 애매어/I/O 경계 있음"
+
+    # Each candidate must have required fields
+    for cand in out["clarification_candidates"]:
+        assert "section_id" in cand
+        assert "category" in cand
+        assert "question" in cand
+        assert "hint" in cand
+
+
+def test_clarify_without_skeleton_exits_3(tmp_path: Path) -> None:
+    """skeleton.md 없으면 exit code 3."""
+    plan = _make_plan(activation_trace={"overview": "always", "stack": "always"})
+    _write_plan(tmp_path, plan)
+    # Do NOT write skeleton.md
+
+    returncode, out, stderr = _run_clarify(tmp_path)
+
+    assert returncode == 3, f"skeleton 없을 때 exit 3 이어야 함: returncode={returncode}"

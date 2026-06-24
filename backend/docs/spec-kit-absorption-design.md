@@ -112,6 +112,11 @@ findings 를 받아 추가 판단. 단 1차 방어선은 코드.
 
 ### A3. `/clarify`식 능동 미명세 발견 (흡수: `/clarify`)
 
+> **상태: ✅ v1 구현 (2026-06-24)** — `skeleton_checklist.build_clarification_candidates`
+> (clarity/edge_case finding → 질문 후보, dedup/max_n 캡) + read-only `ha-design clarify`
+> 서브커맨드(JSON 출력, freeze 없음) + SKILL.md §4.5 Step 8 배선(clarify→AskUserQuestion≤5
+> →역기록→재실행). 테스트 11(단위 9 + 통합 2). 잔여: completeness/consistency 소스는 A1 v2 후.
+
 **현재**: HITL LOCKED 인터뷰가 **고정 3섹션**(requirements/user_journey/view.screens)만 강제.
 **흡수**: A1 의 `checklist_findings`(특히 clarity/completeness)를 입력으로,
 `ha-design` 이 **AskUserQuestion** 으로 최대 N개(예: 5개) 타겟 질문 → skeleton 에 역기록.
@@ -296,7 +301,7 @@ Spec Kit 의 optional/mandatory 훅 모델 차용. 우선순위 낮음(1인 프�
 |---|---|---|---|
 | **P1** ✅ | A1 `skeleton_checklist.py` + ha-design 배선 + 테스트 (v1: clarity+edge_case) | 설계품질 게이트 | 완료 2026-06-22 |
 | **P2** ✅ | A2 analyze(offline/NFR critical 검사) + ha-redesign nfr_conflicts 프롬프트 | cross-artifact 게이트 | 완료 2026-06-22 |
-| **P3** | A3 clarify 확장 (A1 findings → 질문) | coverage HITL | P1 |
+| **P3** ✅ | A3 clarify 확장 (A1 findings → 질문) + read-only `clarify` 서브커맨드 | coverage HITL | 완료 2026-06-24 |
 | **P4** ✅ | Track B — agent_scaffold + `harness scaffold` CLI (render+context, claude/gemini/copilot) | 멀티에이전트 파일 생성 | 완료 2026-06-22 (CLI 배선 포함) |
 | **P5** ✅ | A4 ha-converge (선언-미구현 엔드포인트 → tasks 회수) | 코드↔스펙 회수 | 완료 2026-06-22 |
 | **P6** | Track B 전 스킬 확장 + Track C 훅 | 완성 | P4 |

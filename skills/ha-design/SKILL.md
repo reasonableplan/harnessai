@@ -34,7 +34,7 @@ Claude 가 직접 Architect + Designer 두 역할을 순차로 수행 (subproces
 | 5 | 섹션별 채우기 + 보안 체크 (§3) | 항상 |
 | 6 | 사용자 게이트 — 워크스루 동반 (§3.5 표 참조) | 대상 섹션 완료 즉시 |
 | 7 | Designer↔Architect 충돌 검토 ≤3라운드 (§4) | view.* 활성 시 |
-| 8 | **commit 전 점검** — 모호어 스캔 + 적대적 자가비판 (§4.5) | 항상 |
+| 8 | **commit 전 점검** — clarify 후보 소진 + 모호어 스캔 + 적대적 자가비판 (§4.5) | 항상 |
 | 9 | commit + freeze (§5) → 다음 안내 + worklog (§6) | 항상 |
 
 ## 실행 순서
@@ -270,14 +270,31 @@ Designer 섹션 (view.*) 작성 후, 그 화면이 요구하는 데이터/액션
 - commit 진행 + 다음 단계 안내에서 사용자에게 명시 ("미결 N개: …")
 - **에스컬레이션하지 않고** best-effort 로 진행 — 완성도보다 전진 우선
 
-### 4.5. commit 전 점검 — 모호어 스캔 + 적대적 자가비판
+### 4.5. commit 전 점검 — clarify 후보 소진 + 모호어 스캔 + 적대적 자가비판
 
-**① 모호어 스캔**: requirements / 비즈니스 규칙 / core.logic 본문에서
+**① clarify 후보 소진 (코드 기반, A3)**:
+
+```bash
+python ~/.claude/skills/ha-design/run.py clarify
+```
+
+JSON stdout 의 `clarification_candidates` 를 확인:
+- 비어있으면 → `[OK] 미명세 후보 없음` — ②로 진행.
+- 비어있지 않으면 → **AskUserQuestion 으로 최대 5개** 타겟 질문 (각 candidate 의 `question` + `hint` 사용):
+  ```
+  질문: <candidate.question>
+  힌트: <candidate.hint>
+  ```
+  사용자 답을 해당 `section_id` 섹션에 **역기록(Edit)** 후 `clarify` 재실행.
+  재실행 후 후보가 소진되거나 사용자가 "넘어가도 됨"이라 하면 ②로 진행.
+- advisory — 후보가 남아도 commit 자체는 차단하지 않음.
+
+**② 모호어 스캔**: requirements / 비즈니스 규칙 / core.logic 본문에서
 `알아서 / 적절히 / 자동으로 / 등 / 필요시 / 적당히 / 나중에` 검색 → 발견 시 각각을
 **구체 질문으로 변환**해 사용자에게 ("'자동으로 정렬' 기준은? 최신순/이름순/빈도순").
 미정의어 = 코더의 추정 = "의도와 다른 동작". (Architect→Coder 모호함 금지의 사용자 방향 대칭.)
 
-**② 적대적 자가비판**: "이 설계가 운영에서 깨지는 시나리오 3개" 를 구체 산출
+**③ 적대적 자가비판**: "이 설계가 운영에서 깨지는 시나리오 3개" 를 구체 산출
 (동시성 / 빈 데이터 / 권한 경계 / 외부 API 실패 / 세션 만료 중 작업) → 각각
 **skeleton 의 어느 섹션이 막는지** 확인 → 못 막으면 섹션 보완 또는 `<!-- TODO -->` 기록 + 사용자 보고.
 

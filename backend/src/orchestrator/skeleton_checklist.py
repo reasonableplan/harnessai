@@ -192,7 +192,7 @@ def _check_edge_case(title: str, body: str) -> list[ChecklistFinding]:
 
 
 # ---------------------------------------------------------------------------
-# Public API
+# Public API — check_skeleton_quality
 # ---------------------------------------------------------------------------
 
 
@@ -222,3 +222,80 @@ def check_skeleton_quality(skeleton_text: str) -> list[ChecklistFinding]:
         findings.extend(_check_edge_case(title, body))
 
     return findings
+
+
+# ---------------------------------------------------------------------------
+# A3: ClarificationCandidate — question generation from ChecklistFindings
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ClarificationCandidate:
+    """A user-facing clarification question derived from a ChecklistFinding.
+
+    section_id: same as the source finding's section_id.
+    category:   "clarity" | "edge_case"
+    question:   Korean question to ask the user.
+    hint:       Korean answer-direction hint.
+    """
+
+    section_id: str
+    category: str
+    question: str
+    hint: str
+
+
+def build_clarification_candidates(
+    findings: list[ChecklistFinding],
+    max_n: int = 5,
+) -> list[ClarificationCandidate]:
+    """Convert ChecklistFindings into user-facing clarification questions.
+
+    Rules:
+    - clarity  → ask for a quantified target value for the section.
+    - edge_case → ask for explicit failure-path description for the I/O boundary.
+    - Preserves input order, deduplicates on (section_id, category) keeping first.
+    - Caps output at max_n. Returns [] when max_n <= 0 or findings is empty.
+
+    Args:
+        findings: Output of check_skeleton_quality().
+        max_n:    Maximum number of candidates to return. Default 5.
+
+    Returns:
+        List of ClarificationCandidate, at most max_n items.
+    """
+    if max_n <= 0 or not findings:
+        return []
+
+    seen: set[tuple[str, str]] = set()
+    candidates: list[ClarificationCandidate] = []
+
+    for f in findings:
+        key = (f.section_id, f.category)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        if f.category == "clarity":
+            question = (
+                f"'{f.section_id}' 섹션의 미정량 표현을 구체화하세요 — 목표치는? ({f.message})"
+            )
+            hint = "숫자+단위로 명시 (예: 500ms, 1000명, 99.9%)"
+        else:
+            # edge_case
+            question = f"'{f.section_id}' 섹션(I/O 경계)의 실패 경로를 명시하세요."
+            hint = "타임아웃/에러코드/재시도/폴백 중 해당 처리 기술"
+
+        candidates.append(
+            ClarificationCandidate(
+                section_id=f.section_id,
+                category=f.category,
+                question=question,
+                hint=hint,
+            )
+        )
+
+        if len(candidates) >= max_n:
+            break
+
+    return candidates

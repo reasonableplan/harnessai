@@ -355,6 +355,59 @@ def cmd_commit(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_clarify(args: argparse.Namespace) -> int:
+    """Read-only: detect underspecified expressions in skeleton.md and emit question candidates.
+
+    Loads the plan and skeleton, runs check_skeleton_quality + build_clarification_candidates,
+    then prints JSON to stdout. Never transitions state or writes any file.
+    Exit codes: 0 = ok (advisory), 3 = skeleton.md not found.
+    """
+    from src.orchestrator.skeleton_checklist import (  # noqa: PLC0415
+        build_clarification_candidates,
+        check_skeleton_quality,
+    )
+
+    plan, plan_path, _project = load_plan()
+    skel = plan_path.parent / "skeleton.md"
+    if not skel.exists():
+        info(f"[FAIL] skeleton.md 없음: {skel}")
+        return 3
+
+    text = skel.read_text(encoding="utf-8")
+    findings = check_skeleton_quality(text)
+    candidates = build_clarification_candidates(findings, max_n=args.max)
+
+    if candidates:
+        info(
+            f"[INFO] 미명세 후보 {len(candidates)}건 — AskUserQuestion 으로 확인 후 skeleton 역기록 권장"
+        )
+    else:
+        info("[OK] 미명세 후보 없음")
+
+    output = {
+        "checklist_findings": [
+            {
+                "severity": f.severity,
+                "category": f.category,
+                "section_id": f.section_id,
+                "message": f.message,
+            }
+            for f in findings
+        ],
+        "clarification_candidates": [
+            {
+                "section_id": c.section_id,
+                "category": c.category,
+                "question": c.question,
+                "hint": c.hint,
+            }
+            for c in candidates
+        ],
+    }
+    print(json.dumps(output, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _resolve_profile_body(profile_id: str) -> Path:
     """프로파일 .md 파일 경로 (글로벌)."""
     return Path.home() / ".claude" / "harness" / "profiles" / f"{profile_id}.md"
@@ -393,11 +446,21 @@ def main() -> int:
         help="--ai-drafted-sections 가 비어있지 않으면 필수. AI 추측 채우기 명시 동의. (v0.10.0)",
     )
 
+    cl = sub.add_parser("clarify", help="미명세 표현 탐지 → 질문 후보 (read-only)")
+    cl.add_argument(
+        "--max",
+        type=int,
+        default=5,
+        help="반환할 최대 후보 수 (기본: 5)",
+    )
+
     args = parser.parse_args()
     if args.cmd == "prepare":
         return cmd_prepare(args)
     if args.cmd == "commit":
         return cmd_commit(args)
+    if args.cmd == "clarify":
+        return cmd_clarify(args)
     parser.print_help()
     return 2
 

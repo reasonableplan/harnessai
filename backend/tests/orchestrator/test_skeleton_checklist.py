@@ -215,3 +215,103 @@ def test_section_id_is_title_not_number() -> None:
             f"section_id should be title, not '7': {f.section_id}"
         )
         assert "외부 연동" in f.section_id
+
+
+# ---------------------------------------------------------------------------
+# build_clarification_candidates (A3)
+# ---------------------------------------------------------------------------
+
+from src.orchestrator.skeleton_checklist import (  # noqa: E402
+    build_clarification_candidates,
+)
+
+
+def _clarity_finding(section_id: str = "성능 목표") -> ChecklistFinding:
+    return ChecklistFinding(
+        severity="warn",
+        category="clarity",
+        section_id=section_id,
+        message="'빠르게' 미정량 - 목표치(예: ms, 건수) 명시 권장",
+    )
+
+
+def _edge_finding(section_id: str = "외부 연동") -> ChecklistFinding:
+    return ChecklistFinding(
+        severity="warn",
+        category="edge_case",
+        section_id=section_id,
+        message=f"'{section_id}' I/O 경계인데 실패/에러 경로 미기술",
+    )
+
+
+def test_clarity_finding_produces_clarity_candidate() -> None:
+    """clarity finding → ClarificationCandidate with category='clarity', non-empty question/hint."""
+    candidates = build_clarification_candidates([_clarity_finding()])
+    assert len(candidates) == 1
+    c = candidates[0]
+    assert c.category == "clarity"
+    assert c.section_id == "성능 목표"
+    assert c.question  # non-empty
+    assert c.hint  # non-empty
+
+
+def test_edge_case_finding_produces_edge_case_candidate() -> None:
+    """edge_case finding → ClarificationCandidate with category='edge_case', non-empty question/hint."""
+    candidates = build_clarification_candidates([_edge_finding()])
+    assert len(candidates) == 1
+    c = candidates[0]
+    assert c.category == "edge_case"
+    assert c.section_id == "외부 연동"
+    assert c.question
+    assert c.hint
+
+
+def test_empty_findings_returns_empty_list() -> None:
+    """빈 findings → []."""
+    assert build_clarification_candidates([]) == []
+
+
+def test_max_n_cap_limits_output() -> None:
+    """후보될 finding 7개 → max_n=5 → 5개."""
+    findings = [_clarity_finding(f"섹션{i}") for i in range(7)]
+    candidates = build_clarification_candidates(findings, max_n=5)
+    assert len(candidates) == 5
+
+
+def test_max_n_zero_returns_empty() -> None:
+    """max_n=0 → []."""
+    candidates = build_clarification_candidates([_clarity_finding()], max_n=0)
+    assert candidates == []
+
+
+def test_max_n_negative_returns_empty() -> None:
+    """max_n <= 0 → []."""
+    candidates = build_clarification_candidates([_clarity_finding()], max_n=-3)
+    assert candidates == []
+
+
+def test_duplicate_section_id_category_deduped() -> None:
+    """동일 (section_id, category) 중복 finding → 후보 1개만."""
+    dup = [_clarity_finding("중복섹션"), _clarity_finding("중복섹션")]
+    candidates = build_clarification_candidates(dup)
+    assert len(candidates) == 1
+
+
+def test_order_preserved() -> None:
+    """findings 순서 보존 — 첫 번째 finding 의 section_id 가 첫 번째 candidate."""
+    findings = [_edge_finding("외부 연동"), _clarity_finding("성능 목표")]
+    candidates = build_clarification_candidates(findings)
+    assert candidates[0].section_id == "외부 연동"
+    assert candidates[1].section_id == "성능 목표"
+
+
+def test_candidate_dataclass_fields() -> None:
+    """ClarificationCandidate 필드 4개 모두 채워짐."""
+    from src.orchestrator.skeleton_checklist import ClarificationCandidate
+
+    c = build_clarification_candidates([_clarity_finding()])[0]
+    assert isinstance(c, ClarificationCandidate)
+    assert c.section_id
+    assert c.category in ("clarity", "edge_case")
+    assert c.question
+    assert c.hint
