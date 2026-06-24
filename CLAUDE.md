@@ -141,14 +141,14 @@ backend/
         base.py               — BaseProvider 추상 인터페이스
         claude_cli.py         — Claude CLI subprocess provider
   tests/
-    orchestrator/             — 1038개 테스트 (E2E 통합 포함, tests/skills 포함 전체)
+    orchestrator/             — 1236개 테스트 (E2E 통합 포함, tests/skills 포함 전체)
     dashboard/                — EventMapper 17개 테스트
 
 ## HarnessAI v2 파이프라인 (`/ha-*` 스킬)
 
 ```
 /ha-init → /ha-design → /ha-plan → /ha-build (sonnet) → /ha-verify → /ha-review → /ha-smoke (advisory) → /ha-ship
-        + /ha-redesign (결정 변경 propagation) + /ha-converge (코드↔스펙 미구현 회수) + /ha-deepinit (기존 코드 → AGENTS.md) + /ha-log (worklog)
+        + /ha-redesign (결정 변경 propagation) + /ha-converge (코드↔스펙 미구현 회수) + /ha-resync (skeleton 손수정 후 해시 재동기) + /ha-deepinit (기존 코드 → AGENTS.md) + /ha-log (worklog)
 ```
 
 - 스킬 위치: `~/.claude/skills/ha-*/`

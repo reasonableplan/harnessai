@@ -4,6 +4,29 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.14.0] — 2026-06-24 — "Spec Kit Absorption Wrap-up: Clarify Gate & Status Consistency"
+
+Spec Kit 흡수 로드맵 마감 — A3 clarify 게이트 + 유실됐던 작업(#14/#8) 복구 + skipped 상태 일관성. 핵심 가치(A1~A5 + Track B 스캐폴딩 + A3) 완료, P6(멀티에이전트 Tier2/3 + Track C 훅) 보류.
+
+### Added
+
+- **A3 — `/ha-design clarify` (Spec Kit `/clarify` 흡수)** — A1 `skeleton_checklist` 의 품질 findings(clarity/edge_case)를 사용자 질문 후보로 변환하는 `build_clarification_candidates()` + read-only `clarify` 서브커맨드(JSON 출력, freeze/commit 없음, skeleton 없으면 exit 3). `/ha-design` SKILL.md §4.5 Step8 에 배선 — clarify 실행 → `AskUserQuestion`(≤5) → 답을 해당 섹션에 역기록 → 재실행. "vague 탐지(코드) → 질문(HITL) → 채움" 고리 완성. 테스트 +11 (단위 9 + 통합 2)
+- **`/ha-resync` 신규 스킬** — `applied` 이후 skeleton.md 를 손수정하면 plan 의 `skeleton_hash`/`section_hashes` 가 stale 되는데 재동기 1급 경로가 없던 결함. `compute_skeleton_hash`+`compute_section_hashes` 를 재사용해 **무조건 재계산·덮어쓰기**(migrate-skeleton-hash 와 달리 가드 없음) + 자동 백업 + `--dry-run`. `/ha-build` BLOCK 메시지를 추적(`/ha-redesign`)/재동기(`/ha-resync`)/일회우회(`--accept-skeleton-drift`) 3분기로 명확화, `/ha-plan`·`/ha-redesign` WARN 에도 안내. 테스트 +4
+
+### Fixed
+
+- **#8 `/ha-review` 빈 diff vacuous-APPROVE 가드** — 빈 diff 로 `record approve` 시 보안/슬롭 훅이 검사할 입력이 없어 false-green(vacuous) 통과하던 갭 차단. `not diff.strip()`(raw diff 기준) → exit 1, 의도적 우회는 `--allow-empty`. 기존 #19 dependency-check + `--allow-block` 보존. `prepare` 빈 diff WARN. 테스트 +3
+- **skipped 상태 일관성 (사전 존재 결함)** — `/ha-build` record 가 `--status skipped` 를 받으나 `tasks_schema.VALID_STATUSES` 엔 없어 schema 가 거부, 게다가 ha-build 내부 "resolved" 판정이 3집합(`_DONE_STATES` / `--task` dep 인라인 튜플 / `_resolved`)으로 갈려 skipped 포함 여부가 달랐다 → **skipped 의존성의 dependent 가 영원히 ready 안 됨**(`--resume` 미선택 + `--task` 차단)인데 빌드 완료엔 skipped 인정되는 자기모순. 결정: skipped = 종료/해결 상태 → 의존성 충족(plan_manager 의 done→needs_rebuild 마킹은 skipped 제외 유지). `VALID_STATUSES += skipped` + 3집합을 단일 `_RESOLVED_STATES` 로 통합 + 교차 일관성 테스트(record choices ⊆ VALID_STATUSES). 테스트 +6
+
+### Changed
+
+- Spec Kit 흡수 로드맵 마감 (`docs/spec-kit-absorption-design.md`) — P3(A3) ✅, P6 ⏸ 보류(주력 에이전트 미정 YAGNI). 미러 2벌(`~/.claude` ↔ repo) drift 정리 — ha-build `_RECORD_STATUS_CHOICES` 동기로 diff 0
+- 전체 테스트 **1212 → 1236** (+24), ruff/format/pyright clean
+
+### Known / Backlog
+
+- **#15** strict placeholder 정규식(한글 `<설명>` 검출) 유실 — 실제 게이트(`harness/bin/harness`, `skeleton_assembler.py`)는 여전히 lenient `<[a-z_][a-z0-9_]*>`. 정식 재구현은 backport 아닌 신규 TDD 작업
+
 ## [0.13.0] — 2026-06-22 — "Dogfood Harvest 2: Runtime L2 & Handoff Fixes"
 
 code-mate dogfood 2차 수확 — 런타임 검증 사다리 **계층2**(떠도 라우트 깨짐) 보강 + ha-plan→ha-build→ha-review→ha-redesign **단계 간 정합성** 결함 다수(#1~#9, #13).
