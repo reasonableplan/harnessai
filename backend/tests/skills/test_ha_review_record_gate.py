@@ -88,8 +88,10 @@ def test_prepare_output_has_security_findings_key(ha_review: ModuleType, tmp_pat
         result = ha_review.cmd_prepare(args)
 
     assert result == 0
-    assert len(captured_output) == 1
-    output = json.loads(captured_output[0])
+    # #8 가드 추가로 빈 diff 시 [WARN] stderr 출력이 생겨 captured_output 길이 >= 1
+    # JSON 출력은 마지막 원소 (info() 는 stderr 로 출력하나 builtins.print 패치로 포함됨)
+    assert len(captured_output) >= 1
+    output = json.loads(captured_output[-1])
     assert "security_findings" in output, f"security_findings missing: {list(output.keys())}"
     assert "security_summary" in output, f"security_summary missing: {list(output.keys())}"
     assert "block_count" in output["security_summary"]
@@ -151,7 +153,8 @@ def test_prepare_security_summary_reflects_block_count(
         result = ha_review.cmd_prepare(args)
 
     assert result == 0  # prepare 는 advisory — BLOCK 있어도 exit 0
-    output = json.loads(captured_output[0])
+    # #8 가드 추가로 빈 diff 시 [WARN] 출력이 포함될 수 있어 마지막 원소에서 JSON 파싱
+    output = json.loads(captured_output[-1])
     assert output["security_summary"]["block_count"] == 1
     assert len(output["security_findings"]) == 1
 
@@ -360,6 +363,8 @@ def test_record_approve_with_block_and_allow_block_passes(ha_review: ModuleType)
             return_value=(mock_plan, Path("/fake/harness-plan.md"), Path("/fake")),
         ),
         patch.object(ha_review, "assert_state"),
+        # #8 가드: approve 분기에서 _extract_diff 가 호출되므로 mock 필요
+        patch.object(ha_review, "_extract_diff", return_value=("some diff", "test-scope")),
         patch.object(ha_review, "record_verify"),
         patch.object(ha_review, "transition"),
         patch.object(ha_review, "save_plan"),
@@ -370,6 +375,7 @@ def test_record_approve_with_block_and_allow_block_passes(ha_review: ModuleType)
         args.violations = ""
         args.summary = "override approved"
         args.allow_block = True
+        # allow_empty 는 MagicMock 자동 속성으로 truthy → #8 가드 통과
         result = ha_review.cmd_record(args)
 
     assert result == 0

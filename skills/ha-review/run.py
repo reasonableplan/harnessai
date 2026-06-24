@@ -749,6 +749,11 @@ def cmd_prepare(args: argparse.Namespace) -> int:
             "       빌드를 이미 커밋했다면 변경분이 비어 보안/슬롭 훅이 vacuous pass 할 수 있습니다.\n"
             "       빌드 시작 커밋을 base 로 지정: /ha-review prepare --base <ref>"
         )
+    if not diff.strip():
+        info(
+            "[WARN] 리뷰 대상 변경이 비어있습니다 (full-source 폴백도 빈 결과).\n"
+            "       record approve 시 --allow-empty 없으면 차단됩니다 (#8 vacuous 방지)."
+        )
 
     changed_files: list[str] = []
     for line in diff.splitlines():
@@ -771,7 +776,8 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         info(
             "[WARN] skeleton.md 가 마지막 ha-design/ha-redesign 이후 외부에서 수정된 듯합니다 "
             "(hash mismatch). redesign_history 에 audit trail 누락 가능 — "
-            "/ha-redesign 으로 변경 사항 추적 권장."
+            "/ha-redesign 으로 변경 사항 추적 권장. "
+            "→ 의도적 편집이면 /ha-resync 로 해시 재동기하세요."
         )
 
     # 역방향 contract 검증 — 선언-미구현 엔드포인트 (advisory, §2.9)
@@ -844,6 +850,7 @@ def cmd_record(args: argparse.Namespace) -> int:
         return 2
 
     allow_block: bool = getattr(args, "allow_block", False)
+    allow_empty: bool = getattr(args, "allow_empty", False)
 
     # ── R5/R6: violations 파싱 ────────────────────────────────────────
     violations_raw = args.violations or ""
@@ -867,35 +874,52 @@ def cmd_record(args: argparse.Namespace) -> int:
         )
         return 1
 
-    # ── R6: approve + BLOCK 발견 → exit 1 (--allow-block 없으면) ─────
-    if verdict == "approve" and not allow_block:
-        profiles = get_active_profiles(plan, project)
+    # ── R6/#8: approve → diff 추출 (empty-guard + BLOCK-guard 공유) ──
+    if verdict == "approve":
         diff, _diff_scope = _extract_diff(project, getattr(args, "base", None))
-        # skeleton_text 는 dependency-check FP #19 용 — prepare 와 동일 기준.
-        _skel_path = plan_path.parent / "skeleton.md"
-        try:
-            skeleton_text = _skel_path.read_text(encoding="utf-8") if _skel_path.exists() else ""
-        except OSError:
-            skeleton_text = ""
-        findings = _collect_findings(project, profiles, diff, skeleton_text)
-        block_count = findings["block_count"]
-        if block_count > 0:
-            block_items = [
-                f for f in (findings["security"] + findings["ai_slop"])
-                if f.get("severity") == "BLOCK"
-            ]
-            detail_lines = "\n".join(
-                f"       [{f['hook']}] {f['message']}"
-                + (f" — {f['snippet'][:60]}" if f.get("snippet") else "")
-                for f in block_items[:10]  # 최대 10건 출력
-            )
+
+        # #8: empty-diff vacuous-APPROVE guard — raw diff 기준 (not diff.strip()).
+        # raw diff 가 비었다 = commit/untracked/full-source 어느 경로도 소스 없음 (진짜 vacuous).
+        # raw diff 있고 code_diff 만 빈 경우는 정당한 doc-only 리뷰라 차단 안 함.
+        if not diff.strip() and not allow_empty:
             info(
-                f"[FAIL] /ha-review record approve 거부 — BLOCK 위반 {block_count}건.\n"
-                f"{detail_lines}\n"
-                "       조치: REJECT 로 변경 후 violations 명시, 또는 코드 수정 후 prepare 재실행.\n"
-                "       의도적 우회: --allow-block 명시."
+                "[FAIL] /ha-review record approve 거부 — 리뷰 대상 변경이 비어있습니다.\n"
+                "       보안/슬롭 훅이 빈 입력으로 vacuous pass(false-green)할 수 있어 차단합니다.\n"
+                "       조치: 빌드 산출물이 커밋/생성됐는지 확인, 또는 base 지정 (--base <ref>).\n"
+                "       의도적 우회(검토할 코드 없음): --allow-empty 명시."
             )
             return 1
+
+        # R6: BLOCK 발견 → exit 1 (--allow-block 없으면)
+        if not allow_block:
+            profiles = get_active_profiles(plan, project)
+            # skeleton_text 는 dependency-check FP #19 용 — prepare 와 동일 기준.
+            _skel_path = plan_path.parent / "skeleton.md"
+            try:
+                skeleton_text = (
+                    _skel_path.read_text(encoding="utf-8") if _skel_path.exists() else ""
+                )
+            except OSError:
+                skeleton_text = ""
+            findings = _collect_findings(project, profiles, diff, skeleton_text)
+            block_count = findings["block_count"]
+            if block_count > 0:
+                block_items = [
+                    f for f in (findings["security"] + findings["ai_slop"])
+                    if f.get("severity") == "BLOCK"
+                ]
+                detail_lines = "\n".join(
+                    f"       [{f['hook']}] {f['message']}"
+                    + (f" — {f['snippet'][:60]}" if f.get("snippet") else "")
+                    for f in block_items[:10]  # 최대 10건 출력
+                )
+                info(
+                    f"[FAIL] /ha-review record approve 거부 — BLOCK 위반 {block_count}건.\n"
+                    f"{detail_lines}\n"
+                    "       조치: REJECT 로 변경 후 violations 명시, 또는 코드 수정 후 prepare 재실행.\n"
+                    "       의도적 우회: --allow-block 명시."
+                )
+                return 1
 
     passed = verdict == "approve"
     summary = args.summary or ("APPROVE" if passed else "REJECT")
@@ -1031,6 +1055,12 @@ def main() -> int:
         action="store_true",
         default=False,
         help="BLOCK 위반이 있어도 approve 강제 (의도적 우회 시)",
+    )
+    r.add_argument(
+        "--allow-empty",
+        action="store_true",
+        default=False,
+        help="리뷰 대상 변경이 비어도 approve 강제 (검토할 코드 없음을 의도적으로 인정)",
     )
     e = sub.add_parser("extract-lesson", help="자동 LESSON 추출 (v0.10.0 — Pending 섹션에 append)")
     e.add_argument("--title", required=True, help="LESSON 제목 (50자 이하)")
