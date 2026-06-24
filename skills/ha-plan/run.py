@@ -189,7 +189,8 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         info(
             "[WARN] skeleton.md 가 마지막 ha-design/ha-redesign 이후 외부에서 수정된 듯합니다 "
             "(hash mismatch). redesign_history 에 audit trail 누락 가능 — "
-            "/ha-redesign 으로 변경 사항 추적 권장."
+            "/ha-redesign 으로 변경 사항 추적 권장. "
+            "→ 의도적 편집이면 /ha-resync 로 해시 재동기하세요."
         )
 
     output = {

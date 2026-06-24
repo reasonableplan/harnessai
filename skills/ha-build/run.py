@@ -246,7 +246,8 @@ def cmd_prepare(args: argparse.Namespace) -> int:
                 "[BLOCK] skeleton.md 가 마지막 ha-design/ha-redesign 이후 외부에서 수정됨 "
                 "(hash mismatch).\n"
                 "  · 변경을 추적하려면: /ha-redesign 으로 결정 반영 (권장 — audit trail 보존)\n"
-                "  · 의도적 수동 편집이면: --accept-skeleton-drift 로 재실행"
+                "  · 의도적 수동 편집(해시만 재동기)이면: /ha-resync 로 해시 갱신 후 재실행\n"
+                "  · 이번만 우회하려면: --accept-skeleton-drift 로 재실행 (해시는 stale 유지)"
             )
             return 1
         info("[WARN] skeleton hash mismatch — --accept-skeleton-drift 로 진행 (audit trail 누락)")
