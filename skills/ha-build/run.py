@@ -106,20 +106,29 @@ def _parse_tasks(tasks_text: str) -> dict[str, dict[str, str]]:
     return out
 
 
-_DONE_STATES = ("done", "완료", "completed")
+# Statuses that satisfy a dependency and count as build-complete.
+# skipped is terminal (intentionally bypassed) — satisfies dependency + counts as
+# build-complete; skipped tasks do NOT re-enter the toolchain/security gates.
+_RESOLVED_STATES = ("done", "완료", "completed", "skipped")
+
+# Statuses `ha-build record --status` may write into tasks.md.
+# Must stay a subset of tasks_schema.VALID_STATUSES, otherwise a status this
+# command writes would be rejected by `ha-plan commit` schema validation.
+# A cross-consistency test (test_tasks_schema) guards that invariant.
+_RECORD_STATUS_CHOICES = ("done", "blocked", "in-progress", "skipped")
 
 
 def select_ready_tasks(tasks: dict[str, dict[str, str]]) -> list[str]:
     """지금 빌드 가능한 태스크 ID 목록 (A5 / `--resume`).
 
-    조건: status 가 대기/in-progress 이고 depends_on 이 전부 done.
+    조건: status 가 대기/in-progress 이고 depends_on 이 전부 resolved.
     정렬: in-progress 먼저(부분복구 우선, #7) → 대기, 각 그룹 내 T-ID 오름차순.
     blocked/skipped/done 은 제외.
     """
 
     def deps_done(tid: str) -> bool:
         return all(
-            tasks.get(dep, {}).get("status", "").strip().lower() in _DONE_STATES
+            tasks.get(dep, {}).get("status", "").strip().lower() in _RESOLVED_STATES
             for dep in tasks[tid]["depends_on"]
         )
 
@@ -282,7 +291,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         for dep in tasks[tid]["depends_on"]:
             if dep not in tasks:
                 issues.append(f"{tid} depends_on '{dep}' 가 tasks.md 에 없음")
-            elif tasks[dep]["status"].lower() not in ("done", "완료", "completed"):
+            elif tasks[dep]["status"].lower() not in _RESOLVED_STATES:
                 issues.append(f"{tid} depends_on '{dep}' 가 미완료 (status={tasks[dep]['status']})")
 
     if issues:
@@ -573,8 +582,8 @@ def cmd_complete(args: argparse.Namespace) -> int:
         info(f"[FAIL] {e}")
         return 2
 
-    if args.status not in ("done", "blocked", "in-progress", "skipped"):
-        info(f"[FAIL] --status: done|blocked|in-progress|skipped, 현재 '{args.status}'")
+    if args.status not in _RECORD_STATUS_CHOICES:
+        info(f"[FAIL] --status: {'|'.join(_RECORD_STATUS_CHOICES)}, 현재 '{args.status}'")
         return 2
 
     # LESSON-021: done 마킹 전 toolchain 전체 강제 (test + lint + type)
@@ -643,8 +652,7 @@ def cmd_complete(args: argparse.Namespace) -> int:
     # blocked|in-progress 는 미완료 → building 유지
     tasks = _parse_tasks(new_text)
     statuses = {tid: t["status"].lower() for tid, t in tasks.items()}
-    _resolved = {"done", "완료", "completed", "skipped"}
-    all_resolved = statuses and all(s in _resolved for s in statuses.values())
+    all_resolved = statuses and all(s in set(_RESOLVED_STATES) for s in statuses.values())
     any_done = any(s in ("done", "완료", "completed") for s in statuses.values())
 
     skipped_ids = sorted(tid for tid, s in statuses.items() if s == "skipped")
@@ -739,7 +747,7 @@ def main() -> int:
 
     c = sub.add_parser("complete")
     c.add_argument("--task", required=True)
-    c.add_argument("--status", required=True, choices=["done", "blocked", "in-progress", "skipped"])
+    c.add_argument("--status", required=True, choices=list(_RECORD_STATUS_CHOICES))
     c.add_argument("--reason", default="")
     c.add_argument(
         "--skip-toolchain",

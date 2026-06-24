@@ -59,6 +59,8 @@ _COL_LABELS: tuple[str, ...] = (
 
 # Valid status values — mirrors plan_manager task status policy and
 # TASK_STATUS_NEEDS_REBUILD introduced in Group 3.
+# "skipped" is a terminal resolved state (satisfies dependency; counts as build-complete).
+# "needs_rebuild" is an engine-internal flag set by plan_manager on skeleton changes.
 VALID_STATUSES: frozenset[str] = frozenset(
     {
         "대기",
@@ -71,6 +73,7 @@ VALID_STATUSES: frozenset[str] = frozenset(
         "차단",
         "blocked",
         "needs_rebuild",
+        "skipped",
     }
 )
 

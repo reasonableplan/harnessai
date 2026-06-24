@@ -2,13 +2,44 @@
 
 validate_tasks_md() 의 모든 violation 종류를 커버.
 pure function 테스트이므로 fixture 없이 문자열 직접 전달.
+
+추가 (skipped consistency):
+- "skipped" 가 VALID_STATUSES 에 포함됨을 단언.
+- ha-build _RECORD_STATUS_CHOICES ⊆ VALID_STATUSES 교차 일관성.
+- select_ready_tasks: skipped 의존성이 충족으로 인정됨.
+- --task 의존성 검사: skipped dep 이면 통과.
 """
 
 from __future__ import annotations
 
+import importlib.util
+import sys
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
+
 import pytest
 
-from src.orchestrator.tasks_schema import validate_tasks_md
+from src.orchestrator.tasks_schema import VALID_STATUSES, validate_tasks_md
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+# ── ha-build module fixture ────────────────────────────────────────────────────
+
+
+@pytest.fixture(scope="module")
+def ha_build() -> ModuleType:
+    """Load skills/ha-build/run.py (repo mirror) as a module."""
+    run_py = REPO_ROOT / "skills" / "ha-build" / "run.py"
+    loader = SourceFileLoader("ha_build_schema_consistency", str(run_py))
+    spec = importlib.util.spec_from_loader("ha_build_schema_consistency", loader)
+    assert spec is not None
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["ha_build_schema_consistency"] = mod
+    loader.exec_module(mod)
+    return mod
+
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -252,3 +283,120 @@ def test_validate_rejects_non_standard_id_lengths(bad_id: str) -> None:
     result = validate_tasks_md(content)
     invalid = [v for v in result if v.kind == "invalid_task_id"]
     assert invalid, f"비표준 ID {bad_id!r} 가 통과됨 — violation 없음"
+
+
+# ── Test 15: "skipped" 가 VALID_STATUSES 에 포함 ─────────────────────────────
+
+
+def test_skipped_is_valid_status() -> None:
+    """'skipped' 가 VALID_STATUSES 에 포함되어 schema 검증을 통과한다."""
+    assert "skipped" in VALID_STATUSES, (
+        "'skipped' 가 VALID_STATUSES 에 없음 — tasks_schema.py 수정 필요"
+    )
+
+
+def test_skipped_row_no_violation() -> None:
+    """status='skipped' 행 — invalid_status violation 없음."""
+    content = _table(_row("T-001", status="skipped"))
+    result = validate_tasks_md(content)
+    status_violations = [v for v in result if v.kind == "invalid_status"]
+    assert status_violations == [], f"'skipped' 가 valid 임에도 violation 발생: {status_violations}"
+
+
+# ── Test 16: ha-build _RECORD_STATUS_CHOICES ⊆ VALID_STATUSES 교차 일관성 ────
+
+
+def test_ha_build_record_status_choices_subset_of_valid_statuses(
+    ha_build: ModuleType,
+) -> None:
+    """ha-build _RECORD_STATUS_CHOICES 가 VALID_STATUSES 의 부분집합이어야 한다.
+
+    ha-build record --status 가 tasks.md 에 기록하는 상태 전부가
+    tasks_schema.VALID_STATUSES 에 포함되어야 ha-plan commit 검증이 통과한다.
+    Source: skills/ha-build/run.py _RECORD_STATUS_CHOICES
+    """
+    choices = set(ha_build._RECORD_STATUS_CHOICES)
+    invalid = choices - VALID_STATUSES
+    assert not invalid, (
+        f"ha-build _RECORD_STATUS_CHOICES 중 VALID_STATUSES 미포함 항목: {invalid}\n"
+        "tasks_schema.py 에 해당 상태를 추가하거나 _RECORD_STATUS_CHOICES 를 수정하세요."
+    )
+
+
+# ── Test 17: select_ready_tasks — skipped 의존성이 충족으로 인정 ───────────────
+
+
+def _task(
+    agent: str = "backend_coder", deps: list[str] | None = None, status: str = "대기"
+) -> dict:
+    return {"agent": agent, "depends_on": deps or [], "description": "x", "status": status}
+
+
+def test_select_ready_tasks_skipped_dep_satisfies_dependency(ha_build: ModuleType) -> None:
+    """T-001 status='skipped' → T-002(depends_on T-001) 가 ready 목록에 포함된다."""
+    tasks = {
+        "T-001": _task(status="skipped"),
+        "T-002": _task(deps=["T-001"], status="대기"),
+    }
+    ready = ha_build.select_ready_tasks(tasks)
+    assert "T-002" in ready, f"T-001=skipped 일 때 T-002 가 ready 에 없음. ready={ready}"
+
+
+def test_select_ready_tasks_skipped_task_itself_excluded(ha_build: ModuleType) -> None:
+    """skipped 태스크 자신은 ready 목록에 포함되지 않는다."""
+    tasks = {
+        "T-001": _task(status="skipped"),
+        "T-002": _task(status="대기"),
+    }
+    ready = ha_build.select_ready_tasks(tasks)
+    assert "T-001" not in ready, f"skipped 태스크가 ready 에 포함됨: {ready}"
+    assert "T-002" in ready
+
+
+# ── Test 18: --task 의존성 검사 — skipped dep 이면 BLOCK 없이 통과 ─────────────
+
+
+def test_cmd_prepare_skipped_dep_passes_dependency_check(
+    ha_build: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T-001=skipped 일 때 --task T-002 의존성 검사가 통과(BLOCK 없음)한다."""
+    plan = SimpleNamespace(
+        pipeline=SimpleNamespace(
+            current_step="planned",
+            completed_steps=(),
+            skipped_steps=(),
+            steps=("planned", "building", "built"),
+            gstack_mode="manual",
+        ),
+        profiles=[],
+        skeleton_hash=None,
+        frozen_status="frozen",
+    )
+    plan_path = tmp_path / "docs" / "harness-plan.md"
+    plan_path.parent.mkdir(parents=True, exist_ok=True)
+    plan_path.write_text("", encoding="utf-8")
+
+    tasks_md = (
+        "| ID    | agent         | depends | description | status     |\n"
+        "|-------|---------------|---------|-------------|------------|\n"
+        "| T-001 | backend_coder | -       | 모델        | skipped    |\n"
+        "| T-002 | backend_coder | T-001   | API         | 대기       |\n"
+    )
+    (plan_path.parent / "tasks.md").write_text(tasks_md, encoding="utf-8")
+
+    monkeypatch.setattr(ha_build, "load_plan", lambda: (plan, plan_path, tmp_path))
+    monkeypatch.setattr(ha_build, "assert_state", lambda *a, **k: None)
+    monkeypatch.setattr(ha_build, "get_active_profiles", lambda p, pr: [])
+
+    args = SimpleNamespace(
+        task="T-002",
+        resume=False,
+        skip_frozen_gate=False,
+        accept_skeleton_drift=False,
+    )
+    rc = ha_build.cmd_prepare(args)
+    # skipped dep 은 resolved → dependency check 통과 → exit 0 (prepare 성공)
+    assert rc == 0, (
+        f"T-001=skipped 인데 T-002 prepare 가 BLOCK(rc={rc}) — "
+        "_RESOLVED_STATES 에 'skipped' 누락 가능성"
+    )
