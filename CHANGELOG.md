@@ -4,6 +4,25 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.14.1] — 2026-06-26 — "Skill Audit: ha-map Induction & Defect Sweep"
+
+`/ha-map` 레포 편입 + 14개 스킬 결함 일소 + `/ha-eval` 보류 포지셔닝 문서. 코드 결함은 미러·테스트가 없던 유일한 스킬(ha-map) 하나에 몰려 있었다 — "테스트 스위트 = eval 하네스"의 실증.
+
+### Added
+
+- **`/ha-map` 레포 편입** — skeleton.md → `docs/architecture.md`(Mermaid 3종) 파생 뷰를 만드는 독립 보조 스킬이 그동안 `~/.claude/skills/` 에만 있고 레포 미러·테스트가 전무한 유일한 `ha-*` 였다. `skills/ha-map/{run.py,SKILL.md}` 로 추적 + 단위 테스트 9개(`_extract_mermaid_blocks` LF/CRLF/non-mermaid, `_render_one` timeout/launch-fail, `_find_skeleton`, render 루프 쓰기실패).
+- **`backend/docs/eval-harness-positioning.md` (+ `.en.md`)** — "#3 Agent Eval(`/ha-eval`)" 추가 제안을 전 사이클(개념→oracle→자료조사→적대적 자가평가→error analysis→생태계 조사) 검토 후 **보류**한 분석. 검증 사다리(pytest + GATES + `/ha-smoke`)가 이미 eval 하네스이며, Promptfoo/DeepEval/OpenAI skill-regression 어느 것도 "파이프라인 → 전체 레포" eval 단위를 오케스트레이션하지 않음을 기록.
+
+### Fixed
+
+- **ha-map 결함 3건** — (1) `subprocess.TimeoutExpired` 미처리로 `mmdc` 행 시 렌더 루프 전체 크래시 → `(SubprocessError, OSError)` 포착 후 `ok:false` 반환. (2) `` ```mermaid `` 펜스 정규식이 `mermaid\n` 라 CRLF(`\r\n`)에서 silent no-render → `\r?\n`(`_extract_mermaid_blocks` 헬퍼로 추출). (3) 렌더 루프 tmp 쓰기 `OSError` 미가드 → 블록별 실패 기록 후 계속.
+- **`_ha_shared/utils.py::project_root`** — `git rev-parse --show-toplevel` 에 `timeout` 부재(형제 `untracked_pseudo_diff` 는 보유) → `timeout=10` + `TimeoutExpired` 폴백 추가. 테스트 +2.
+
+### Changed
+
+- 14개 스킬 + `_ha_shared` 결함 일소(subprocess timeout/except, CRLF 정규식, bare/broad except, `write_text` OSError, `json.load`) — ha-map 외 전부 clean(bare `except: pass` 0건, ha-map 식 CRLF 클론 0건, `write_text` 13지점은 경계 `cmd_*` 에서 OSError 처리 확인).
+- 전체 테스트 **1236 → 1247** (+11), ruff/format clean.
+
 ## [0.14.0] — 2026-06-24 — "Spec Kit Absorption Wrap-up: Clarify Gate & Status Consistency"
 
 Spec Kit 흡수 로드맵 마감 — A3 clarify 게이트 + 유실됐던 작업(#14/#8) 복구 + skipped 상태 일관성. 핵심 가치(A1~A5 + Track B 스캐폴딩 + A3) 완료, P6(멀티에이전트 Tier2/3 + Track C 훅) 보류.

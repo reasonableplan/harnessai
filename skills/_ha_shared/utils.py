@@ -69,10 +69,10 @@ def project_root() -> Path:
         out = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
-            check=True,
+            check=True, timeout=10,
         )
         return Path(out.stdout.strip()).resolve()
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         return Path.cwd().resolve()
 
 

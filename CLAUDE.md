@@ -148,7 +148,7 @@ backend/
 
 ```
 /ha-init → /ha-design → /ha-plan → /ha-build (sonnet) → /ha-verify → /ha-review → /ha-smoke (advisory) → /ha-ship
-        + /ha-redesign (결정 변경 propagation) + /ha-converge (코드↔스펙 미구현 회수) + /ha-resync (skeleton 손수정 후 해시 재동기) + /ha-deepinit (기존 코드 → AGENTS.md) + /ha-log (worklog)
+        + /ha-redesign (결정 변경 propagation) + /ha-converge (코드↔스펙 미구현 회수) + /ha-resync (skeleton 손수정 후 해시 재동기) + /ha-deepinit (기존 코드 → AGENTS.md) + /ha-log (worklog) + /ha-map (skeleton → 아키텍처 다이어그램, 독립 보조)
 ```
 
 - 스킬 위치: `~/.claude/skills/ha-*/`
