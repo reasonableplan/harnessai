@@ -569,11 +569,7 @@ _rate_limit_store: dict[int, list[float]] = defaultdict(list)
 
 **근거**: code-hijack 2026-06-11 ha-review prepare: BLOCK 3 (harness-plan.md), WARN 16 중 16 FP (SKILL.md). 2026-06-11 직전 리뷰도 WARN 28 중 27 FP 동일 원인 (2026-06-11, 사용자 promotion 승인 — `strip_doc_files_from_diff` + `detect_local_packages` + stdlib 허용으로 구현됨).
 
-## Pending Lessons (자동 추출 — 사용자 promotion 대기)
-
-> 자동 추출된 LESSON. 사용자 검토 후 main 섹션으로 promote (auto_extracted 마커 제거) 또는 거부 (블록 삭제).
-
----
+## (promoted 2026-06-30 — 아래 LESSON-031~037 사용자 promotion 완료)
 
 
 
@@ -582,7 +578,6 @@ _rate_limit_store: dict[int, list[float]] = defaultdict(list)
 
 
 ## LESSON-037: LLM 출력 검증: 실재 심볼에 대한 거짓 부정주장도 탐지
-<!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-06-22 -->
 
 **문제**: 코드 설명 LLM이 AST에 실재하는 함수/클래스를 '존재하지 않는다/정의되지 않았다'고 거짓 단언할 수 있다(약한 모델일수록). 발명된 심볼만 잡는 환각가드(find_hallucinations)는 이걸 못 잡는다 — 심볼이 known이라 통과. 결과: 명백히 틀린 설명에 경고 플래그 0, bottom-up으로 의존 파일에 전파.
 
@@ -592,7 +587,6 @@ _rate_limit_store: dict[int, list[float]] = defaultdict(list)
 
 ---
 ## LESSON-036: 다언어 파이프라인: 언어 특정 도구는 파일타입으로 게이트
-<!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-06-22 -->
 
 **문제**: 다언어 파일을 처리하는 파이프라인에서 언어 특정 정적분석 도구(ruff=Python, eslint=JS 등)를 파일 타입 구분 없이 모든 파일에 돌리면, 그 도구가 다른 언어 파일을 자기 언어로 파싱해 가짜 결과(예: ruff가 .ts를 파이썬으로 파싱해 invalid-syntax 46개)를 생성하고 산출물(사이드카/리포트)을 오염시킨다. 유닛테스트가 그 도구 호출을 mock하면 verify가 green이라 못 잡는다.
 
@@ -602,7 +596,6 @@ _rate_limit_store: dict[int, list[float]] = defaultdict(list)
 
 ---
 ## LESSON-035: LLM 출력은 결정론적 사실셋과 대조해 환각 탐지(비파괴 annotate)
-<!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-06-21 -->
 
 **문제**: LLM이 코드/도메인을 설명할 때 존재하지 않는 심볼·API를 그럴듯하게 지어냄(환각). 사용자가 틀린 설명을 사실로 학습하면 안 하느니만 못함. 그러나 자연어 전체를 검사하면 일반 단어가 오검출돼 FP 폭발.
 
@@ -612,7 +605,6 @@ _rate_limit_store: dict[int, list[float]] = defaultdict(list)
 
 ---
 ## LESSON-034: 파생 경로/캐시키는 단일 함수로 — 조회처·기록처 분리 금지
-<!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-06-21 -->
 
 **문제**: 사이드카(.explain.md) 경로를 pipeline(캐시 조회)은 with_name+stem, write_sidecar(기록)는 이중 with_suffix로 각각 계산 → multi-dot 파일명(foo.test.py)에서 두 경로가 달라져(foo.test.explain.md vs foo.explain.md) 캐시가 영원히 silent miss. 단일 dot는 우연히 일치해 테스트/일반사용서 안 드러남.
 
@@ -622,7 +614,6 @@ _rate_limit_store: dict[int, list[float]] = defaultdict(list)
 
 ---
 ## LESSON-033: Windows cp949 콘솔: CLI 진입점에서 stdout/stderr UTF-8 강제
-<!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-06-21 -->
 
 **문제**: 한국어 Windows 기본 콘솔(cp949)은 em-dash(—,—) 등 non-cp949 문자 출력 시 UnicodeEncodeError로 크래시. CLI 에러 메시지/진행표시에 그런 문자가 있으면 exit code/친절메시지 계약이 깨짐. typer CliRunner 테스트는 utf-8 인메모리 버퍼라 green이어서 못 잡음(테스트 통과하나 실기동 크래시).
 
@@ -632,7 +623,6 @@ _rate_limit_store: dict[int, list[float]] = defaultdict(list)
 
 ---
 ## LESSON-032: TS project-references 루트에 bare tsc -p 는 0파일 vacuous pass — tsc -b 필수
-<!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-06-14 -->
 
 **문제**: tsconfig.json 이 'files: [] + references' (project references) 구조면 'tsc --noEmit -p tsconfig.json' 은 0개 파일만 검사하고 EXIT 0 으로 통과한다. 타입 게이트가 실제 소스를 전혀 안 보고 'tsc 0 errors' 를 보고 → 실제 타입 RED 가 built/verified/reviewed 까지 통과 (예: 라이브러리 실타입 불일치 6건 + MTEXT height 런타임버그).
 
@@ -642,12 +632,29 @@ _rate_limit_store: dict[int, list[float]] = defaultdict(list)
 
 ---
 ## LESSON-031: Electron dev/prod 분기는 app.isPackaged — NODE_ENV 금지
-<!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-06-13 -->
 
 **문제**: main 프로세스에서 isDev=process.env.NODE_ENV!=='production' 으로 분기하면 패키징 앱(NSIS/dmg)은 NODE_ENV 가 설정돼 있지 않아 dev 모드로 폴백 — 존재하지 않는 dev 서버 URL 로드(빈 창) + devTools 자동 오픈. E2E 가 launch env 에 NODE_ENV=production 을 주입하면 이 결함이 전 게이트(unit/E2E/smoke)에서 가려짐
 
 **규칙**: Electron main 의 dev/prod 분기는 const isDev = !app.isPackaged 사용. process.env.NODE_ENV 기반 분기는 패키징 산출물에서 fail-open. E2E launch env 에 NODE_ENV 주입 시 prod 위장임을 인지하고 별도 packaged-app smoke 권장
 
 **근거**: sosel /ha-review: desktop/electron/main.ts:10 — E2E(playwright _electron)는 env 주입으로 통과했으나 실제 NSIS 산출물은 빈 창
+
+---
+## LESSON-038: React Native(Hermes) 한글/로케일 정렬은 코드포인트 비교 — localeCompare(locale) 금지
+
+**문제**: RN 기본 엔진 Hermes 는 ECMA-402 Intl 을 **부분(subset)만** 지원한다(특히 iOS Hermes 의 Intl 은 JS 구현·제한적 데이터). `arr.sort((a,b)=>a.localeCompare(b,'ko'))` 같은 로케일 정렬이 디바이스/플랫폼에 따라 한국어 가나다순을 **불안정/오정렬**하거나 무시될 수 있다. 단위 테스트(node)는 풀 ICU 라 green 이어도 실기기(iOS Hermes)서 깨질 수 있어 안 잡힌다.
+
+**규칙**: 한국어(완성형 한글) 정렬은 **코드포인트 직접 비교**(`a<b ? -1 : a>b ? 1 : 0`)로 한다. 유니코드 Hangul Syllables 블록(U+AC00~U+D7A3, 11,172자)이 **한국 표준(KS X 1026-1) 가나다 순서로 배열**돼 있어 코드포인트 정렬 = 사용자가 기대하는 가나다순. Intl/Collator 불필요. 로케일 정렬이 꼭 필요하면 `Intl.Collator` 지원을 디바이스에서 실측하거나 Hermes 의 `intl` variant(풀 ICU, 바이너리 증가)를 명시 활성화할 것. 정렬 테스트는 가·나·다·까 등 한글 케이스로 작성.
+
+**근거**: noraebang(react-native-expo, 첫 모바일 빌드) /ha-design 점검 — sortSongs 가 `localeCompare('ko')` 사용. [verified] Hermes Intl subset(reactnative.dev/docs/hermes) + Hangul Syllables=한국표준순(unicode.org L2/L2017/17078). 코드포인트 비교로 정정(2026-06-30).
+
+---
+## LESSON-039: expo-file-system 함수형 read/writeAsStringAsync 는 SDK 54+ deprecated — 새 File API 또는 /legacy
+
+**문제**: `expo-file-system` 의 함수형 API(`FileSystem.readAsStringAsync`/`writeAsStringAsync`/`copyAsync` 등)가 **SDK 54 에서 deprecated** 되고 새 `File`/`Directory` 클래스 API 로 교체됐다. SDK 54 stable 은 함수형을 호출 시 deprecation 에러를 던지고, beta 에선 아예 undefined. 또 jest-expo 가 새 File API 목킹에 이슈(expo/expo#39922)가 있어, 옛 패턴으로 작성하면 런타임 에러 또는 테스트 깨짐.
+
+**규칙**: 파일 IO 는 **새 `File`/`Directory` 클래스 API**(`new File(uri).write(str)` / `.text()`) **또는** `import * as FS from 'expo-file-system/legacy'` 중 하나로 프로젝트 전체를 일관되게. **Expo SDK 버전을 package.json 에 고정**(API 동작이 SDK 의존). 테스트는 expo-file-system/expo-sharing/expo-document-picker 를 jest.mock 으로 스텁. document-picker 결과는 `if (result.canceled) return` 후 `result.assets[0].uri` 사용(구버전 `result.type==='success'` 아님).
+
+**근거**: noraebang(react-native-expo) /ha-design 점검 — T-004 백업 IO 가 `FileSystem.readAsStringAsync`/`writeAsStringAsync` 사용. [verified] Expo FileSystem(legacy) docs + expo/expo#39858/#39922. 새 File API/legacy + SDK 핀으로 정정(2026-06-30).
 
 ---
