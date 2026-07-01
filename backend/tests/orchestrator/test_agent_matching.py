@@ -27,7 +27,7 @@ def _make_agent(
 ) -> AgentConfig:
     return AgentConfig(
         provider="claude-cli",
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-5",
         prompt_path="agents/test/CLAUDE.md",
         requires_capabilities=capabilities or [],
         requires_profile_ids=profile_ids or [],
@@ -38,7 +38,7 @@ def _make_full_agents_yaml(tmp_path: Path) -> Path:
     """agents.yaml 형식 전체 agent dict — load_agents_config 용."""
     base_agent: dict = {
         "provider": "claude-cli",
-        "model": "claude-sonnet-4-6",
+        "model": "claude-sonnet-5",
         "prompt_path": "agents/test/CLAUDE.md",
         "timeout_seconds": 300,
         "on_timeout": "escalate",
@@ -334,7 +334,7 @@ class TestAgentConfigBackwardCompat:
         """agents.yaml without requires_* still loads cleanly."""
         base_agent: dict = {
             "provider": "claude-cli",
-            "model": "claude-sonnet-4-6",
+            "model": "claude-sonnet-5",
             "prompt_path": "agents/test/CLAUDE.md",
         }
         data = {
