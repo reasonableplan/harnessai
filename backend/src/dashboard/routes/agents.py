@@ -13,11 +13,11 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 # agents.yaml 의 `models` 티어 별칭이 가리키는 현재 모델 + 대체 선택지.
 _ALLOWED_MODELS: frozenset[str] = frozenset(
     {
-        "claude-opus-4-8",             # judge tier (현재)
-        "claude-sonnet-5",             # code tier (현재)
-        "claude-haiku-4-5-20251001",   # 저렴/빠른 대체
-        "claude-opus-4-6",             # 이전 세대 fallback
-        "claude-sonnet-4-6",           # 이전 세대 fallback
+        "claude-opus-4-8",  # judge tier (현재)
+        "claude-sonnet-5",  # code tier (현재)
+        "claude-haiku-4-5-20251001",  # 저렴/빠른 대체
+        "claude-opus-4-6",  # 이전 세대 fallback
+        "claude-sonnet-4-6",  # 이전 세대 fallback
     }
 )
 

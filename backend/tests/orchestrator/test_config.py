@@ -220,7 +220,11 @@ class TestModelTierResolution:
     def test_unknown_tier_raises(self) -> None:
         raw = {
             "models": {"judge": "claude-opus-4-8"},
-            "architect": {"provider": "claude-cli", "model_tier": "nonexistent", "prompt_path": "a"},
+            "architect": {
+                "provider": "claude-cli",
+                "model_tier": "nonexistent",
+                "prompt_path": "a",
+            },
         }
         with pytest.raises(ValueError, match="model_tier"):
             _resolve_model_tiers(raw)
@@ -232,6 +236,8 @@ class TestModelTierResolution:
 
     def test_legacy_concrete_model_without_models_block(self) -> None:
         """models 블록 없는 구형 yaml — concrete model 그대로 동작."""
-        raw = {"architect": {"provider": "claude-cli", "model": "claude-opus-4-8", "prompt_path": "a"}}
+        raw = {
+            "architect": {"provider": "claude-cli", "model": "claude-opus-4-8", "prompt_path": "a"}
+        }
         out = _resolve_model_tiers(raw)
         assert out["architect"]["model"] == "claude-opus-4-8"
