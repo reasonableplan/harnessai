@@ -190,7 +190,7 @@ lessons_applied:
 - **사용자 튜너블** (모델명, 비용 단가) → `pyproject.toml [tool.<name>]` 섹션
   ```toml
   [tool.hijack]
-  default_model = "claude-sonnet-4-6"
+  default_model = "claude-sonnet-5"
   cost_per_input_token = 3e-6
   ```
 - **런타임 환경값** (API 키, 엔드포인트) → 환경변수 (§4 보안 규칙에 따름)

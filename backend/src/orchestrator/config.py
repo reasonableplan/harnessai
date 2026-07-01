@@ -28,7 +28,8 @@ class AgentConfig(BaseModel):
     """Runtime configuration for a single agent."""
 
     provider: Provider
-    model: str
+    model: str  # concrete 모델 문자열. model_tier 사용 시 로더가 models 별칭으로 채운다.
+    model_tier: str | None = None  # judge|code 등 — agents.yaml 의 models 맵 키 (introspection 용)
     prompt_path: str
     timeout_seconds: int = 300
     on_timeout: OnTimeout = OnTimeout.ESCALATE
@@ -87,6 +88,36 @@ class OrchestratorConfig(BaseModel):
         }
 
 
+def _resolve_model_tiers(raw: dict) -> dict:
+    """`models` 별칭 맵으로 각 에이전트의 `model_tier` 를 concrete `model` 로 해석.
+
+    - 상단 `models: {judge: ..., code: ...}` 를 정의하면 에이전트는 `model_tier: judge`
+      한 줄로 참조 → 신모델 출시 시 `models` 두 줄만 바꾸면 전체 반영.
+    - 에이전트에 `model` 이 명시돼 있으면 그대로 둔다 (override 허용, backward compatible).
+    - `models` 블록이 없고 모두 concrete `model` 인 구형 yaml 도 그대로 동작.
+    """
+    models = raw.pop("models", {})
+    if not isinstance(models, dict):
+        raise ValueError(f"'models' must be a mapping, got {type(models).__name__}")
+
+    for name, spec in raw.items():
+        if not isinstance(spec, dict):
+            continue  # max_concurrent 등 스칼라는 스킵
+        if spec.get("model"):
+            continue  # 명시적 model 우선
+        tier = spec.get("model_tier")
+        if tier is None:
+            raise ValueError(f"agent {name!r}: 'model' 또는 'model_tier' 중 하나가 필요합니다")
+        if tier not in models:
+            raise ValueError(
+                f"agent {name!r}: model_tier {tier!r} 가 models 에 없습니다 "
+                f"(정의된 tier: {sorted(models)})"
+            )
+        spec["model"] = models[tier]
+
+    return raw
+
+
 def load_agents_config(path: str | Path) -> OrchestratorConfig:
     """Read agents.yaml and parse into OrchestratorConfig."""
     path = Path(path)
@@ -98,5 +129,7 @@ def load_agents_config(path: str | Path) -> OrchestratorConfig:
 
     if not isinstance(raw, dict):
         raise ValueError(f"invalid agents.yaml format: expected dict, got {type(raw).__name__}")
+
+    raw = _resolve_model_tiers(raw)
 
     return OrchestratorConfig(**raw)
