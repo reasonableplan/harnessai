@@ -9,15 +9,15 @@ from src.dashboard.routes.deps import get_config
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
-# agents.yaml에서 허용된 모델 목록 (claude_client 의존 제거)
+# 대시보드에서 에이전트 모델 override 시 허용되는 값 (claude_client 의존 제거).
+# agents.yaml 의 `models` 티어 별칭이 가리키는 현재 모델 + 대체 선택지.
 _ALLOWED_MODELS: frozenset[str] = frozenset(
     {
-        "claude-opus-4-5",
-        "claude-sonnet-4-5",
-        "claude-haiku-3-5",
-        "claude-3-5-sonnet-20241022",
-        "claude-3-5-haiku-20241022",
-        "claude-3-opus-20240229",
+        "claude-opus-4-8",  # judge tier (현재)
+        "claude-sonnet-5",  # code tier (현재)
+        "claude-haiku-4-5-20251001",  # 저렴/빠른 대체
+        "claude-opus-4-6",  # 이전 세대 fallback
+        "claude-sonnet-4-6",  # 이전 세대 fallback
     }
 )
 

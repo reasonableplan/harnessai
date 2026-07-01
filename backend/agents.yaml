@@ -5,9 +5,16 @@ max_concurrent: 2  # 동시 실행 에이전트 수 제한
 # - compact prompt (skeleton 이미 채워진 후): orchestrator 300s 충분
 # 메인 레포 개발자 환경: 이 값들로 충분. CI/느린 환경: 1.5배 권장.
 
+# ── 모델 티어 별칭 ──────────────────────────────────────────────
+# 신모델 출시 시 아래 두 줄만 바꾸면 전체 에이전트에 반영된다.
+# 각 에이전트는 `model_tier: judge|code` 로 참조하거나, `model:` 로 직접 지정(override) 가능.
+models:
+  judge: claude-opus-4-8   # 판단·설계·리뷰: architect · designer · orchestrator · reviewer · qa
+  code: claude-sonnet-5    # 코드 생성: 모든 coder (backend · frontend · mobile 4종)
+
 architect:
   provider: claude-cli
-  model: claude-opus-4-6
+  model_tier: judge
   prompt_path: agents/architect/CLAUDE.md
   timeout_seconds: 600
   on_timeout: retry
@@ -18,7 +25,7 @@ architect:
 
 designer:
   provider: claude-cli
-  model: claude-opus-4-6
+  model_tier: judge
   prompt_path: agents/designer/CLAUDE.md
   timeout_seconds: 600
   on_timeout: retry
@@ -29,7 +36,7 @@ designer:
 
 orchestrator:
   provider: claude-cli
-  model: claude-opus-4-6
+  model_tier: judge
   prompt_path: agents/orchestrator/CLAUDE.md
   timeout_seconds: 300
   on_timeout: retry
@@ -40,7 +47,7 @@ orchestrator:
 
 backend_coder:
   provider: claude-cli
-  model: claude-sonnet-4-6
+  model_tier: code
   prompt_path: agents/backend_coder/CLAUDE.md
   timeout_seconds: 600
   on_timeout: retry
@@ -51,7 +58,7 @@ backend_coder:
 
 frontend_coder:
   provider: claude-cli
-  model: claude-haiku-4-5-20251001
+  model_tier: code
   prompt_path: agents/frontend_coder/CLAUDE.md
   timeout_seconds: 600
   on_timeout: retry
@@ -63,7 +70,7 @@ frontend_coder:
 # M0 first gate — React Native + Expo mobile coder (M1 에서 본 작업)
 mobile_coder_rn:
   provider: claude-cli
-  model: claude-haiku-4-5-20251001
+  model_tier: code
   prompt_path: agents/mobile_coder_rn/CLAUDE.md
   timeout_seconds: 600
   on_timeout: retry
@@ -75,7 +82,7 @@ mobile_coder_rn:
 # M0-B — Flutter mobile coder (M2 에서 본 작업, Dart 비주류라 sonnet)
 mobile_coder_flutter:
   provider: claude-cli
-  model: claude-sonnet-4-6
+  model_tier: code
   prompt_path: agents/mobile_coder_flutter/CLAUDE.md
   timeout_seconds: 600
   on_timeout: retry
@@ -87,7 +94,7 @@ mobile_coder_flutter:
 # M0-B — Android Kotlin native (M3 에서 본 작업, Gradle 빌드 시간 고려 900s)
 mobile_coder_android:
   provider: claude-cli
-  model: claude-sonnet-4-6
+  model_tier: code
   prompt_path: agents/mobile_coder_android/CLAUDE.md
   timeout_seconds: 900
   on_timeout: retry
@@ -99,7 +106,7 @@ mobile_coder_android:
 # M0-B — iOS Swift native (M3, Windows 호스트는 SwiftLint + swift build 만)
 mobile_coder_ios:
   provider: claude-cli
-  model: claude-sonnet-4-6
+  model_tier: code
   prompt_path: agents/mobile_coder_ios/CLAUDE.md
   timeout_seconds: 900
   on_timeout: retry
@@ -110,7 +117,7 @@ mobile_coder_ios:
 
 reviewer:
   provider: claude-cli
-  model: claude-opus-4-6
+  model_tier: judge
   prompt_path: agents/reviewer/CLAUDE.md
   timeout_seconds: 300
   on_timeout: escalate
@@ -121,7 +128,7 @@ reviewer:
 
 qa:
   provider: claude-cli
-  model: claude-opus-4-6
+  model_tier: judge
   prompt_path: agents/qa/CLAUDE.md
   timeout_seconds: 600
   on_timeout: retry

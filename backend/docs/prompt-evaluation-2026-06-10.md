@@ -82,6 +82,8 @@ rn 은 `권위순서 → 자율결정금지 → 골든원칙` 순, flutter/andro
 agents.yaml 이 claude-opus-4-6 / sonnet-4-6 / haiku-4-5. 현재 최신 opus-4-8. 단 스킬 경로
 (Agent model="sonnet")엔 무관, Orchestra 경로만 해당 → H2 판단 후 결정.
 
+> **2026-07-01 해결**: agents.yaml 을 `model_tier` 별칭(`models: {judge: claude-opus-4-8, code: claude-sonnet-5}`)으로 전환. haiku 미사용(코딩 전부 sonnet code tier). 신모델 출시 시 `models` 두 줄만 교체 → 버전 노후 재발 방지. (config `_resolve_model_tiers`)
+
 ### (신규 발견) 미러 divergence
 repo `skills/` 와 런타임 `~/.claude/skills/` 가 심링크가 아닌 별도 복사본이고 현재 내용이 다름.
 한 쪽만 수정하면 런타임에 반영 안 됨 → 수정 후 미러 동기화 필수.

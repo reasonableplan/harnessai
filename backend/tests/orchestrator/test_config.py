@@ -10,6 +10,7 @@ from src.orchestrator.config import (
     OnTimeout,
     OrchestratorConfig,
     Provider,
+    _resolve_model_tiers,
     load_agents_config,
 )
 
@@ -159,8 +160,8 @@ class TestLoadAgentsConfig:
             pytest.skip("agents.yaml 없음")
 
         cfg = load_agents_config(real_path)
-        assert cfg.architect.model == "claude-opus-4-6"
-        assert cfg.backend_coder.model == "claude-sonnet-4-6"
+        assert cfg.architect.model == "claude-opus-4-8"
+        assert cfg.backend_coder.model == "claude-sonnet-5"
         assert cfg.orchestrator.on_timeout == OnTimeout.RETRY
 
     def test_all_prompt_paths_resolve(self) -> None:
@@ -185,3 +186,58 @@ class TestLoadAgentsConfig:
         assert not missing, "prompt_path 파일이 없습니다 (.gitignore 누락 의심):\n" + "\n".join(
             missing
         )
+
+
+class TestModelTierResolution:
+    """model_tier 별칭 해석 (`_resolve_model_tiers`)."""
+
+    def test_tier_maps_to_concrete_model(self) -> None:
+        raw = {
+            "models": {"judge": "claude-opus-4-8", "code": "claude-sonnet-5"},
+            "architect": {"provider": "claude-cli", "model_tier": "judge", "prompt_path": "a"},
+            "backend_coder": {"provider": "claude-cli", "model_tier": "code", "prompt_path": "b"},
+            "max_concurrent": 2,
+        }
+        out = _resolve_model_tiers(raw)
+        assert out["architect"]["model"] == "claude-opus-4-8"
+        assert out["backend_coder"]["model"] == "claude-sonnet-5"
+        assert "models" not in out  # 별칭 블록은 소비됨
+        assert out["max_concurrent"] == 2  # 스칼라는 그대로
+
+    def test_explicit_model_overrides_tier(self) -> None:
+        raw = {
+            "models": {"code": "claude-sonnet-5"},
+            "backend_coder": {
+                "provider": "claude-cli",
+                "model": "custom-model",
+                "model_tier": "code",
+                "prompt_path": "b",
+            },
+        }
+        out = _resolve_model_tiers(raw)
+        assert out["backend_coder"]["model"] == "custom-model"  # 명시적 model 우선
+
+    def test_unknown_tier_raises(self) -> None:
+        raw = {
+            "models": {"judge": "claude-opus-4-8"},
+            "architect": {
+                "provider": "claude-cli",
+                "model_tier": "nonexistent",
+                "prompt_path": "a",
+            },
+        }
+        with pytest.raises(ValueError, match="model_tier"):
+            _resolve_model_tiers(raw)
+
+    def test_missing_model_and_tier_raises(self) -> None:
+        raw = {"models": {}, "architect": {"provider": "claude-cli", "prompt_path": "a"}}
+        with pytest.raises(ValueError, match="필요"):
+            _resolve_model_tiers(raw)
+
+    def test_legacy_concrete_model_without_models_block(self) -> None:
+        """models 블록 없는 구형 yaml — concrete model 그대로 동작."""
+        raw = {
+            "architect": {"provider": "claude-cli", "model": "claude-opus-4-8", "prompt_path": "a"}
+        }
+        out = _resolve_model_tiers(raw)
+        assert out["architect"]["model"] == "claude-opus-4-8"

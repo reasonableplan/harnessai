@@ -159,14 +159,21 @@ LOCAL_MODEL_NAME=llama3.1
 ## 4. 에이전트 설정 (agents.yaml)
 
 `backend/agents.yaml`에서 에이전트별로 provider와 모델을 독립적으로 지정할 수 있다.
+모델은 상단 `models` **티어 별칭**(judge/code)으로 관리한다 — 신모델 출시 시 별칭 두 줄만
+바꾸면 전체 에이전트에 반영된다. 특정 에이전트만 다른 모델을 쓰려면 `model:` 로 직접 지정(override).
 
 ```yaml
 # 동시 실행 에이전트 수 제한
 max_concurrent: 2
 
+# 모델 티어 별칭 — 여기 두 줄만 바꾸면 전체 반영
+models:
+  judge: claude-opus-4-8   # 판단·설계·리뷰
+  code: claude-sonnet-5    # 코드 생성
+
 architect:
   provider: claude-cli
-  model: claude-opus-4-6
+  model_tier: judge
   timeout_seconds: 300
   on_timeout: escalate
   max_retries_on_timeout: 1
@@ -174,7 +181,7 @@ architect:
 
 backend_coder:
   provider: claude-cli
-  model: claude-sonnet-4-6   # 더 저렴한 모델로 교체 가능
+  model_tier: code
   timeout_seconds: 600
   on_timeout: retry
   max_retries_on_timeout: 1
@@ -182,7 +189,7 @@ backend_coder:
 
 frontend_coder:
   provider: claude-cli
-  model: claude-haiku-4-5    # 빠르고 저렴 — 프론트 코딩에 충분
+  model_tier: code             # 더 저렴한 모델을 쓰려면 model: <id> 로 override
   timeout_seconds: 600
   on_timeout: retry
   max_retries_on_timeout: 1
