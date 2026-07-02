@@ -204,6 +204,24 @@ class TestCodeQuality:
         findings = check_code_quality(code)
         assert any(f.severity == Severity.WARN for f in findings)
 
+    def test_print_warned_by_default(self) -> None:
+        code = "print('debug:', data)"
+        findings = check_code_quality(code)
+        assert any("print()" in f.message for f in findings)
+
+    def test_print_allowed_when_stdout_is_output_channel(self) -> None:
+        """CLI/skill 프로파일: print 는 정당한 출력 채널 → WARN 억제 (dogfood #10)."""
+        code = "print('result')\nprint('[error] bad', file=sys.stderr)"
+        findings = check_code_quality(code, allow_stdout_print=True)
+        assert not any("print()" in f.message for f in findings)
+
+    def test_print_allow_does_not_leak_other_rules(self) -> None:
+        """allow_stdout_print 는 print 만 억제 — 빈 except 등 다른 룰은 유지."""
+        code = "try:\n    x()\nexcept:\n    print('swallow')"
+        findings = check_code_quality(code, allow_stdout_print=True)
+        assert any(f.severity == Severity.BLOCK for f in findings)  # bare except 유지
+        assert not any("print()" in f.message for f in findings)
+
     def test_excessive_type_ignore_warned(self) -> None:
         code = "\n".join(["x = y  # type: ignore" for _ in range(5)])
         findings = check_code_quality(code)

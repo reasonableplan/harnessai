@@ -5,6 +5,8 @@ status: confirmed
 extends: _base
 version: 1
 maintainer: harness-core
+# stdout print 는 CLI 의 출력 채널 (결과=stdout / 에러=stderr) — code-quality print 룰 억제 (#10)
+allow_stdout_print: true
 
 # NOTE: "backend/" 제외 — CLI 가 backend/ 에서 매칭되면 plan 의 profile path 가
 # backend/ 로 기록되고 ha-verify cwd 가 어긋나 (루트 tests/ 프로젝트에서) 가짜

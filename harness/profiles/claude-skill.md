@@ -5,6 +5,8 @@ status: confirmed
 extends: _base
 version: 1
 maintainer: harness-core
+# 스킬 run.py 는 JSON 결과를 stdout 으로 출력 — code-quality print 룰 억제 (#10)
+allow_stdout_print: true
 
 paths: [".", "skills/"]
 detect:

@@ -537,12 +537,21 @@ _QUALITY_PATTERNS: list[tuple[re.Pattern[str], str, Severity]] = [
 _TYPE_IGNORE_PATTERN = re.compile(r"#\s*type:\s*ignore")
 
 
-def check_code_quality(text: str) -> list[Finding]:
+def check_code_quality(text: str, *, allow_stdout_print: bool = False) -> list[Finding]:
+    """Scan for code-quality smells.
+
+    allow_stdout_print: when True, the print() rule is skipped — for profiles
+    where stdout print is a legitimate output channel (CLI tools emit results,
+    skills emit JSON). Web backends and libraries keep the rule (debug-print
+    smell / libraries should return or log, not print).
+    """
     findings: list[Finding] = []
     type_ignore_count = 0
 
     for i, line in enumerate(text.splitlines(), start=1):
         for pattern, message, severity in _QUALITY_PATTERNS:
+            if allow_stdout_print and message.startswith("print()"):
+                continue
             if pattern.search(line):
                 findings.append(
                     Finding(
@@ -809,6 +818,7 @@ class SecurityHooks:
         extra_python_allowed: frozenset[str] | set[str] | None = None,
         extra_frontend_allowed: frozenset[str] | set[str] | None = None,
         extra_frontend_prefixes: tuple[str, ...] | None = None,
+        allow_stdout_print: bool = False,
     ) -> None:
         self.python_whitelist = python_whitelist
         self.frontend_whitelist = frontend_whitelist
@@ -816,6 +826,7 @@ class SecurityHooks:
         self.extra_python_allowed = extra_python_allowed
         self.extra_frontend_allowed = extra_frontend_allowed
         self.extra_frontend_prefixes = extra_frontend_prefixes
+        self.allow_stdout_print = allow_stdout_print
 
     @classmethod
     def from_profile(
@@ -841,6 +852,12 @@ class SecurityHooks:
         wl_dev = getattr(getattr(profile, "whitelist", None), "dev", ())
         wl_prefixes = getattr(getattr(profile, "whitelist", None), "prefix_allowed", ())
         combined: set[str] = set(wl_runtime) | set(wl_dev)
+        # allow_stdout_print: profile frontmatter opt-in (stdout is the output
+        # channel for CLI/skill profiles). Read from raw so no schema field churn.
+        raw = getattr(profile, "raw", {})
+        allow_stdout_print = (
+            bool(raw.get("allow_stdout_print", False)) if isinstance(raw, dict) else False
+        )
         return cls(
             python_whitelist=combined,
             frontend_whitelist=combined,
@@ -848,6 +865,7 @@ class SecurityHooks:
             extra_python_allowed=extra_python_allowed,
             extra_frontend_allowed=extra_frontend_allowed,
             extra_frontend_prefixes=extra_frontend_prefixes,
+            allow_stdout_print=allow_stdout_print,
         )
 
     def run_all(
@@ -889,7 +907,7 @@ class SecurityHooks:
                 extra_frontend_prefixes=self.extra_frontend_prefixes,
             )
         )
-        findings.extend(check_code_quality(text))
+        findings.extend(check_code_quality(text, allow_stdout_print=self.allow_stdout_print))
         findings.extend(check_contract_validator(text, allowed_endpoints))
         findings.extend(check_auth_guard(text, is_frontend=is_frontend, is_mobile=is_mobile))
         return SecurityResult(findings=findings)

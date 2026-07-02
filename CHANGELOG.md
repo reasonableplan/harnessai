@@ -4,6 +4,18 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.15.2] — 2026-07-02 — "Profile-aware print 룰 (dogfood #10)"
+
+`/ha-run` dogfood(URL 단축 CLI) 를 shipped 까지 완주하며 발견한 code-quality 오탐 수정. CLI 도구의 정당한 `print()`(stdout=결과 / stderr=에러)를 code-quality 훅이 "logger 필수" WARN 5건으로 잡던 것 — 웹 백엔드 가정을 CLI 에 부적절 적용.
+
+### Fixed
+
+- **code-quality print 룰 프로파일 인지** — `check_code_quality(text, *, allow_stdout_print=False)` + `SecurityHooks.allow_stdout_print` (from_profile 이 프로파일 frontmatter `allow_stdout_print` 를 raw 에서 읽음, 스키마 필드 추가 없음). **python-cli / claude-skill 만 print 억제**(stdout 이 출력 채널) — **fastapi(웹 디버그 print 냄새) · python-lib(라이브러리는 return/logging) 은 유지**. print 외 룰(빈 except 등)은 영향 없음. 테스트 +3
+
+### Changed
+
+- 전체 테스트 **1286 → 1289** (+3)
+
 ## [0.15.1] — 2026-07-02 — "Frozen Gate Fix: CLI/라이브러리 무한루프 (dogfood urlshort)"
 
 `/ha-run` 을 실제 dogfood(URL 단축 CLI) 로 돌리다 발견한 근본 결함 수정. v0.10.0 HITL 게이트가 "모든 프로젝트가 페르소나/화면 섹션을 가진다"는 웹앱 암묵 가정 위에 만들어져, **HITL-lockable 섹션(requirements/user_journey/view.screens)이 없는 프로젝트(CLI 도구·라이브러리)는 freeze 대상이 없어 영구 `drafting` → ha-build 영구 BLOCK → 드라이버 designed→design 무한루프.**
