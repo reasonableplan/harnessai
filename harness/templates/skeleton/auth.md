@@ -3,6 +3,15 @@ id: auth
 name: 인증 / 권한
 required_when: has.users
 description: 인증 방식, 토큰/세션 수명, 보호 리소스, 권한 모델
+decision_points:
+  - id: login_identity
+    ask: "로그인 신원 수단이 뭔가요? (자체 이메일+비밀번호 / 소셜 OAuth / 매직링크 / API Key)"
+    detect: [비밀번호, password, 소셜, oauth, google, kakao, naver, apple, github, sso, saml, 매직링크, magic, api key, apikey]
+    hint: "'JWT'는 토큰 형식이지 신원 수단이 아님 — 무엇으로 본인 확인하는지 명시"
+  - id: account_lifecycle
+    ask: "회원가입/탈퇴가 있나요? 탈퇴 시 데이터는 어떻게 하나요? (즉시 삭제 / 익명화 / 보관)"
+    detect: [회원가입, 가입, 탈퇴, 계정 삭제, 익명화, gdpr, 데이터 삭제, 계정 복구]
+    hint: "비전문가가 가장 자주 빠뜨림 — 탈퇴 처리 미정이면 코더가 임의 구현(개인정보 리스크)"
 ---
 
 ## {{section_number}}. 인증 / 권한

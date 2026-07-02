@@ -3,6 +3,15 @@ id: interface.http
 name: HTTP API
 required_when: has.http_server
 description: REST API 엔드포인트, Request/Response, 공통 규칙
+decision_points:
+  - id: idempotency
+    ask: "생성/결제 같은 변경 요청이 중복 제출되면 어떻게 되나요? (멱등키 / 중복 방지 / 허용)"
+    detect: [멱등, idempoten, 중복 제출, 중복 요청, 중복 방지, 중복 생성, dedup]
+    hint: "더블클릭/재시도로 중복 레코드 생기는 게 흔한 사고 — 막을지 정해야 함"
+  - id: list_query
+    ask: "목록 API 를 어떻게 필터/정렬/검색하나요? (쿼리 파라미터 명시)"
+    detect: [정렬, 필터, 검색, sort, filter, search, order_by, 조회 조건, 쿼리 파라미터]
+    hint: "페이지네이션 외에 어떤 필드로 거르고 정렬하는지 — 미정이면 코더가 추정"
 ---
 
 ## {{section_number}}. HTTP API

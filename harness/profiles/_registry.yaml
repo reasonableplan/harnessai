@@ -26,6 +26,11 @@ rules:
       contains:
         pyproject.toml: ["fastapi"]
 
+  - profile: django
+    paths: [".", "backend/", "apps/backend/", "apps/api/", "services/api/"]
+    detect:
+      files: [manage.py]
+
   # ── Node.js backends ───────────────────────────────────────────────────
   - profile: nestjs
     paths: [".", "backend/", "apps/backend/", "apps/api/", "services/api/"]

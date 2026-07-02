@@ -4,6 +4,40 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.17.0] — 2026-07-02 — "의미 기반 인터뷰: decision_points 커버리지 (설계 탄탄 + HITL)"
+
+원맨툴 비전 재정의("자동화 아님 — 다른 스킬 없이 HarnessAI 만으로, HITL 중심, 설계부터 탄탄")에 따라
+설계 단계의 근본 약점을 처리. 기존 인터뷰 질문 생성은 전부 **어휘(lexical) 정규식**(미정량어/실패경로
+단어 스캔)이라 비전문가가 남기는 **의미적 빈칸**(다중 사용자·soft delete·동시성·로딩 상태 등)을 못 잡았다.
+2025 연구 근거: taxonomy("common mistake types")로 유도한 질문이 zero-shot 보다 우수(arXiv 2507.02858),
+커버리지가 곧 "언제 멈출지" 정지 조건(arXiv 2502.04485).
+
+### Added
+
+- **`decision_coverage.py`** — fragment frontmatter 신필드 `decision_points`(그 섹션에서 반드시 결정돼야
+  할 의미 항목 — 과거 LESSON/실패 taxonomy)를 읽어, 채워진 skeleton 본문에 `detect` 키워드가 하나도
+  없으면 **미결정**으로 판정. `load_decision_points` / `find_unresolved_decisions`. 결정론(코드=커버리지+정지
+  조건, LLM=질문·해소 판단). `decision_points` 미선언 fragment 는 기존과 완전 동일(additive). 테스트 +12
+- **5 섹션 11 항목 시딩** — requirements(multi_user/unhappy_path), persistence(multi_tenant/soft_delete/
+  concurrency), auth(login_identity/account_lifecycle), interface.http(idempotency/list_query),
+  view.screens(loading_state/navigation_model). 템플릿이 이미 예시多인 섹션은 기본값에 없는 진짜 갭만
+  선별(detect 오탐 회피).
+- **ha-design `clarify` → `decision_candidates`** 필드 + SKILL.md §4.5①-a 배선 — 어휘 후보보다 **우선**
+  처리(강제 질문, "해당 없음"도 유효 선택지, 자동 처리 금지 = 결정권 분리 HITL).
+- **`harness validate` decision_points 경량 검증** — 오작성(비-list, id/ask 누락) warn 표면화.
+- **`test_harness_cli_validate.py`** — `harness` bin 첫 회귀 커버리지(importlib SourceFileLoader). 테스트 +13
+
+### Fixed
+
+- **required_when 괄호 false-reject** — `harness validate` 의 `_validate_required_when_expression` 가 괄호
+  표현식을 통째 거부해 v0.16.0 environments 의 `(a or b) and (c or d)` 가 실제로 validate red 였음
+  (테스트/drift 가 `harness validate` 를 미실행이라 미검출). 런타임 backend `scale_expression.parse()` 는
+  괄호 정상 처리. 수정 = 균형 검사 + 괄호→공백 치환 후 atom 검증(standalone 유지, backend import 안 함).
+- **`_README.md` fragment 오검사** — `validate fragments` 서브커맨드만 `_` 접두 skip 누락(전체 `validate`
+  엔 있음)이라 두 경로 불일치 → 서브커맨드에도 skip 추가. 이제 validate/validate fragments 둘 다 green.
+- **미러 drift 정리** — `~/.claude` 에만 있던 `django.md`(confirmed/harness-core 완결 프로파일) + `_registry.yaml`
+  django 룰을 레포로 **백포트**(삭제 아님 — 이전 세션 백포트 누락, 유실 방지). drift 0건(125 files).
+
 ## [0.16.0] — 2026-07-02 — "인터뷰 지능화 (P5): capability 추론 + 활성화 정확도 (#1·#3·#11)"
 
 웹앱 dogfood(nextjs)로 확정한 공통 뿌리 — "6축+프로파일 활성화가 비전문가 의도를 못 잡음" — 를 묶어서 해소. 원맨툴 비전("누구든지 완벽하게")의 정면 과제.

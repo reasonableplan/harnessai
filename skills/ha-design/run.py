@@ -377,12 +377,25 @@ def cmd_clarify(args: argparse.Namespace) -> int:
     findings = check_skeleton_quality(text)
     candidates = build_clarification_candidates(findings, max_n=args.max)
 
+    # 의미 기반 커버리지 (decision_points) — 어휘 스캔이 못 잡는 의미적 빈칸.
+    # fragments frontmatter 의 decision_points 중 skeleton 본문에 detect 키워드가
+    # 하나도 없는 것 = 미결정. clarify 후보보다 우선순위 높음 (설계 탄탄의 핵심).
+    from src.orchestrator.decision_coverage import find_unresolved_decisions  # noqa: PLC0415
+    fragments_dir = (
+        HARNESS_HOME / "harness" / "templates" / "skeleton" if HARNESS_HOME else None
+    )
+    unresolved = find_unresolved_decisions(text, fragments_dir)
+
+    if unresolved:
+        info(
+            f"[INFO] 미결정 의미 항목 {len(unresolved)}건 — AskUserQuestion 으로 확인 후 skeleton 역기록 필수"
+        )
     if candidates:
         info(
             f"[INFO] 미명세 후보 {len(candidates)}건 — AskUserQuestion 으로 확인 후 skeleton 역기록 권장"
         )
-    else:
-        info("[OK] 미명세 후보 없음")
+    if not unresolved and not candidates:
+        info("[OK] 미명세/미결정 후보 없음")
 
     output = {
         "checklist_findings": [
@@ -393,6 +406,15 @@ def cmd_clarify(args: argparse.Namespace) -> int:
                 "message": f.message,
             }
             for f in findings
+        ],
+        "decision_candidates": [
+            {
+                "section_id": u.section_id,
+                "point_id": u.point_id,
+                "question": u.question,
+                "hint": u.hint,
+            }
+            for u in unresolved
         ],
         "clarification_candidates": [
             {

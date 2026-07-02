@@ -408,6 +408,22 @@ def validate_fragment(path: Path, report: Report) -> None:
         if err:
             report.error(name, f"required_when='{rw}' — {err}")
 
+    # decision_points 검증 (선택 필드) — 오작성 시 runtime 이 조용히 skip 하므로
+    # 여기서 표면화. 각 항목은 str id + str ask 필수, detect 는 list 권장.
+    dps = data.get("decision_points")
+    if dps is not None:
+        if not isinstance(dps, list):
+            report.warn(name, "decision_points 는 list 여야 함 (무시됨)")
+        else:
+            for i, dp in enumerate(dps):
+                if not isinstance(dp, dict):
+                    report.warn(name, f"decision_points[{i}] 는 dict 여야 함 (무시됨)")
+                    continue
+                if not isinstance(dp.get("id"), str) or not isinstance(dp.get("ask"), str):
+                    report.warn(name, f"decision_points[{i}] id/ask 누락 또는 비문자열 (무시됨)")
+                elif not isinstance(dp.get("detect", []), list):
+                    report.warn(name, f"decision_points[{i}].detect 는 list 여야 함")
+
     # 본문에 {{section_number}} 플레이스홀더 있는지 확인
     try:
         text = path.read_text(encoding="utf-8")
@@ -435,18 +451,16 @@ def _validate_required_when_expression(rw: str) -> str | None:
     expr = rw.strip()
     if not expr:
         return "빈 표현식"
-    # 괄호 표현식 reject — CLI validator 는 단순 정규식 splitter 라 (a or b) and c
-    # 같은 precedence override 를 정확히 분석할 수 없음. "통과했는데 실제론 틀린"
-    # validator 가 되는 걸 방지하기 위해 명시적 거부. 정식 평가는 ProfileLoader
-    # (Phase 2-b-3) 가 backend scale_expression.parse() 로 수행하며 거기서는 괄호 OK.
-    if "(" in expr or ")" in expr:
-        return (
-            "괄호 표현식은 CLI validator 가 syntax 검증을 보장하지 않음. "
-            "괄호 없이 표기 (and 가 or 보다 우선 — Python 표준) 또는 backend "
-            "scale_expression.parse() 로 직접 검증."
-        )
+    # 괄호는 grouping 일 뿐 atom 유효성엔 영향 없다 — 균형만 확인하고 공백으로
+    # 치환해 atom/축 vocab 검증을 이어간다. precedence 정확성은 이 validator 의
+    # 책임이 아님 (backend scale_expression.parse() 가 담당, 테스트로 고정). 과거엔
+    # 괄호를 통째로 거부했으나 environments 등 정당한 `(a or b) and (c or d)` 표현식을
+    # false-reject 하는 오탐이었다 — backend 파서는 괄호를 지원.
+    if expr.count("(") != expr.count(")"):
+        return f"괄호 불균형: '(' {expr.count('(')}개 vs ')' {expr.count(')')}개"
+    expr = expr.replace("(", " ").replace(")", " ")
     # or / and / + 로 분리 → 각 piece 가 atom 또는 6축 표현식
-    pieces = re.split(r"\s+(?:or|and)\s+|\s*\+\s*", expr)
+    pieces = re.split(r"\s+(?:or|and)\s+|\s*\+\s*", expr.strip())
     for piece in pieces:
         atom = piece.strip()
         if not atom:
@@ -1914,6 +1928,8 @@ def main() -> int:
     elif args.target == "fragments":
         fragments_dir = HARNESS_ROOT / "templates" / "skeleton"
         for f in sorted(fragments_dir.glob("*.md")):
+            if f.name.startswith("_"):
+                continue  # `_` prefix = fragment 아닌 메타 문서 (_README.md 등)
             validate_fragment(f, report)
     elif args.target == "registry":
         validate_registry(HARNESS_ROOT / "profiles" / "_registry.yaml", report)

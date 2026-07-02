@@ -278,16 +278,32 @@ Designer 섹션 (view.*) 작성 후, 그 화면이 요구하는 데이터/액션
 python ~/.claude/skills/ha-design/run.py clarify
 ```
 
-JSON stdout 의 `clarification_candidates` 를 확인:
-- 비어있으면 → `[OK] 미명세 후보 없음` — ②로 진행.
-- 비어있지 않으면 → **AskUserQuestion 으로 최대 5개** 타겟 질문 (각 candidate 의 `question` + `hint` 사용):
+JSON stdout 에 두 종류의 후보가 있다. **`decision_candidates` 를 먼저** 처리한다:
+
+**1-a. `decision_candidates` — 의미 기반 미결정 항목 (최우선)**
+
+fragment 의 `decision_points`(그 섹션에서 반드시 결정돼야 할 의미적 항목 — 다중 사용자 /
+soft delete / 동시성 등) 중 skeleton 본문에 근거가 전혀 없는 것이다. 어휘 스캔이 못 잡는
+**의도의 빈칸**이라 비전문가 산출물이 어긋나는 근본 원인 — 반드시 물어야 한다.
+- 비어있지 않으면 → **AskUserQuestion 으로** 각 항목의 `question` + `hint` 로 질문.
+  각 질문은 결정을 강제하되 "해당 없음/불필요"도 유효 선택지로 포함
+  (예: 단일 사용자 CLI 면 multi_tenant = "격리 불필요"로 확정).
+- 사용자 답을 해당 `section_id` 섹션에 **역기록(Edit)** — 확정 내용을 본문에 명시
+  ("단일 사용자 전용, 사용자별 격리 불필요" 처럼 결정이 드러나게). 그래야 재실행 시 해소로 잡힌다.
+- `clarify` 재실행 → `decision_candidates` 가 소진되면 커버리지 충족 (= 정지 조건). 1-b 로 진행.
+- **가드레일**: 자동으로 "해당 없음" 처리 금지 — 반드시 사용자에게 물을 것. 결정권 분리 원칙.
+
+**1-b. `clarification_candidates` — 미명세(어휘) 후보**
+
+- 비어있으면 → ②로 진행.
+- 비어있지 않으면 → **AskUserQuestion 으로 최대 5개** 타겟 질문 (각 candidate 의 `question` + `hint`):
   ```
   질문: <candidate.question>
   힌트: <candidate.hint>
   ```
   사용자 답을 해당 `section_id` 섹션에 **역기록(Edit)** 후 `clarify` 재실행.
   재실행 후 후보가 소진되거나 사용자가 "넘어가도 됨"이라 하면 ②로 진행.
-- advisory — 후보가 남아도 commit 자체는 차단하지 않음.
+- advisory — 후보가 남아도 commit 자체는 차단하지 않음 (단, `decision_candidates` 는 의도상 반드시 소진 권장).
 
 **② 모호어 스캔**: requirements / 비즈니스 규칙 / core.logic 본문에서
 `알아서 / 적절히 / 자동으로 / 등 / 필요시 / 적당히 / 나중에` 검색 → 발견 시 각각을

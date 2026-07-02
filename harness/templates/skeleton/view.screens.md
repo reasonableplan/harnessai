@@ -3,6 +3,15 @@ id: view.screens
 name: 화면 목록
 required_when: has.ui
 description: 경로 → 컨테이너 매핑, 사용자 흐름
+decision_points:
+  - id: loading_state
+    ask: "데이터를 불러오는 동안 화면에 무엇을 보여주나요? (스켈레톤 / 스피너 / 즉시 표시)"
+    detect: [로딩, 스켈레톤, skeleton, spinner, 스피너, shimmer, 로딩 중]
+    hint: "빈 상태/에러와 별개 — '로딩 중' 화면 미정이면 깜빡임/빈 화면으로 어긋남"
+  - id: navigation_model
+    ask: "화면 간 이동 구조가 뭔가요? (상단바 / 사이드바 / 하단 탭 / 스택)"
+    detect: [상단바, 상단 바, 사이드바, sidebar, 하단 탭, 탭바, tab bar, 드로어, drawer, 네비게이션, navbar, 스택 네비]
+    hint: "화면 흐름과 별개로 '이동 뼈대(chrome)'를 정해야 레이아웃이 일관됨"
 ---
 
 <!-- placeholder/표기 컨벤션: 같은 디렉토리의 _README.md 참조 -->

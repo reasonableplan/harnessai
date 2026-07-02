@@ -3,6 +3,15 @@ id: requirements
 name: 기능 요구사항
 required_when: scale.small_or_larger
 description: MVP 기능, 추가 기능, 비즈니스 규칙
+decision_points:
+  - id: multi_user
+    ask: "여러 사용자가 쓰나요? 데이터를 사용자끼리 공유/협업하나요, 각자 개인용인가요?"
+    detect: [단일 사용자, 다중 사용자, 여러 사용자, 사용자별, 공유, 협업, 개인용, 1인]
+    hint: "공유/협업이면 권한·소유 개념이 스키마·화면 전반에 퍼짐 — 지금 정해야 함"
+  - id: unhappy_path
+    ask: "핵심 기능이 실패하거나 데이터가 없을 때 사용자에게 무엇을 보여주나요?"
+    detect: [실패, 오류, 에러, 없을 때, 비어, 빈 상태, empty, 권한 없]
+    hint: "비전문가는 happy path 만 적음 — 빈/실패/권한거부 화면을 수용 기준에 포함"
 ---
 
 <!-- placeholder/표기 컨벤션: 같은 디렉토리의 _README.md 참조 -->
