@@ -57,6 +57,19 @@ def test_init_advises_design_hitl() -> None:
     assert advice.skill == "/ha-design"
 
 
+def test_init_reason_mentions_persona_only_when_lockable() -> None:
+    """dogfood #2: persona/screen 섹션 있는 프로젝트만 reason 에 그 표현 사용."""
+    with_lockable = advise(_plan("init", frozen=False, included=("requirements", "view.screens")))
+    assert "페르소나" in with_lockable.reason or "화면" in with_lockable.reason
+
+
+def test_init_reason_no_persona_for_cli() -> None:
+    """CLI/라이브러리: lockable 섹션 없으면 reason 에 페르소나/화면 언급 안 함."""
+    cli = advise(_plan("init", frozen=False, included=("interface.cli", "core.logic")))
+    assert "페르소나" not in cli.reason
+    assert "화면" not in cli.reason
+
+
 def test_designed_with_lockable_not_frozen_advises_design_reentry() -> None:
     """persona/screen 섹션이 활성인데 freeze 미완 → HITL 인터뷰 재진입."""
     advice = advise(_plan("designed", frozen=False, included=("requirements",)))

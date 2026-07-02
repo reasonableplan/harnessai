@@ -4,6 +4,19 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.15.4] — 2026-07-02 — "file_structure drift 오탐 + 드라이버 reason 정확도 (dogfood #6·#2)"
+
+`/ha-run` dogfood 잔여 마찰 2건 정리.
+
+### Fixed
+
+- **#6 file_structure drift 오탐** — (1) 표준 `src/` 레이아웃: 프로파일이 `src/<pkg>/`(placeholder)를 선언하면 실재 `src/` 가 extras 로 오탐되던 것을, placeholder 리프의 **구체적 조상 디렉토리**(`src/`)를 declared 로 인정해 해소. (2) `docs/` (harness 가 harness-plan.md/skeleton.md 를 두는 상태 디렉토리 — 모든 프로젝트에 존재)를 `_BENIGN_EXTRA_DIRS` 로 extras 에서 제외. advisory WARN 노이즈 제거. 테스트 +2
+- **#2 드라이버 reason 정확도** — pipeline_advisor 의 init→design reason 이 CLI/라이브러리에도 "페르소나/기능/화면" 을 언급하던 것을, `requires_hitl_freeze` 여부로 분기(`페르소나/기능/화면` vs `기능/로직`). 테스트 +2
+
+### Changed
+
+- 전체 테스트 **1292 → 1296** (+4)
+
 ## [0.15.3] — 2026-07-02 — "ha-smoke 기동 명령 자동 제안 (dogfood #8)"
 
 `/ha-run` dogfood 에서 발견: `toolchain.smoke` 미설정 CLI 프로젝트는 ha-smoke prepare 가 `smoke: null` 만 내보내 비전문가가 "기동 명령이 뭐지?" 에서 막힘.

@@ -61,12 +61,13 @@ def advise(plan: HarnessPlan | None) -> Advice:
     step = plan.pipeline.current_step
 
     if step == "init":
+        scope = "페르소나/기능/화면" if requires_hitl_freeze(plan) else "기능/로직"
         return Advice(
             "design",
             MODE_HITL,
             "/ha-design",
             "",
-            "skeleton 이 비어 있음 — 설계 인터뷰(페르소나/기능/화면) 필요",
+            f"skeleton 이 비어 있음 — 설계 인터뷰({scope}) 필요",
         )
     if step == "designed":
         if plan.frozen_status != "frozen" and requires_hitl_freeze(plan):

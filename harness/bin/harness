@@ -840,6 +840,11 @@ _SKIP_DIRS: frozenset[str] = frozenset({
 
 _INLINE_COMMENT_RE = re.compile(r"\s+#.*$")
 
+# Top-level dirs that harness itself creates in every project — never a genuine
+# "unexpected extra" (docs/ holds harness-plan.md + skeleton.md). Excluded from
+# file_structure drift extras so a standard layout doesn't emit noise WARNs (#6).
+_BENIGN_EXTRA_DIRS: frozenset[str] = frozenset({"docs/"})
+
 
 def _has_skip_segment(rel_path: str) -> bool:
     """True if any path segment is a skip dir (build/test/vcs artefact).
@@ -979,10 +984,17 @@ def _check_file_structure_drift(
             continue
 
         # declared 에서 placeholder(<...>) 와 skip-dir 세그먼트 제외 (FP #17).
-        declared_concrete = {
-            d for d in declared if "<" not in d and not _has_skip_segment(d)
-        }
-        extras = sorted(actual - declared_concrete)
+        # 추가로 placeholder 리프의 구체적 조상 디렉토리도 declared 로 인정 (#6):
+        # 'src/<pkg>/' 는 placeholder 라 제외되지만 실재 'src/' 는 정당하므로,
+        # 조상 'src/' 를 declared_concrete 에 넣어 extras 오탐을 막는다.
+        declared_concrete: set[str] = set()
+        for d in declared:
+            segs = d.strip("/").split("/")
+            for i in range(1, len(segs) + 1):
+                ancestor = "/".join(segs[:i]) + "/"
+                if "<" not in ancestor and not _has_skip_segment(ancestor):
+                    declared_concrete.add(ancestor)
+        extras = sorted(actual - declared_concrete - _BENIGN_EXTRA_DIRS)
         missing = sorted(declared_concrete - actual)
         drift_checks.append((str(profile_id), extras, missing))
 

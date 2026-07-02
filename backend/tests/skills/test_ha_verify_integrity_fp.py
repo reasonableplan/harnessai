@@ -87,3 +87,30 @@ def test_drift_genuine_missing_still_reported(harness_module, tmp_path: Path) ->
     checks = harness_module._check_file_structure_drift(project, profiles_dir, report)
     el = next(c for c in checks if c[0] == "el")
     assert "desktop/components/" in el[2]
+
+
+def test_drift_concrete_ancestor_of_placeholder_counts_as_declared(
+    harness_module, tmp_path: Path
+) -> None:
+    """dogfood #6: 'src/<pkg>/' 선언 시 실재 'src/' 는 extras 아님 (구체적 조상 인정)."""
+    project, profiles_dir = _setup(tmp_path)
+    _write_profile(profiles_dir, "cli", "src/<pkg>/\n  __init__.py\n")
+    (project / "src" / "urlshort").mkdir(parents=True)
+
+    report = harness_module.Report()
+    checks = harness_module._check_file_structure_drift(project, profiles_dir, report)
+    _pid, extras, _missing = next(c for c in checks if c[0] == "cli")
+    assert "src/" not in extras  # 구체적 조상 → declared 로 인정
+
+
+def test_drift_docs_dir_is_benign_extra(harness_module, tmp_path: Path) -> None:
+    """dogfood #6: docs/ 는 harness 상태 디렉토리 (harness-plan.md/skeleton.md) — extras 제외."""
+    project, profiles_dir = _setup(tmp_path)
+    _write_profile(profiles_dir, "cli", "src/\n")
+    (project / "src").mkdir()
+    (project / "docs").mkdir()  # harness 가 만드는 디렉토리
+
+    report = harness_module.Report()
+    checks = harness_module._check_file_structure_drift(project, profiles_dir, report)
+    _pid, extras, _missing = next(c for c in checks if c[0] == "cli")
+    assert "docs/" not in extras
