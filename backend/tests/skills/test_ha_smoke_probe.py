@@ -209,3 +209,29 @@ def test_declared_endpoints_report_all_broken(ha_smoke, tmp_path) -> None:
     assert "/missing" in r["detail"]
     assert "/boom" in r["detail"]
     assert "/ok" not in r["detail"]  # 살아있는 건 보고 안 함
+
+
+# ── suggest_smoke_command (dogfood #8: toolchain.smoke 미설정 시 자동 제안) ──
+
+
+def test_suggest_smoke_finds_main_under_src(ha_smoke, tmp_path: Path) -> None:
+    pkg = tmp_path / "src" / "mypkg"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").touch()
+    (pkg / "__main__.py").touch()
+    assert ha_smoke.suggest_smoke_command(tmp_path) == "python -m mypkg --help"
+
+
+def test_suggest_smoke_finds_main_flat_layout(ha_smoke, tmp_path: Path) -> None:
+    pkg = tmp_path / "tool"
+    pkg.mkdir()
+    (pkg / "__init__.py").touch()
+    (pkg / "__main__.py").touch()
+    assert ha_smoke.suggest_smoke_command(tmp_path) == "python -m tool --help"
+
+
+def test_suggest_smoke_none_when_no_runnable_package(ha_smoke, tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "lib").mkdir()
+    (tmp_path / "src" / "lib" / "__init__.py").touch()  # __main__.py 없음 → 제안 없음
+    assert ha_smoke.suggest_smoke_command(tmp_path) is None

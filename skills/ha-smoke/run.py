@@ -35,6 +35,28 @@ from utils import (  # noqa: E402, I001
 _OUTPUT_TAIL_CHARS = 4000
 
 
+def suggest_smoke_command(cwd: Path) -> str | None:
+    """Suggest a runtime-launch command when toolchain.smoke is unset (dogfood #8).
+
+    Scans cwd and cwd/src for a runnable Python package (a dir with both
+    __init__.py and __main__.py) and returns ``python -m <pkg> --help`` — the
+    natural "does the app start" probe for a CLI. Returns None when no runnable
+    package is found (non-Python or library-only), so callers fall back to
+    asking the user rather than guessing wrong.
+    """
+    for base in (cwd, cwd / "src"):
+        if not base.is_dir():
+            continue
+        try:
+            children = sorted(p for p in base.iterdir() if p.is_dir())
+        except OSError:
+            continue
+        for pkg in children:
+            if (pkg / "__init__.py").is_file() and (pkg / "__main__.py").is_file():
+                return f"python -m {pkg.name} --help"
+    return None
+
+
 def _kill_tree(proc: subprocess.Popen) -> None:
     """프로세스와 자식 전부 종료 (dev server 가 자식 프로세스를 띄우는 케이스)."""
     if proc.poll() is not None:
@@ -233,6 +255,22 @@ def run_probe(
     return _probe_exit(cmd, Path(cwd), timeout)
 
 
+def _profile_smoke_entry(profile: object, rel_path: str, project: Path) -> dict:
+    """Build the per-profile prepare entry, suggesting a smoke command when unset."""
+    cwd = project / rel_path if rel_path != "." else project
+    smoke = getattr(getattr(profile, "toolchain", None), "smoke", None)
+    entry = {
+        "id": getattr(profile, "id", ""),
+        "path": rel_path,
+        "cwd": str(cwd),
+        "smoke": smoke,
+    }
+    if not smoke:
+        # toolchain.smoke 미설정 — 실행 가능 패키지에서 기동 명령 제안 (#8)
+        entry["smoke_suggested"] = suggest_smoke_command(cwd)
+    return entry
+
+
 def cmd_prepare(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
     assert_state(plan, ["verified", "reviewed"], "/ha-smoke")
@@ -243,14 +281,11 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         "state": plan.pipeline.current_step,
         "platform": platform.system().lower(),
         "profiles": [
-            {
-                "id": p.id,
-                "path": plan.profiles[i].path if i < len(plan.profiles) else ".",
-                "cwd": str(project / plan.profiles[i].path)
-                if i < len(plan.profiles) and plan.profiles[i].path != "."
-                else str(project),
-                "smoke": p.toolchain.smoke,
-            }
+            _profile_smoke_entry(
+                p,
+                plan.profiles[i].path if i < len(plan.profiles) else ".",
+                project,
+            )
             for i, p in enumerate(profiles)
         ],
     }

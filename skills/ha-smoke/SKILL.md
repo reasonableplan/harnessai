@@ -28,12 +28,15 @@ test/lint/type 은 코드 조각의 정합성만 본다 — import 누락, 엔�
 python ~/.claude/skills/ha-smoke/run.py prepare
 ```
 JSON 출력: 프로젝트 상태, 활성 프로파일별 `{id, path, cwd, smoke}`.
+`smoke` 가 null 이면 실행 가능 Python 패키지(`__main__.py`)를 자동 탐지해
+`smoke_suggested` (예: `python -m urlshort --help`) 를 함께 제공한다 (#8).
 
 ### 2. smoke 명령 결정
 
 우선순위:
 1. **`profiles[].smoke` 가 있으면 그대로 사용** (프로파일 toolchain.smoke 또는 사용자 정의)
-2. 없으면 **프로젝트 파일에서 도출** — package.json scripts / pyproject / 엔트리포인트를 Read 로 확인 후 아래 휴리스틱 적용:
+2. **`profiles[].smoke_suggested` 가 있으면 그대로 사용** (run.py 가 `__main__.py` 에서 도출한 CLI 기동 명령)
+3. 둘 다 없으면 **프로젝트 파일에서 도출** — package.json scripts / pyproject / 엔트리포인트를 Read 로 확인 후 아래 휴리스틱 적용:
 
 | 프로파일 | 모드 | 명령 도출 | url |
 |---|---|---|---|

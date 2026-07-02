@@ -4,6 +4,18 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.15.3] — 2026-07-02 — "ha-smoke 기동 명령 자동 제안 (dogfood #8)"
+
+`/ha-run` dogfood 에서 발견: `toolchain.smoke` 미설정 CLI 프로젝트는 ha-smoke prepare 가 `smoke: null` 만 내보내 비전문가가 "기동 명령이 뭐지?" 에서 막힘.
+
+### Fixed
+
+- **`suggest_smoke_command(cwd)`** — cwd + cwd/src 에서 실행 가능 Python 패키지(`__init__.py` + `__main__.py`)를 탐지해 `python -m <pkg> --help` 제안. ha-smoke prepare 가 `smoke` 미설정 시 `smoke_suggested` 필드로 제공. 실행 가능 패키지 없으면 None(비-Python/라이브러리 — 잘못된 추측 대신 사용자 질문 유도). SKILL.md 명령 결정 우선순위에 편입. 테스트 +3
+
+### Changed
+
+- 전체 테스트 **1289 → 1292** (+3)
+
 ## [0.15.2] — 2026-07-02 — "Profile-aware print 룰 (dogfood #10)"
 
 `/ha-run` dogfood(URL 단축 CLI) 를 shipped 까지 완주하며 발견한 code-quality 오탐 수정. CLI 도구의 정당한 `print()`(stdout=결과 / stderr=에러)를 code-quality 훅이 "logger 필수" WARN 5건으로 잡던 것 — 웹 백엔드 가정을 CLI 에 부적절 적용.
