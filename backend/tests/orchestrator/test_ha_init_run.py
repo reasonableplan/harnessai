@@ -237,3 +237,82 @@ def test_order_unknown_id_lands_before_terminal(ha_init_module) -> None:
     included = ["overview", "zzz.custom", "tasks"]
     ordered = ha_init_module._order_included_sections(included, ["overview"])
     assert ordered == ["overview", "zzz.custom", "tasks"]
+
+
+# ── 조각3: --decision-rationale (blueprint 흡수 B) ──────────────────────
+
+
+@pytest.mark.skipif(not _RUN_PY.exists(), reason="ha-init/run.py not found")
+def test_write_records_decision_rationale(tmp_path: Path) -> None:
+    """--decision-rationale → plan body 판단 근거에 '결정 근거' 블록 기록."""
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "pyproject.toml").write_text(
+        "[project.scripts]\nmyapp = 'myapp:main'\n", encoding="utf-8"
+    )
+
+    rationale = "python-cli — 이유: 단일 명령 자동화. 트레이드오프: GUI 없음"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(_RUN_PY),
+            "write",
+            "--project",
+            str(project),
+            "--profiles",
+            "python-cli",
+            "--included",
+            "overview,stack",
+            "--description",
+            "CLI 자동화 도구",
+            "--decision-rationale",
+            rationale,
+            "--overwrite",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=_make_env(),
+    )
+    assert result.returncode == 0, (
+        f"exit={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
+    )
+    out = json.loads(result.stdout)
+    plan_text = Path(out["plan_path"]).read_text(encoding="utf-8")
+    assert "결정 근거" in plan_text
+    assert rationale in plan_text
+
+
+@pytest.mark.skipif(not _RUN_PY.exists(), reason="ha-init/run.py not found")
+def test_write_without_rationale_omits_block(tmp_path: Path) -> None:
+    """--decision-rationale 미전달 → '결정 근거' 블록 없음 (기존 동작 유지)."""
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "pyproject.toml").write_text(
+        "[project.scripts]\nmyapp = 'myapp:main'\n", encoding="utf-8"
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(_RUN_PY),
+            "write",
+            "--project",
+            str(project),
+            "--profiles",
+            "python-cli",
+            "--included",
+            "overview",
+            "--description",
+            "CLI 도구",
+            "--overwrite",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=_make_env(),
+    )
+    assert result.returncode == 0, f"stderr={result.stderr}"
+    out = json.loads(result.stdout)
+    plan_text = Path(out["plan_path"]).read_text(encoding="utf-8")
+    assert "결정 근거" not in plan_text

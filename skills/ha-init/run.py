@@ -407,6 +407,13 @@ def cmd_write(args: argparse.Namespace) -> int:
         activation_trace=activation_trace,
         external_capabilities=sorted(external_capabilities) if external_capabilities else None,
     )
+    # 결정 근거 (blueprint 흡수 B 조각3) — 스택/DB 선택의 이유·트레이드오프를 plan 에
+    # 기록해 비전문가가 나중에 "왜 이 스택인가"를 이해할 수 있게. SKILL(LLM)이 추천
+    # 수락 시점의 서술을 그대로 전달. 미전달 시 블록 자체가 없음 (기존 동작 유지).
+    rationale = args.decision_rationale.strip()
+    rationale_block = (
+        f"\n### 결정 근거 (선택 이유 / 트레이드오프)\n{rationale}\n" if rationale else ""
+    )
     plan.body = (
         f"# {project.name}\n\n"
         f"## 원본 설명\n{args.description or '(미입력)'}\n\n"
@@ -420,7 +427,8 @@ def cmd_write(args: argparse.Namespace) -> int:
         f"  - availability: {axes.availability}\n"
         f"  - monetization: {axes.monetization}\n"
         f"  - lifecycle: {axes.lifecycle}\n"
-        f"- 활성 프로파일: {', '.join(p.id + '@' + p.path for p in profiles_for_plan)}\n\n"
+        f"- 활성 프로파일: {', '.join(p.id + '@' + p.path for p in profiles_for_plan)}\n"
+        f"{rationale_block}\n"
         f"## 다음 단계\n- /ha-design — skeleton 채우기\n"
     )
 
@@ -559,6 +567,15 @@ def main() -> int:
         "--overwrite",
         action="store_true",
         help="기존 파일 백업 없이 덮어쓰기",
+    )
+    w.add_argument(
+        "--decision-rationale",
+        default="",
+        help=(
+            "스택/DB 등 주요 결정의 이유·트레이드오프 서술 (blueprint 흡수 B). "
+            "SKILL 이 추천 수락 시점의 서술을 전달 — plan body 판단 근거에 "
+            "'결정 근거' 블록으로 기록. 미전달 시 블록 없음."
+        ),
     )
     w.add_argument(
         "--external-capabilities",

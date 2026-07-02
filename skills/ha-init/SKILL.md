@@ -61,6 +61,9 @@ python ~/.claude/skills/ha-init/run.py detect "$PROJECT_ROOT"
    근거: 웹앱/대시보드 신호. 이유: SSR+풀스택 단일 레포. 트레이드오프: SPA보다 초기 러닝커브").
    AskUserQuestion: `추천 수락` / `다른 후보(2·3위)` / `직접 고를래 (트리)`.
 4. 수락/후보 선택 → 그 profile ID 확정. "직접 고를래" 또는 추천 0건 → 아래 트리 fallback.
+5. 수락된 추천의 "이유 + 트레이드오프" 서술(1~2줄)은 버리지 말고 §6 write 의
+   `--decision-rationale` 로 전달 — plan 에 "결정 근거" 블록으로 남아 비전문가가
+   나중에 "왜 이 스택인가"를 이해할 수 있다 (blueprint 흡수 B).
 
 **수동 프로파일 선택 — 트리 fallback (추천 거부 / 사용자 추가 선택 시)**:
 
@@ -141,16 +144,36 @@ AskUserQuestion 으로:
 | L | large | (follow-up) | multi | high | (follow-up) | ga |
 
 `(follow-up)` 표시 축은 프리셋만으로 결정하지 말고 한 번 더 묻는다 (사람마다 다름):
-- AskUserQuestion: "민감 데이터를 다루나요?" → `none` / `pii` (이메일·이름·전화) / `payment` (카드·계좌)
-- AskUserQuestion: "수익 모델은?" → `none` / `ads` / `subscription` / `payment`
+- AskUserQuestion: "사용자의 실명·이메일·전화번호나 결제 정보를 저장하나요?"
+  → `아니요 — 그런 정보 없음` (none) / `이름·이메일 등 개인정보` (pii) / `카드·계좌 등 결제정보` (payment)
+- AskUserQuestion: "돈은 어떻게 벌 계획인가요?"
+  → `무료` (none) / `광고` (ads) / `구독` (subscription) / `건당 결제` (payment)
 
-**6축 직접 답** (사용자가 "직접" 선택 시) — 각 축마다 AskUserQuestion 1회. 옵션 라벨에 짧은 설명을 같이 보여준다:
-- user_scale: "예상 DAU? — tiny <10 / small <100 / medium <10k / large 10k+"
-- data_sensitivity: "민감 데이터? — none / pii / payment"
-- team_size: "팀 규모? — solo / small 2-5명 / multi 6명+"
-- availability: "가용성 요구? — casual: down 수시간 ok / standard: 99% / high: 99.9%+"
-- monetization: "수익 모델? — none / ads / subscription / payment"
-- lifecycle: "라이프사이클 단계? — poc / mvp / ga"
+**6축 직접 답** (사용자가 "직접" 선택 시) — 각 축마다 AskUserQuestion 1회.
+**질문은 아래 평문 그대로** — DAU/가용성/PoC 같은 용어를 아는 사용자만 통과하는 인터뷰는
+원맨툴("누구든지") 실격. 라벨은 평문, 괄호에 enum 토큰 병기 (CLI 인자 매핑은 토큰 기준):
+
+- user_scale — "몇 명이나 쓸 것 같나요?"
+  - `나 혼자 / 테스트용` (tiny, <10명)
+  - `지인·팀 수준` (small, <100명)
+  - `수백~수천 명` (medium, <10k)
+  - `수만 명 이상` (large, 10k+)
+- data_sensitivity — "사용자의 실명·이메일·전화번호나 결제 정보를 저장하나요?"
+  - `아니요 — 그런 정보 없음` (none)
+  - `이름·이메일 등 개인정보` (pii)
+  - `카드·계좌 등 결제정보` (payment)
+- team_size — "개발은 몇 명이 하나요?"
+  - `혼자` (solo) / `2~5명` (small) / `6명 이상` (multi)
+- availability — "서비스가 잠깐 멈추면 얼마나 곤란한가요?"
+  - `며칠 멈춰도 괜찮음 — 취미/개인용` (casual)
+  - `가끔 짧게 멈추는 건 OK` (standard, ~99%)
+  - `거의 멈추면 안 됨 — 업무/고객용` (high, 99.9%+)
+- monetization — "돈은 어떻게 벌 계획인가요?"
+  - `무료` (none) / `광고` (ads) / `구독` (subscription) / `건당 결제` (payment)
+- lifecycle — "지금 어느 단계인가요?"
+  - `아이디어가 되는지 실험` (poc)
+  - `첫 출시가 목표` (mvp)
+  - `이미 운영 중 / 정식 서비스` (ga)
 
 ### 4. Claude 판단 — 다음을 직접 결정한다
 
@@ -249,6 +272,7 @@ python ~/.claude/skills/ha-init/run.py write \
   --availability "<casual|standard|high>" \
   --monetization "<none|ads|subscription|payment>" \
   --lifecycle "<poc|mvp|ga>" \
+  --decision-rationale "<선택 이유/트레이드오프 1~2줄 — §2 추천 수락 시 서술. 없으면 인자 생략>" \
   --gstack-mode manual
 ```
 
