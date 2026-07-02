@@ -4,6 +4,27 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.14.3] — 2026-07-02 — "Drift Gate: 미러 동기 기계 검사 + 잔손질"
+
+v0.14.2 가 손으로 잡은 미러 drift 를 재발 방지 게이트로 승격. 반복 결함 1위 원인(미러 2벌 수동 cp 동기)을 커밋 전 1커맨드 검사로 대체.
+
+### Added
+
+- **`harness drift` 서브커맨드** — repo(`HARNESS_AI_HOME`) ↔ 설치 미러(`CLAUDE_HOME`/`~/.claude`) 정합성 검사. 비교 범위 = installer 복사 범위 동일(`harness/` + `skills/{ha-*,_ha_shared}`), CRLF 차이 무시, `__pycache__`/`.pyc`/`.install-manifest.json` 제외. `[MISSING]`(설치본 누락)/`[DIFF]`(내용 차이)/`[EXTRA]`(레포 미백포트 — 유실 위험) 3분류, drift 시 exit 1. CLAUDE.md 자가검증 체크리스트에 편입. 테스트 +8 (`test_harness_drift.py`)
+
+### Fixed
+
+- **worklog 호출 경로 하드코딩** — ha-build/ha-design/ha-redesign 이 ha-log 를 `Path.home()/.claude/...` 절대 경로로 호출 → installer 가 지원하는 `CLAUDE_HOME` 커스텀 설치에서 조용히 실패(WARN). `Path(__file__).parent.parent` 상대 참조로 교체 — repo 사본은 repo ha-log, 설치본은 설치 ha-log 호출 (자기 완결)
+
+### Removed
+
+- **`routes/agents.py` dead code** — 참조 라우트가 없는 `AgentConfigUpdate` + `_ALLOWED_MODELS` 제거 (PATCH 라우트 계획 시 그때 재도입). 모델 별칭 동기화처 1곳 감소
+
+### Changed
+
+- **gate-coverage 재측정 (2026-07-02)** — 2026-04-19 이후 게이트 진화분 반영 재실행: 35 fixtures **precision/recall/accuracy 100% 유지**, 문서 날짜 갱신
+- 전체 테스트 **1257 → 1265** (+8)
+
 ## [0.14.2] — 2026-07-02 — "Mirror Reconciliation: #15 Strict Placeholder Backport"
 
 전체 점검(미러 2벌 정규화 해시 감사)에서 발견된 양방향 drift 18파일 일소. **#15(strict placeholder 정규식 + 템플릿 백틱 규약)가 `~/.claude` 에만 존재해 `install -Force` 한 번이면 유실될 상태**였고, 반대로 모델 별칭 갱신(`9b39198`)은 실사용 미러에 미전파돼 python-cli 프로파일이 구모델을 가리키고 있었다.

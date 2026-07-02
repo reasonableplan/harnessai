@@ -695,7 +695,7 @@ def cmd_complete(args: argparse.Namespace) -> int:
             subprocess.run(
                 [
                     sys.executable,
-                    str(Path.home() / ".claude" / "skills" / "ha-log" / "run.py"),
+                    str(Path(__file__).resolve().parent.parent / "ha-log" / "run.py"),
                     "append",
                     "--category", "change",
                     "--message", _log_msg,

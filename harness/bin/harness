@@ -11,6 +11,8 @@
   python harness migrate-skeleton-hash <plan-path>         # dry-run: 계산할 hash 미리 보기
   python harness migrate-skeleton-hash <plan-path> --apply # legacy plan 에 hash 백필 + 자동 백업
 
+  python harness drift                     # repo ↔ ~/.claude 미러 drift 검사 (커밋 전 권장)
+
 종료 코드:
   0: 전부 통과 / dry-run 정보 출력
   1: 검증 실패 (하나 이상) / apply 중 I/O 오류
@@ -1617,6 +1619,79 @@ def _write_scaffold_file(path: Path, content: str, rel: str, dry_run: bool) -> i
     return 1
 
 
+# ── repo ↔ 설치 미러 drift 검사 (drift) ──────────────────────────────
+#
+# 반복 결함 1위 원인이던 "미러 2벌 수동 cp 동기" 를 기계 검사로 대체한다.
+# 비교 범위 = install.sh/ps1 복사 범위와 동일: harness/ + skills/{ha-*,_ha_shared}.
+# CRLF 차이는 drift 아님 (git autocrlf ↔ installer byte-copy 공존 허용).
+
+_DRIFT_SKIP_NAMES = frozenset({".install-manifest.json"})
+
+
+def _collect_mirror_files(root: Path) -> dict[str, Path]:
+    """Collect mirror-scope files under root, keyed by posix relative path."""
+    scopes = [root / "harness"]
+    skills_dir = root / "skills"
+    if skills_dir.is_dir():
+        scopes.extend(
+            p
+            for p in skills_dir.iterdir()
+            if p.is_dir() and (p.name.startswith("ha-") or p.name == "_ha_shared")
+        )
+    found: dict[str, Path] = {}
+    for scope in scopes:
+        if not scope.is_dir():
+            continue
+        for f in scope.rglob("*"):
+            if not f.is_file():
+                continue
+            if "__pycache__" in f.parts or f.suffix in (".pyc", ".bak"):
+                continue
+            if f.name in _DRIFT_SKIP_NAMES:
+                continue
+            found[f.relative_to(root).as_posix()] = f
+    return found
+
+
+def cmd_drift(repo: Path, target: Path, *, quiet: bool = False) -> int:
+    """Compare repo mirror sources against the installed copies. 0=clean, 1=drift, 2=usage."""
+    if not repo.is_dir() or not (repo / "harness").is_dir():
+        print(f"[FAIL] repo 루트가 아님 (harness/ 없음): {repo}", file=sys.stderr)
+        return 2
+    if not target.is_dir():
+        print(f"[FAIL] 설치 루트 없음: {target}", file=sys.stderr)
+        return 2
+
+    repo_files = _collect_mirror_files(repo)
+    target_files = _collect_mirror_files(target)
+
+    issues: list[str] = []
+    for rel in sorted(repo_files):
+        t = target_files.get(rel)
+        if t is None:
+            issues.append(f"[MISSING] {rel} — 설치본에 없음 (install 재실행)")
+            continue
+        try:
+            a = repo_files[rel].read_bytes().replace(b"\r\n", b"\n")
+            b = t.read_bytes().replace(b"\r\n", b"\n")
+        except OSError as exc:
+            issues.append(f"[ERROR] {rel} — 읽기 실패: {exc}")
+            continue
+        if a != b:
+            issues.append(f"[DIFF] {rel}")
+    for rel in sorted(set(target_files) - set(repo_files)):
+        issues.append(f"[EXTRA] {rel} — 레포에 없음 (미백포트 작업 또는 stale — 유실 위험)")
+
+    if issues:
+        for line in issues:
+            print(line)
+        print(f"\n[FAIL] drift {len(issues)}건 — repo={repo} / target={target}")
+        return 1
+    if not quiet:
+        print(f"[OK] drift 0건 ({len(repo_files)} files) — repo={repo} / target={target}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="harness")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -1710,6 +1785,24 @@ def main() -> int:
         help="파일 쓰지 않고 생성될 경로만 출력",
     )
 
+    dr = sub.add_parser(
+        "drift",
+        help="repo(HARNESS_AI_HOME) ↔ 설치 미러(~/.claude) drift 검사 (커밋 전 권장)",
+    )
+    dr.add_argument(
+        "--repo",
+        type=Path,
+        default=None,
+        help="레포 루트 (기본: HARNESS_AI_HOME env)",
+    )
+    dr.add_argument(
+        "--target",
+        type=Path,
+        default=None,
+        help="설치 루트 (기본: CLAUDE_HOME env 또는 ~/.claude)",
+    )
+    dr.add_argument("--quiet", action="store_true", default=False, help="clean 시 출력 생략")
+
     mv10 = sub.add_parser(
         "migrate-v10",
         help="v0.9.x → v0.10.0 마이그레이션 (frozen_status 필드 추가)",
@@ -1762,6 +1855,17 @@ def main() -> int:
             out_dir=args.out.expanduser().resolve(),
             dry_run=args.dry_run,
         )
+
+    if args.cmd == "drift":
+        repo = args.repo or (Path(os.environ["HARNESS_AI_HOME"]) if os.environ.get("HARNESS_AI_HOME") else None)
+        if repo is None:
+            print(
+                "[FAIL] --repo 또는 HARNESS_AI_HOME 환경변수 필요 (레포 절대 경로)",
+                file=sys.stderr,
+            )
+            return 2
+        target = args.target or Path(os.environ.get("CLAUDE_HOME") or (Path.home() / ".claude"))
+        return cmd_drift(repo.expanduser().resolve(), target.expanduser().resolve(), quiet=args.quiet)
 
     if args.cmd == "migrate-v10":
         _bin_dir = Path(__file__).resolve().parent

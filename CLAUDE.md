@@ -86,6 +86,7 @@
 [ ] 파일 쓰기/JSON 로드에 예외 처리 있는가?
 [ ] 환경변수 변경 시 .env.example 동기화했는가?
 [ ] asyncio.create_task() 참조 유지했는가?
+[ ] skills/·harness/ 변경 시 install 재실행 + `harness drift` 0건인가?
 ```
 
 ---
@@ -141,7 +142,7 @@ backend/
         base.py               — BaseProvider 추상 인터페이스
         claude_cli.py         — Claude CLI subprocess provider
   tests/
-    orchestrator/             — 1257개 테스트 (E2E 통합 포함, tests/skills 포함 전체)
+    orchestrator/             — 1265개 테스트 (E2E 통합 포함, tests/skills 포함 전체)
     dashboard/                — EventMapper 17개 테스트
 
 ## HarnessAI v2 파이프라인 (`/ha-*` 스킬)
