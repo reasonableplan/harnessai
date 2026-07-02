@@ -16,14 +16,16 @@ from src.orchestrator.plan_manager import (
 )
 
 
-def _plan(step: str, *, frozen: bool = True) -> HarnessPlan:
+def _plan(
+    step: str, *, frozen: bool = True, included: tuple[str, ...] = ("requirements",)
+) -> HarnessPlan:
     plan = PlanManager().create(
         project_name="t",
         project_type="python-cli",
         scale="small",
         user_description_original="",
         profiles=[],
-        skeleton_sections=SkeletonSpec((), (), ()),
+        skeleton_sections=SkeletonSpec((), (), included),
         pipeline_steps=["init"],
     )
     plan.pipeline = Pipeline(
@@ -55,10 +57,20 @@ def test_init_advises_design_hitl() -> None:
     assert advice.skill == "/ha-design"
 
 
-def test_designed_but_not_frozen_advises_design_reentry() -> None:
-    advice = advise(_plan("designed", frozen=False))
+def test_designed_with_lockable_not_frozen_advises_design_reentry() -> None:
+    """persona/screen 섹션이 활성인데 freeze 미완 → HITL 인터뷰 재진입."""
+    advice = advise(_plan("designed", frozen=False, included=("requirements",)))
     assert advice.action == "design"
     assert advice.mode == MODE_HITL
+
+
+def test_designed_no_lockable_not_frozen_advises_plan_auto() -> None:
+    """CLI/라이브러리처럼 HITL-lockable 섹션이 없으면 freeze 불필요 →
+    non-frozen 이어도 바로 plan (designed→design 무한루프 회귀 방지)."""
+    advice = advise(_plan("designed", frozen=False, included=("interface.cli", "core.logic")))
+    assert advice.action == "plan"
+    assert advice.mode == MODE_AUTO
+    assert advice.skill == "/ha-plan"
 
 
 def test_designed_frozen_advises_plan_auto() -> None:

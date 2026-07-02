@@ -49,8 +49,11 @@ _TASKS_TABLE_PENDING = (
 )
 
 
-def _make_plan(frozen_status: str = "drafting") -> SimpleNamespace:
+def _make_plan(
+    frozen_status: str = "drafting", included: tuple[str, ...] = ("requirements",)
+) -> SimpleNamespace:
     return SimpleNamespace(
+        skeleton_sections=SimpleNamespace(included=list(included)),
         pipeline=SimpleNamespace(
             current_step="planned",
             completed_steps=(),
@@ -119,6 +122,23 @@ def test_prepare_blocks_when_drafting(ha_build, tmp_path, monkeypatch, capsys) -
     err = capsys.readouterr().err
     assert "BLOCK" in err
     assert "frozen_status" in err
+
+
+def test_prepare_passes_when_drafting_no_lockable_sections(
+    ha_build, tmp_path, monkeypatch, capsys
+) -> None:
+    """CLI/라이브러리: HITL-lockable 섹션이 없으면 drafting 이어도 frozen 게이트 통과.
+
+    designed→design 무한루프의 근본 원인이던 결함의 회귀 테스트 (dogfood urlshort).
+    """
+    plan = _make_plan("drafting", included=("interface.cli", "core.logic"))
+    _patch_common(ha_build, monkeypatch, plan, tmp_path, _TASKS_TABLE)
+
+    ha_build.cmd_prepare(_prepare_args("T-001", skip_frozen_gate=False))
+
+    # frozen 게이트를 통과 — BLOCK 메시지가 없어야 함 (이후 로직에서 결과 결정)
+    err = capsys.readouterr().err
+    assert "frozen_status" not in err
 
 
 def test_prepare_passes_when_frozen(ha_build, tmp_path, monkeypatch, capsys) -> None:

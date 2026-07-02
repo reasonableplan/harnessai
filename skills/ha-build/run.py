@@ -28,6 +28,7 @@ from utils import (  # noqa: E402, I001
     validate_task_id,
 )
 
+from src.orchestrator.plan_manager import requires_hitl_freeze  # noqa: E402
 from src.orchestrator.skeleton_hash import check_skeleton_hash  # noqa: E402
 
 
@@ -233,7 +234,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
 
     # v0.10.0 HITL gate — frozen_status="drafting" 이면 /ha-build 진입 차단.
     # /ha-design 의 LOCKED 섹션 (requirements/user_journey/view.screens) 인터뷰 통과 필수.
-    if plan.frozen_status != "frozen" and not args.skip_frozen_gate:
+    if plan.frozen_status != "frozen" and requires_hitl_freeze(plan) and not args.skip_frozen_gate:
         info(
             "[BLOCK] /ha-build 진입 거부 — frozen_status=drafting (HITL 미완료).\n"
             "  · /ha-design 의 LOCKED 섹션 (requirements/user_journey/view.screens) "
@@ -566,7 +567,7 @@ def cmd_complete(args: argparse.Namespace) -> int:
     assert_state(plan, ["planned", "building"], "/ha-build")
 
     # v0.10.0 HITL gate — frozen_status="drafting" 이면 /ha-build 진입 차단.
-    if plan.frozen_status != "frozen" and not args.skip_frozen_gate:
+    if plan.frozen_status != "frozen" and requires_hitl_freeze(plan) and not args.skip_frozen_gate:
         info(
             "[BLOCK] /ha-build 진입 거부 — frozen_status=drafting (HITL 미완료).\n"
             "  · /ha-design 의 LOCKED 섹션 (requirements/user_journey/view.screens) "

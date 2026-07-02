@@ -66,6 +66,13 @@ ALLOWED_ENG_REVIEW_SCOPES = {"tasks", "skeleton", "both"}
 #   frozen:   /ha-build 진입 허용. HITL-required sections 모두 확인 완료.
 ALLOWED_FROZEN_STATUS = {"drafting", "frozen"}
 
+# Sections that require a human-in-the-loop interview before /ha-build. A plan
+# only needs the frozen gate when at least one of these is active — CLI tools,
+# libraries, and other projects without persona/screen sections have nothing to
+# freeze, so the gate is a vacuous pass for them (see requires_hitl_freeze).
+# Single source of truth: /ha-design, /ha-build, and pipeline_advisor all read this.
+HITL_LOCKABLE_SECTIONS: frozenset[str] = frozenset({"requirements", "user_journey", "view.screens"})
+
 
 # Data models
 
@@ -272,6 +279,17 @@ class HarnessPlan:
     harness_version: int = 2
     schema_version: int = 1
     body: str = ""  # markdown body outside the frontmatter
+
+
+def requires_hitl_freeze(plan: HarnessPlan) -> bool:
+    """Whether this plan must pass the HITL freeze gate before /ha-build.
+
+    True iff at least one HITL-lockable section (persona/requirements/screens)
+    is active. Projects without any of them — CLI tools, libraries, batch jobs —
+    have nothing to interview-lock, so the frozen gate is a vacuous pass and
+    /ha-build proceeds directly (prevents the designed→design driver loop).
+    """
+    return bool(set(plan.skeleton_sections.included) & HITL_LOCKABLE_SECTIONS)
 
 
 # Exceptions

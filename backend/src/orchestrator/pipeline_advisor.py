@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.orchestrator.plan_manager import HarnessPlan
+from src.orchestrator.plan_manager import HarnessPlan, requires_hitl_freeze
 
 # mode 값: auto = 드라이버가 바로 다음 스킬 실행 / hitl = 사용자 개입 지점
 MODE_AUTO = "auto"
@@ -69,13 +69,13 @@ def advise(plan: HarnessPlan | None) -> Advice:
             "skeleton 이 비어 있음 — 설계 인터뷰(페르소나/기능/화면) 필요",
         )
     if step == "designed":
-        if plan.frozen_status != "frozen":
+        if plan.frozen_status != "frozen" and requires_hitl_freeze(plan):
             return Advice(
                 "design",
                 MODE_HITL,
                 "/ha-design",
                 "",
-                "HITL freeze 미완 — /ha-design 재진입해 LOCKED 섹션 확인 필요",
+                "HITL freeze 미완 — /ha-design 재진입해 LOCKED 섹션(페르소나/기능/화면) 확인 필요",
             )
         return Advice("plan", MODE_AUTO, "/ha-plan", "", "설계 확정 — 태스크 분해 진행")
     if step in ("planned", "building"):

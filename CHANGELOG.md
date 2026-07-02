@@ -4,6 +4,18 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.15.1] — 2026-07-02 — "Frozen Gate Fix: CLI/라이브러리 무한루프 (dogfood urlshort)"
+
+`/ha-run` 을 실제 dogfood(URL 단축 CLI) 로 돌리다 발견한 근본 결함 수정. v0.10.0 HITL 게이트가 "모든 프로젝트가 페르소나/화면 섹션을 가진다"는 웹앱 암묵 가정 위에 만들어져, **HITL-lockable 섹션(requirements/user_journey/view.screens)이 없는 프로젝트(CLI 도구·라이브러리)는 freeze 대상이 없어 영구 `drafting` → ha-build 영구 BLOCK → 드라이버 designed→design 무한루프.**
+
+### Fixed
+
+- **frozen 게이트 vacuous-pass** — `plan_manager.requires_hitl_freeze(plan)` 신설 (활성 섹션 ∩ `HITL_LOCKABLE_SECTIONS` 가 공집합이면 False). ha-build 진입 게이트 2곳(prepare/complete) + pipeline_advisor 의 designed 분기가 이 헬퍼를 공유 — lockable 섹션이 없으면 frozen 불필요로 간주해 바로 plan/build 진행. 하드코딩 3곳(`_LOCKED_SECTION_IDS` 등) 대신 backend 단일 상수 `HITL_LOCKABLE_SECTIONS` 도입. 테스트 +4 (requires_hitl_freeze 단위 2 + advisor no-lockable 1 + ha-build 게이트 회귀 1)
+
+### Changed
+
+- 전체 테스트 **1282 → 1286** (+4)
+
 ## [0.15.0] — 2026-07-02 — "One-Command Driver: /ha-run (원맨툴 P1)"
 
 "이것만 있으면 누구든지 설계부터 결과물까지" 비전의 첫 단계. 지금까지 사용자가 스킬 10개를 순서대로 직접 호출하며 파이프라인을 운전하던 것을, `/ha-run` 하나가 상태기계 기준으로 자동 운전한다. **게이트 우회 0** — 드라이버는 순서만 자동화하고 판정은 전부 기존 게이트 소유.

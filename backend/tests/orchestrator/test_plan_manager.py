@@ -21,7 +21,32 @@ from src.orchestrator.plan_manager import (
     RedesignEntry,
     ScaleAxes,
     SkeletonSpec,
+    requires_hitl_freeze,
 )
+
+
+def _plan_with_included(*included: str) -> HarnessPlan:
+    return PlanManager().create(
+        project_name="t",
+        project_type="python-cli",
+        scale="small",
+        user_description_original="",
+        profiles=[],
+        skeleton_sections=SkeletonSpec((), (), included),
+        pipeline_steps=["init"],
+    )
+
+
+def test_requires_hitl_freeze_true_when_lockable_active() -> None:
+    assert requires_hitl_freeze(_plan_with_included("overview", "requirements")) is True
+    assert requires_hitl_freeze(_plan_with_included("view.screens")) is True
+    assert requires_hitl_freeze(_plan_with_included("user_journey")) is True
+
+
+def test_requires_hitl_freeze_false_when_no_lockable() -> None:
+    """CLI/라이브러리: persona/screen 섹션 없으면 freeze 불필요 (vacuous pass)."""
+    assert requires_hitl_freeze(_plan_with_included("interface.cli", "core.logic")) is False
+    assert requires_hitl_freeze(_plan_with_included()) is False
 
 
 def _sample_plan() -> HarnessPlan:
