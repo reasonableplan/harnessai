@@ -206,7 +206,7 @@ python ~/.claude/skills/ha-plan/run.py commit --replan --tasks-content "..."
 - 컬럼 수 = 5, 순서 변경 시 거부
 
 ### 상태 값 (allow-list)
-`대기` / `pending` / `진행중` / `in-progress` / `완료` / `done` / `completed` / `차단` / `blocked` / `needs_rebuild`
+`대기` / `pending` / `진행중` / `in-progress` / `완료` / `done` / `completed` / `차단` / `blocked` / `skipped` / `needs_rebuild`
 
 ### 의존성
 - 없음: `-`, `—`, `없음`, `(없음)`, `none`, 빈 셀

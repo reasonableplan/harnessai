@@ -574,7 +574,10 @@ def validate_plan(path: Path, report: Report) -> None:
 # skeleton.md 의 ```filesystem 블록에서 선언한 경로가 실제 존재하는지 + 플레이스홀더
 # (<pkg>, <cmd_a> 등) 잔존 여부를 검사한다. /ha-verify 가 toolchain 실행 전에 호출.
 
-_PLACEHOLDER_RE = re.compile(r"<[a-z_][a-z0-9_]*>")
+# (?![A-Z]) excludes ASCII uppercase first char — protects TS generics (<T>, <K,V>).
+# [^\W\d] matches Unicode letter or underscore (no digit) as first char.
+# \w* matches subsequent Unicode word chars (letters, digits, _).
+_PLACEHOLDER_RE = re.compile(r"<(?![A-Z])[^\W\d]\w*>")
 
 _FILESYSTEM_BLOCK_RE = re.compile(r"^```filesystem\s*\n(.*?)\n```", re.MULTILINE | re.DOTALL)
 

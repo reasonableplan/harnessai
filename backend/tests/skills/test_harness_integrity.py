@@ -119,6 +119,47 @@ def test_integrity_detects_placeholders_in_body(harness_module, tmp_path: Path) 
     assert any("<pkg>" in m for m in errs)
 
 
+def test_integrity_detects_korean_placeholder_in_body(harness_module, tmp_path: Path) -> None:
+    """#15: 한글 placeholder (<본문>) 잔재도 integrity 에러로 보고."""
+    (tmp_path / "pyproject.toml").touch()
+    skeleton = dedent("""
+        # Test
+
+        여기에 <본문> 을 채우세요.
+
+        ```filesystem
+        pyproject.toml
+        ```
+    """).strip()
+    project = _make_project(tmp_path, skeleton=skeleton)
+    report = harness_module.Report()
+    harness_module.check_integrity(project, None, report)
+    errs = [i.message for i in report.issues if i.severity == "error"]
+    assert any("<본문>" in m for m in errs)
+
+
+def test_integrity_ignores_ts_generics_and_backticked_korean(
+    harness_module, tmp_path: Path
+) -> None:
+    """#15: 대문자 시작 (<T>, <Response>) 과 백틱 `<설명>` 은 오탐 아님."""
+    (tmp_path / "pyproject.toml").touch()
+    skeleton = dedent("""
+        # Test
+
+        API 는 Promise<Response> 를 반환, 제네릭 f<T>(x) 지원.
+        표 형식: | `<NAME>` | `<설명>` |
+
+        ```filesystem
+        pyproject.toml
+        ```
+    """).strip()
+    project = _make_project(tmp_path, skeleton=skeleton)
+    report = harness_module.Report()
+    harness_module.check_integrity(project, None, report)
+    errs = [i.message for i in report.issues if i.severity == "error"]
+    assert not any("<T>" in m or "<Response>" in m or "<설명>" in m for m in errs)
+
+
 def test_integrity_ignores_placeholders_in_python_code_blocks(
     harness_module, tmp_path: Path
 ) -> None:

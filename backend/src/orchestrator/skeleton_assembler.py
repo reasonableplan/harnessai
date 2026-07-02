@@ -23,8 +23,12 @@ DEFAULT_HARNESS_DIR = Path.home() / ".claude" / "harness"
 _FRONTMATTER_RE = re.compile(r"^---\r?\n.*?\r?\n---\r?\n?", re.DOTALL)
 _PLACEHOLDER_NUMBER = "{{section_number}}"
 
-# Unreplaced template placeholders (e.g. <pkg>, <cmd_a>, <domain>). lowercase snake_case.
-_ANGLE_PLACEHOLDER_RE = re.compile(r"<[a-z_][a-z0-9_]*>")
+# Unreplaced template placeholders (e.g. <pkg>, <cmd_a>, <본문>).
+# (?![A-Z]) excludes ASCII uppercase first char — protects TS generics (<T>, <K,V>).
+# [^\W\d] matches Unicode letter or underscore (no digit) as first char.
+# \w* matches subsequent Unicode word chars (letters, digits, _).
+# KEEP IN SYNC with harness/bin/harness._PLACEHOLDER_RE (#15).
+_ANGLE_PLACEHOLDER_RE = re.compile(r"<(?![A-Z])[^\W\d]\w*>")
 # Non-filesystem code fences (```python, ```ts, …) — example placeholders allowed inside.
 _NON_FS_CODE_BLOCK_RE = re.compile(r"```(?!filesystem)\w*\n.*?\n```", re.DOTALL)
 # Inline backtick code spans — stripped before placeholder scanning.

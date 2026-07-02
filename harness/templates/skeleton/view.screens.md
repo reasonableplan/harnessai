@@ -42,7 +42,7 @@ description: 경로 → 컨테이너 매핑, 사용자 흐름
 |------|--------|----------|:---:|----------|------|
 | `<예: /login>` | <예: 로그인> | `<예: LoginContainer>` | ❌ | `POST /api/auth/login` | |
 | `<예: />` | <예: 홈> | `<예: HomeContainer>` | ✅ | `GET /api/<resource>` | |
-| `/<resource>/:id` | <상세> | `<Container>` | ✅ | `GET /api/<resource>/{id}` | |
+| `/<resource>/:id` | `<상세>` | `<Container>` | ✅ | `GET /api/<resource>/{id}` | |
 
 > 주요 API 는 `interface.http` 에 선언된 **`METHOD /path`** 표기 그대로 —
 > commit 시 cross-section 검증이 선언 여부를 대조한다. Auth 칸 공백도 검증 대상.

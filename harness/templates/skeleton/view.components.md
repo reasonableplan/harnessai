@@ -61,7 +61,7 @@ App
 | Store | 담당 | 경로 |
 |-------|------|------|
 | `authStore` | 인증/사용자 | `shared/store/auth.store.ts` |
-| `<domainStore>` | <도메인> | `containers/<domain>/store/` |
+| `<domainStore>` | `<도메인>` | `containers/<domain>/store/` |
 
 > 작성 가이드:
 > - 계층은 실제 JSX 구조와 1:1 일치

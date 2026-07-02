@@ -51,7 +51,7 @@ PII 컬럼은 ✅ 표시 + `audit_log` / `threat_model` / 6축 `data_sensitivity
 
 | 자식 | 부모 | ON DELETE | ON UPDATE | 이유 |
 |------|------|-----------|-----------|------|
-| `<child.fk>` | `<parent.id>` | CASCADE / SET NULL / RESTRICT | CASCADE / RESTRICT | <설명> |
+| `<child.fk>` | `<parent.id>` | CASCADE / SET NULL / RESTRICT | CASCADE / RESTRICT | `<설명>` |
 
 ### 인덱스 의도
 

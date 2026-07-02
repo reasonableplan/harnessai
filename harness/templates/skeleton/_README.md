@@ -19,9 +19,15 @@ error_ux 에서 실제 발생).
 
 | 용도 | 표기 | 비고 |
 |------|------|------|
-| 일반 placeholder | `<예: ...>` 또는 `<설명>` | ha-design 의 `<...>` 잔재 카운트 대상 |
-| HITL(LOCKED) 영역 | `<AI 채움>` / `<기능 1>` 등 uppercase/한국어 | assembler `_ANGLE_PLACEHOLDER_RE` 는 lowercase snake_case 만 잡으므로 hook 통과 |
+| 일반 placeholder | `` `<설명>` `` / `` `<기능>` `` 처럼 **백틱으로 감싼다** | integrity 게이트가 인라인 백틱 코드는 strip 하므로 통과 |
+| HITL(LOCKED) 영역 | `<AI 채움>` (ASCII 대문자 시작) / `<기능 1>` (공백 포함) | 정규식이 대문자 시작·공백 토큰은 안 잡으므로 bare 로 둬도 통과 |
 | 미작성 마커 | `_미작성_` / `_미정_` | ha-design `_PLACEHOLDER_RE` 대상 |
+
+placeholder 검출 정규식(`<(?![A-Z])[^\W\d]\w*>` — integrity `_PLACEHOLDER_RE`
++ assembler `_ANGLE_PLACEHOLDER_RE`)은 **lowercase ASCII + 유니코드(한글 등) 토큰**을
+미치환 placeholder 로 잡는다 (ASCII 대문자 시작·공백 포함은 제외 — TS 제네릭 `<T>` /
+`<기능 1>` 보호). 따라서 본문에 **bare 로 노출된 `<설명>` / `<기능>` 류는 FAIL** 처리된다.
+placeholder 모양 예시 토큰은 반드시 백틱으로 감쌀 것 (#15).
 
 실값처럼 보이는 예시는 반드시 `<예: ...>` 마커로 — 마커 없는 실값은
 ha-design 이 placeholder 인지 못 하고 그대로 남긴다 (HabitFlow 잔재 사고의 원인).

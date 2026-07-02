@@ -293,3 +293,30 @@ def test_find_placeholders_excludes_inline_backtick_examples() -> None:
     assert "<pkg>" not in result  # 백틱 안 → 템플릿 예시
     assert "<YYYY-MM-DD>" not in result  # 동일
     assert "<missing>" in result  # 백틱 밖 → 실제 누락
+
+
+def test_find_placeholders_detects_korean_placeholder() -> None:
+    """#15: 한글 등 유니코드 placeholder (<본문>, <설명>) 도 미치환 잔재로 검출."""
+    text = dedent("""
+        # 문서
+
+        제목 아래 <본문> 을 채우세요.
+        각 항목에 <설명> 을 추가하세요.
+        HITL 영역 <기능 1> 은 공백 포함이라 제외.
+    """).strip()
+    result = find_placeholders(text)
+    assert "<본문>" in result
+    assert "<설명>" in result
+    assert "<기능 1>" not in result  # 공백 포함 토큰은 HITL 영역 보호
+
+
+def test_find_placeholders_excludes_ts_generics() -> None:
+    """#15: ASCII 대문자 시작 토큰 (<T>, <Response>) 은 TS 제네릭 보호로 제외."""
+    text = "function f<T>(x: T): Promise<Response> 반환"
+    assert find_placeholders(text) == {}
+
+
+def test_find_placeholders_excludes_backticked_korean_examples() -> None:
+    """#15: 백틱으로 감싼 `<설명>` 은 형식 표시용 — 검출 제외 (템플릿 백틱 규약)."""
+    text = "| `<NAME>` | `<type>` | ✅ | — | `<설명>` |"
+    assert find_placeholders(text) == {}

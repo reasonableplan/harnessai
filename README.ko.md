@@ -317,6 +317,8 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 
 **Phase 14.1 — v0.14.1 (완료, 2026-06-26)**: **스킬 감사 — ha-map 레포 편입 & 결함 일소**. `/ha-map`(skeleton→아키텍처 Mermaid 파생 뷰, 독립 보조)은 레포에 미러된 적도 테스트된 적도 없는 유일한 `ha-*` 스킬 → `skills/ha-map/` 로 편입 + 단위 테스트 9개. 14개 스킬 결함 일소(subprocess timeout/except, CRLF 정규식, broad except, `write_text` OSError, `json.load`) 결과 ha-map 이 *유일하게* 실결함 보유 — "테스트 스위트 = eval 하네스" 직접 실증. 수정: ha-map `subprocess.TimeoutExpired` 처리(mmdc 행이 렌더 루프 크래시 안 함), `` ```mermaid `` 펜스 정규식 CRLF 호환(Windows silent no-render), tmp 쓰기 `OSError` 가드; `_ha_shared/utils.py::project_root` git rev-parse 에 `timeout=10` + `TimeoutExpired` 처리. 신규 분석 문서 `backend/docs/eval-harness-positioning.md`(+`.en.md`) — 제안된 `/ha-eval` 보류 전 사이클 검토: 검증 사다리(pytest + GATES + `/ha-smoke`)가 이미 eval 하네스, 생태계 조사(Promptfoo/DeepEval/OpenAI skill-regression)상 "파이프라인 → 전체 레포" eval 단위는 어떤 도구도 미구현. 신규 테스트 +11 (1236 → 1247).
 
+**Phase 14.2 — v0.14.2 (완료, 2026-07-02)**: **미러 재조정 — #15 strict placeholder 백포트**. 전체 점검(미러 2벌 정규화 해시 감사)에서 양방향 drift 18파일 발견: #15 작업 전체(strict placeholder 정규식 + 템플릿 백틱 규약)가 `~/.claude` 에만 존재 — `install -Force` 한 번이면 유실 — 반대로 모델 별칭 갱신은 실사용 미러 미전파(`python-cli.md` 가 `claude-sonnet-4-6` 잔존). strict 정규식 `<(?![A-Z])[^\W\d]\w*>` 을 `bin/harness` + `skeleton_assembler` 로 TDD 백포트(한글 `<본문>` 잔재 검출, TS 제네릭 `<T>`·공백 HITL 토큰 보호), 템플릿 13파일 백틱 통일, installer 재실행 → 정규화 drift 0. 신규 테스트 +5 (1252 → 1257).
+
 **v1.0.0 백로그**:
 - Live LESSONS 자동 학습 (ha-review 반복 패턴 → 후보 등록)
 - multi-provider (Gemini/OpenAI backend)
@@ -337,7 +339,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 - **패키지**: uv
 - **에이전트 실행**: Claude CLI subprocess (Gemini/로컬 LLM 교체 가능)
 - **상태**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (DB 없음)
-- **테스트**: pytest **1212개** backend + **12개** install 스냅샷 (회귀 0건)
+- **테스트**: pytest **1257개** backend + **12개** install 스냅샷 (회귀 0건)
 - **타입 체크**: pyright **0 errors** (`src/` 전수)
 - **게이트 커버리지 (자기 검증)**: 10개 게이트 중 정규식/AST 기반 7개를 35 fixtures (positive/negative) 로 측정 → **precision 100% / recall 100% / accuracy 100%**. 나머지 3개 — `auth-guard` 는 test_security_hooks 단위테스트, `test-distribution`·`skeleton-integrity` 는 filesystem fixture 로 별도 검증. 상세 한계/방법: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **성능** (30 iter, LLM 제외): profile 감지 **~5 ms**, skeleton 조립 **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. [docs/benchmarks/](docs/benchmarks/)
@@ -358,7 +360,7 @@ backend/
   docs/shared-lessons.md      37 LESSONs
   src/orchestrator/           profile_loader / skeleton_assembler /
                               plan_manager / security_hooks / runner
-  tests/                      1212 pytest + skills/ 회귀 방지
+  tests/                      1257 pytest + skills/ 회귀 방지
 
 docs/
   ARCHITECTURE.md             시스템 구조 30분 이해
@@ -372,7 +374,7 @@ docs/
 ```bash
 cd backend
 uv sync
-uv run pytest tests/ --rootdir=.      # 1212 tests
+uv run pytest tests/ --rootdir=.      # 1257 tests
 uv run ruff check src/                 # 0 errors
 uv run pyright src/                    # 0 errors (타입 체크)
 uv run python -m src.main              # dashboard 서버 (포트 3002)

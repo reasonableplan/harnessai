@@ -31,7 +31,7 @@ description: 3rd party API, OAuth 공급자, 웹훅
 
 ### 실패 대응
 - **Retry 전략**: <예: exponential backoff, max 3회>
-- **Circuit breaker**: <임계값>
+- **Circuit breaker**: `<임계값>`
 - **Fallback**: <예: 이메일 실패 시 큐에 쌓고 나중에 재시도>
 
 ### Rate Limit

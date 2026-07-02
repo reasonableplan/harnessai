@@ -4,6 +4,19 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.14.2] — 2026-07-02 — "Mirror Reconciliation: #15 Strict Placeholder Backport"
+
+전체 점검(미러 2벌 정규화 해시 감사)에서 발견된 양방향 drift 18파일 일소. **#15(strict placeholder 정규식 + 템플릿 백틱 규약)가 `~/.claude` 에만 존재해 `install -Force` 한 번이면 유실될 상태**였고, 반대로 모델 별칭 갱신(`9b39198`)은 실사용 미러에 미전파돼 python-cli 프로파일이 구모델을 가리키고 있었다.
+
+### Fixed
+
+- **#15 strict placeholder 정규식 백포트 (TDD)** — `harness/bin/harness` `_PLACEHOLDER_RE` + `skeleton_assembler._ANGLE_PLACEHOLDER_RE` 를 lenient `<[a-z_][a-z0-9_]*>` → strict `<(?![A-Z])[^\W\d]\w*>` 로 통일. 한글 `<본문>`/`<설명>` 잔재를 미치환 placeholder 로 검출하면서 ASCII 대문자 시작(`<T>`, `<K,V>` — TS 제네릭)과 공백 포함(`<기능 1>` — HITL 영역) 토큰은 보호. 스켈레톤 템플릿 13파일의 bare 단일어 한글 토큰(`<설명>`/`<사유>`/`<기능>`/`<임계>` 등)을 백틱으로 통일(인라인 코드는 스캔 전 strip → 통과) + `_README.md` placeholder 컨벤션 문서 갱신. 테스트 +5 (한글 검출 / TS 제네릭 제외 / 백틱 제외 — assembler `find_placeholders` · `harness integrity` 양쪽)
+- **미러 drift 재동기** — `~/.claude/harness/profiles/python-cli.md` 가 `claude-sonnet-4-6` 잔존(레포는 `claude-sonnet-5`) → install 재실행으로 전파. `ha-plan/SKILL.md` 상태 목록 `skipped` 누락, `ha-redesign/SKILL.md` 표기 규칙(#15) 레포 백포트. 정규화(CRLF 무시) diff 기준 **drift 0** 복구
+
+### Changed
+
+- 전체 테스트 **1247 → 1257** (0.14.1 이후 랜딩분 +5, 이번 신규 +5). README(en/ko)·CLAUDE.md 의 stale 테스트 수 동기
+
 ## [0.14.1] — 2026-06-26 — "Skill Audit: ha-map Induction & Defect Sweep"
 
 `/ha-map` 레포 편입 + 14개 스킬 결함 일소 + `/ha-eval` 보류 포지셔닝 문서. 코드 결함은 미러·테스트가 없던 유일한 스킬(ha-map) 하나에 몰려 있었다 — "테스트 스위트 = eval 하네스"의 실증.
