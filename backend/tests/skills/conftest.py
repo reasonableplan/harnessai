@@ -40,3 +40,9 @@ def harness_module() -> ModuleType:
 def ha_review_module() -> ModuleType:
     """`ha-review/run.py` 를 모듈로 로드."""
     return _load_module("ha_review_run", HA_REVIEW_RUN)
+
+
+@pytest.fixture(scope="session")
+def ha_run_module() -> ModuleType:
+    """`ha-run/run.py` 를 모듈로 로드."""
+    return _load_module("ha_run_run", REPO_ROOT / "skills" / "ha-run" / "run.py")

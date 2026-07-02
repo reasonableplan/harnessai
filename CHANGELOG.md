@@ -4,6 +4,20 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.15.0] — 2026-07-02 — "One-Command Driver: /ha-run (원맨툴 P1)"
+
+"이것만 있으면 누구든지 설계부터 결과물까지" 비전의 첫 단계. 지금까지 사용자가 스킬 10개를 순서대로 직접 호출하며 파이프라인을 운전하던 것을, `/ha-run` 하나가 상태기계 기준으로 자동 운전한다. **게이트 우회 0** — 드라이버는 순서만 자동화하고 판정은 전부 기존 게이트 소유.
+
+### Added
+
+- **`backend/src/orchestrator/pipeline_advisor.py`** — 결정 코어. `advise(plan) -> Advice(action/mode/skill/args/reason)` 순수 함수 (파일시스템 접근 없음, 게이트 복제 없음). 상태 8종 전이 지도 + verify_history 기반 smoke advisory 판단 (이전 rework 사이클의 stale smoke 기록은 무효 — 마지막 성공 ha-verify 이후 기록만 인정). HITL 지점 명시: init/design 인터뷰 · smoke FAIL 판단 · ship 확인 (배포는 외부 행위 — 자동 마킹 금지). 테스트 +14
+- **`/ha-run` 스킬** — `run.py next` 가 다음 행동 JSON 출력, SKILL.md 루프 절차가 해당 스킬을 Skill 툴로 호출. 가드레일: 게이트 BLOCK 시 우회 플래그 자동 부착 금지(선택지를 사용자에게 평문 제시), 무전이 3회 반복 정지, 세션당 최대 15루프. 테스트 +3 (JSON 계약)
+
+### Changed
+
+- README(en/ko) 30초 사용법에 `/ha-run` 원커맨드 경로 추가, CLAUDE.md 파이프라인 등재
+- 전체 테스트 **1265 → 1282** (+17)
+
 ## [0.14.3] — 2026-07-02 — "Drift Gate: 미러 동기 기계 검사 + 잔손질"
 
 v0.14.2 가 손으로 잡은 미러 drift 를 재발 방지 게이트로 승격. 반복 결함 1위 원인(미러 2벌 수동 cp 동기)을 커밋 전 1커맨드 검사로 대체.

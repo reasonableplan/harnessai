@@ -108,6 +108,13 @@ In a fresh Claude Code session:
 /ha-smoke    # runtime launch probe — does the app actually start? (advisory)
 ```
 
+Or let the driver walk the whole pipeline for you:
+
+```
+/ha-run      # one-command driver — auto-invokes the next skill by state machine,
+             # stops only at HITL points (interviews, smoke-fail judgment, ship confirm)
+```
+
 > Deep dive: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · [SETUP.md](SETUP.md)
 
 ---
@@ -136,6 +143,8 @@ In a fresh Claude Code session:
                                           ▼
                                APPROVE / REJECT → /ship
 ```
+
+`/ha-run` drives this whole ladder automatically — it reads the state machine (`pipeline_advisor`), invokes the next skill, and stops only where a human decision is required. Gates are never bypassed: the driver automates *ordering*, all judgments stay in the owning skills.
 
 Each stage can chain with gstack skills (`/office-hours`, `/plan-eng-review`, `/review`, `/qa`, `/ship`, `/retro`).
 

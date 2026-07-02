@@ -101,6 +101,13 @@ export HARNESS_AI_HOME="$(pwd)"       # (설치 스크립트가 안내)
 /ha-smoke    # 런타임 기동 검증 — 앱이 실제로 뜨는지 (advisory)
 ```
 
+또는 드라이버에게 전체 파이프라인을 맡긴다:
+
+```
+/ha-run      # 원커맨드 드라이버 — 상태기계 기준 다음 스킬 자동 호출,
+             # HITL 지점(인터뷰·smoke 실패 판단·배포 확인)에서만 정지
+```
+
 > 세부: [ARCHITECTURE.ko.md](docs/ARCHITECTURE.ko.md) · [SETUP.md](SETUP.md)
 
 ---
