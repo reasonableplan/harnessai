@@ -2,7 +2,7 @@
 
 🌐 **English** · [한국어](README.ko.md)
 
-![tests](https://img.shields.io/badge/tests-1296%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-1308%20passing-brightgreen)
 ![pyright](https://img.shields.io/badge/pyright-0%20errors-brightgreen)
 ![ruff](https://img.shields.io/badge/ruff-clean-brightgreen)
 ![gate coverage](https://img.shields.io/badge/gate%20coverage-100%25-brightgreen)
@@ -57,22 +57,27 @@ This is the kind of error LLMs reliably introduce and humans miss in review. Acr
 
 Same `python-cli` profile, two interview answers — different skeleton.
 
-**Baseline — `data_sensitivity=none / lifecycle=poc / availability=casual` → 14 sections**
+**Baseline — `data_sensitivity=none / lifecycle=poc / availability=casual` → 9 sections**
 
 ```
-overview · stack · errors · interface.cli · core.logic ·
-configuration · environments · persistence · data_model · external_deps ·
-integrations · requirements · tasks · notes
+overview · requirements · stack · configuration · errors ·
+interface.cli · core.logic · tasks · notes
 ```
 
-**Bumped — `data_sensitivity=pii / lifecycle=mvp / availability=standard` → 18 sections** (baseline 14 **+** these 4):
+**Bumped — `data_sensitivity=pii / lifecycle=mvp / availability=standard` → 17 sections** (baseline 9 **+** these 8):
 
-| + Section        | `required_when` rule                                                | Why this answer triggered it                  |
-|------------------|---------------------------------------------------------------------|------------------------------------------------|
-| `audit_log`      | `data_sensitivity in [pii, payment]`                                 | sensitive data → compliance log                |
-| `threat_model`   | `data_sensitivity in [pii, payment] or availability == high`         | sensitive data → STRIDE/OWASP                  |
-| `ci_cd`          | `lifecycle in [mvp, ga]`                                             | mvp+ → pipeline / rollback                     |
-| `test_strategy`  | `lifecycle in [mvp, ga]`                                             | mvp+ → test pyramid / contract test            |
+| + Section              | `required_when` rule                                          | Why this answer triggered it              |
+|------------------------|--------------------------------------------------------------|-------------------------------------------|
+| `auth`                 | `has.users`                                                  | pii → `has.users` → 인증                  |
+| `authorization_matrix` | `has.users`                                                  | pii → `has.users` → 권한 행렬             |
+| `user_journey`         | `has.users and lifecycle in [mvp, ga]`                       | pii + mvp → 페르소나 / 여정               |
+| `audit_log`            | `data_sensitivity in [pii, payment]`                         | sensitive data → compliance log           |
+| `threat_model`         | `data_sensitivity in [pii, payment] or availability == high` | sensitive data → STRIDE/OWASP             |
+| `environments`         | `(entrypoint) and (lifecycle in [mvp, ga] or availability in [standard, high])` | mvp + standard → dev/staging/prod |
+| `ci_cd`                | `lifecycle in [mvp, ga]`                                     | mvp+ → pipeline / rollback                |
+| `test_strategy`        | `lifecycle in [mvp, ga]`                                     | mvp+ → test pyramid / contract test       |
+
+`has.users` is itself derived from `data_sensitivity in [pii, payment]` (PII implies real users) — one axis answer cascades into three sections. `environments` gates on lifecycle/availability so a throwaway poc CLI doesn't inherit dev/staging/prod.
 
 The 6 axes (`user_scale` / `data_sensitivity` / `team_size` / `availability` / `monetization` / `lifecycle`) are captured by `/ha-init`. Each fragment's expression is parsed by [`scale_expression.py`](backend/src/orchestrator/scale_expression.py), evaluated against the axes, and `ProfileLoader.compute_active_sections` returns the section list. The rules live in `harness/templates/skeleton/*.md` frontmatter — full transparency, change them and the loader picks it up.
 
@@ -80,9 +85,10 @@ The 6 axes (`user_scale` / `data_sensitivity` / `team_size` / `availability` / `
 
 ```bash
 cd backend && uv run python ../scripts/show_adapt_diff.py
-# A  pii + mvp + standard  ->  18 sections
-# B  none + poc + casual   ->  14 sections
-# diff (A only)            ->  ['audit_log', 'ci_cd', 'test_strategy', 'threat_model']
+# A  pii + mvp + standard  ->  17 sections
+# B  none + poc + casual   ->  9 sections
+# diff (A only)            ->  ['audit_log', 'auth', 'authorization_matrix', 'ci_cd',
+#                               'environments', 'test_strategy', 'threat_model', 'user_journey']
 ```
 
 ---

@@ -245,6 +245,24 @@ python ~/.claude/skills/ha-init/run.py write \
 (예: monetization=payment 인데 data_sensitivity=none) 사용자에게 보여주고 해당 축을
 재질문한다. 모순을 인지하고 그대로 두는 것도 허용 (의도적 선택 — 그 사실을 기록).
 
+**`capability_suggestions` 확인** (write 출력 JSON 의 `capability_suggestions` 가 비어있지 않으면):
+
+설명 텍스트에서 감지됐지만 아직 활성화 안 된 `has.*` 신호다 (예: "할 일 CRUD" → `storage`
+→ persistence/data_model 섹션이 빠졌을 수 있음). 비전문가는 저장/DB 를 선언할 줄 모르므로
+이걸 놓치면 DB 설계 없는 skeleton 이 나온다 (의도와 다른 산출물 재발).
+
+```
+💡 설명에서 감지된 누락 가능 기능:
+  - storage (근거: "할 일", "관리") → persistence / data_model 섹션
+```
+
+AskUserQuestion 으로 각 제안을 확인:
+- `추가` — 해당 atom 을 `--external-capabilities` 에 넣어 **write 재실행** (섹션 재활성화)
+- `무시` — 그 기능이 실제로 없음 (예: 외부 BaaS 가 저장 담당 / 순수 계산) → 그대로 진행
+
+**가드레일**: 제안을 자동 적용하지 말 것 (결정권 분리 — 아키텍처는 AI 가 판단하되 사용자 확인).
+자동 무시도 금지 — 반드시 사용자에게 보여줄 것.
+
 ### 6.5. conventions.md 확인 (권위 1순위 문서)
 
 모든 에이전트의 권위 순서 1위가 `docs/conventions.md` 인데, 파이프라인에 이 문서를
@@ -304,8 +322,11 @@ python ~/.claude/skills/ha-init/run.py write \
 - `~/.claude/harness/profiles/X.md` 가 없거나 frontmatter 깨짐. `harness validate profiles` 로 확인.
 
 **`detect` 가 매칭 0건**:
-- 프로젝트 루트에 `pyproject.toml` / `package.json` 등 마커 파일이 없거나, `_registry.yaml` 의 paths 에 해당 위치가 없음.
-- `python ~/.claude/harness/bin/harness validate registry` 로 규칙 확인.
+- 빈/신규 프로젝트라 마커 파일(`pyproject.toml` / `package.json` 등)이 아직 없는 흔한 경우.
+- **먼저 사용자 설명 기반으로 가장 맞는 프로파일 1개를 추천**한 뒤 §2 트리 fallback 으로
+  확정한다 (예: "웹앱/로그인/화면" → nextjs 후보 제시, "CLI 도구/명령어" → python-cli).
+  절대 추천 없이 "매칭 0건" 만 보여주고 멈추지 말 것 — 비전문가가 여기서 이탈한다.
+- `python ~/.claude/harness/bin/harness validate registry` 로 규칙 확인 (마커가 있는데도 0건일 때).
 
 **기존 plan 이 새 로직과 어긋남 (legacy stale)**:
 - compute_active_sections 버그 fix 전에 생성된 plan 은 `included` 가 현재 로직과 mismatch 될 수 있음.

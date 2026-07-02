@@ -50,22 +50,27 @@ LLM 이 자주 만드는데 사람 리뷰에서 놓치는 종류의 실수. **35
 
 같은 `python-cli` 프로파일, 두 가지 인터뷰 답변 → 다른 skeleton.
 
-**기본선 — `data_sensitivity=none / lifecycle=poc / availability=casual` → 14 섹션**
+**기본선 — `data_sensitivity=none / lifecycle=poc / availability=casual` → 9 섹션**
 
 ```
-overview · stack · errors · interface.cli · core.logic ·
-configuration · environments · persistence · data_model · external_deps ·
-integrations · requirements · tasks · notes
+overview · requirements · stack · configuration · errors ·
+interface.cli · core.logic · tasks · notes
 ```
 
-**상향 — `data_sensitivity=pii / lifecycle=mvp / availability=standard` → 18 섹션** (기본선 14 **+** 아래 4):
+**상향 — `data_sensitivity=pii / lifecycle=mvp / availability=standard` → 17 섹션** (기본선 9 **+** 아래 8):
 
-| + 섹션           | `required_when` 룰                                                  | 이 답변이 활성화한 이유                          |
-|------------------|---------------------------------------------------------------------|--------------------------------------------------|
-| `audit_log`      | `data_sensitivity in [pii, payment]`                                 | 민감 데이터 → compliance 로그                    |
-| `threat_model`   | `data_sensitivity in [pii, payment] or availability == high`         | 민감 데이터 → STRIDE/OWASP                       |
-| `ci_cd`          | `lifecycle in [mvp, ga]`                                             | mvp 이상 → 파이프라인 / 롤백                     |
-| `test_strategy`  | `lifecycle in [mvp, ga]`                                             | mvp 이상 → 테스트 피라미드 / 컨트랙트 테스트     |
+| + 섹션                 | `required_when` 룰                                            | 이 답변이 활성화한 이유                   |
+|------------------------|--------------------------------------------------------------|------------------------------------------|
+| `auth`                 | `has.users`                                                  | pii → `has.users` → 인증                 |
+| `authorization_matrix` | `has.users`                                                  | pii → `has.users` → 권한 행렬            |
+| `user_journey`         | `has.users and lifecycle in [mvp, ga]`                       | pii + mvp → 페르소나 / 여정              |
+| `audit_log`            | `data_sensitivity in [pii, payment]`                         | 민감 데이터 → compliance 로그            |
+| `threat_model`         | `data_sensitivity in [pii, payment] or availability == high` | 민감 데이터 → STRIDE/OWASP               |
+| `environments`         | `(진입점) and (lifecycle in [mvp, ga] or availability in [standard, high])` | mvp + standard → dev/staging/prod |
+| `ci_cd`                | `lifecycle in [mvp, ga]`                                     | mvp 이상 → 파이프라인 / 롤백             |
+| `test_strategy`        | `lifecycle in [mvp, ga]`                                     | mvp 이상 → 테스트 피라미드               |
+
+`has.users` 는 `data_sensitivity in [pii, payment]` 에서 파생(PII = 실제 사용자 존재) — 축 답변 하나가 3개 섹션으로 연쇄. `environments` 는 lifecycle/availability 로 게이트돼 버리는 poc CLI 가 dev/staging/prod 를 물려받지 않는다.
 
 6축 (`user_scale` / `data_sensitivity` / `team_size` / `availability` / `monetization` / `lifecycle`) 은 `/ha-init` 가 받음. 각 fragment 의 표현식은 [`scale_expression.py`](backend/src/orchestrator/scale_expression.py) 가 파싱 → 6축에 평가 → `ProfileLoader.compute_active_sections` 가 활성 섹션 목록 반환. 룰은 `harness/templates/skeleton/*.md` frontmatter 에 — 완전 투명, 바꾸면 로더가 즉시 반영.
 
@@ -73,9 +78,10 @@ integrations · requirements · tasks · notes
 
 ```bash
 cd backend && uv run python ../scripts/show_adapt_diff.py
-# A  pii + mvp + standard  ->  18 sections
-# B  none + poc + casual   ->  14 sections
-# diff (A only)            ->  ['audit_log', 'ci_cd', 'test_strategy', 'threat_model']
+# A  pii + mvp + standard  ->  17 sections
+# B  none + poc + casual   ->  9 sections
+# diff (A only)            ->  ['audit_log', 'auth', 'authorization_matrix', 'ci_cd',
+#                               'environments', 'test_strategy', 'threat_model', 'user_journey']
 ```
 
 ---
@@ -346,7 +352,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 - **패키지**: uv
 - **에이전트 실행**: Claude CLI subprocess (Gemini/로컬 LLM 교체 가능)
 - **상태**: `docs/harness-plan.md` (YAML frontmatter) + `.orchestra/` JSON (DB 없음)
-- **테스트**: pytest **1296개** backend + **12개** install 스냅샷 (회귀 0건)
+- **테스트**: pytest **1308개** backend + **12개** install 스냅샷 (회귀 0건)
 - **타입 체크**: pyright **0 errors** (`src/` 전수)
 - **게이트 커버리지 (자기 검증)**: 10개 게이트 중 정규식/AST 기반 7개를 35 fixtures (positive/negative) 로 측정 → **precision 100% / recall 100% / accuracy 100%**. 나머지 3개 — `auth-guard` 는 test_security_hooks 단위테스트, `test-distribution`·`skeleton-integrity` 는 filesystem fixture 로 별도 검증. 상세 한계/방법: [gate-coverage.md](docs/benchmarks/gate-coverage.md)
 - **성능** (30 iter, LLM 제외): profile 감지 **~5 ms**, skeleton 조립 **<1 ms**, `harness validate` **~150 ms**, `harness integrity` **~104 ms**. [docs/benchmarks/](docs/benchmarks/)
@@ -367,7 +373,7 @@ backend/
   docs/shared-lessons.md      37 LESSONs
   src/orchestrator/           profile_loader / skeleton_assembler /
                               plan_manager / security_hooks / runner
-  tests/                      1296 pytest + skills/ 회귀 방지
+  tests/                      1308 pytest + skills/ 회귀 방지
 
 docs/
   ARCHITECTURE.md             시스템 구조 30분 이해
@@ -381,7 +387,7 @@ docs/
 ```bash
 cd backend
 uv sync
-uv run pytest tests/ --rootdir=.      # 1296 tests
+uv run pytest tests/ --rootdir=.      # 1308 tests
 uv run ruff check src/                 # 0 errors
 uv run pyright src/                    # 0 errors (타입 체크)
 uv run python -m src.main              # dashboard 서버 (포트 3002)

@@ -30,6 +30,7 @@ from utils import HARNESS_HOME, info, resolve_guideline_paths  # noqa: E402, I00
 
 from src.orchestrator.context import CANONICAL_SECTION_ORDER  # noqa: E402
 from src.orchestrator.capabilities import KNOWN_CAPABILITY_ATOMS  # noqa: E402
+from src.orchestrator.capability_inference import infer_capabilities_from_text  # noqa: E402
 from src.orchestrator.plan_manager import (  # noqa: E402
     PlanManager,
     ProfileRef,
@@ -405,12 +406,28 @@ def cmd_write(args: argparse.Namespace) -> int:
         return 1
     pm.save(plan, out_plan)
 
+    # capability 추론 제안 (P5 #11) — 설명에서 감지됐지만 아직 활성 안 된 has.* atom.
+    # 자동 활성화 아님 — SKILL.md 가 사용자에게 확인 후 --external-capabilities 로 재작성.
+    # auto 모드에서만 (override 는 사용자가 섹션을 명시 선택한 상태).
+    capability_suggestions: dict[str, list[str]] = {}
+    if included_raw in ("", "auto"):
+        inferred = infer_capabilities_from_text(args.description or "")
+        if inferred:
+            active_has = loader.compute_has_keys(
+                profile_objs, axes, external_capabilities or None
+            )
+            capability_suggestions = {
+                atom: kws for atom, kws in inferred.items()
+                if atom not in active_has and atom not in external_capabilities
+            }
+
     print(json.dumps({
         "project": str(project),
         "skeleton_path": str(out_skeleton),
         "plan_path": str(out_plan),
         "axis_warnings": axis_warnings,
         "included_sections": ordered_included,
+        "capability_suggestions": capability_suggestions,
         "profiles": [
             {
                 "id": p.id,

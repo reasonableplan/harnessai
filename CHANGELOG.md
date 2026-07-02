@@ -4,6 +4,23 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.16.0] — 2026-07-02 — "인터뷰 지능화 (P5): capability 추론 + 활성화 정확도 (#1·#3·#11)"
+
+웹앱 dogfood(nextjs)로 확정한 공통 뿌리 — "6축+프로파일 활성화가 비전문가 의도를 못 잡음" — 를 묶어서 해소. 원맨툴 비전("누구든지 완벽하게")의 정면 과제.
+
+### Added
+
+- **#11 `capability_inference.py`** — 설명 텍스트 → `has.*` 신호 결정론적 추론(한국어+영어 키워드). "할 일 CRUD" → `storage`(→persistence/data_model), "로그인/계정" → `users`, "API/엔드포인트" → `http_server`, "화면/대시보드" → `ui`. ha-init write 가 아직 활성 안 된 신호를 `capability_suggestions` 로 출력 → SKILL.md 가 AskUserQuestion 으로 확인 후 `--external-capabilities` 재작성(**자동 활성화 아님 — 결정권 분리 HITL**). "할 일 관리 앱" 이라고만 써도 DB 설계 섹션이 안 빠지게. 테스트 +9
+
+### Fixed
+
+- **#3 environments 과활성화** — `required_when` 을 `(진입점) and (lifecycle in [mvp, ga] or availability in [standard, high])` 로 게이트. poc+casual 장난감 CLI 가 dev/staging/prod·CORS·HSTS 를 물려받지 않음. mvp+ 또는 standard+ 는 유지. 테스트 +3, README(en/ko) 적응 예시 정확화(기존 18/14 stale → 실제 17/9)
+- **#1 detect 빈결과** — ha-init SKILL.md: 매칭 0건 시 "설명 기반 프로파일 추천을 먼저 제시" 안내 명문화(트리 fallback 은 이미 존재 — 비전문가 이탈 방지 강화). advisor init reason 도 lockable 유무 분기(#2 연장). 테스트 +2
+
+### Changed
+
+- 전체 테스트 **1296 → 1308** (+12). #1/#3/#11 은 dogfood(urlshort CLI + taskflow 웹앱) 2표본으로 근거 확정 후 수정
+
 ## [0.15.4] — 2026-07-02 — "file_structure drift 오탐 + 드라이버 reason 정확도 (dogfood #6·#2)"
 
 `/ha-run` dogfood 잔여 마찰 2건 정리.

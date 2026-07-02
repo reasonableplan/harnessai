@@ -604,6 +604,46 @@ def test_compute_active_sections_pii_activates_audit_log(tmp_path: Path) -> None
     assert "overview" in active
 
 
+_ENV_EXPR = (
+    "(has.http_server or has.ui or has.navigation or has.cli_entrypoint) "
+    "and (lifecycle in [mvp, ga] or availability in [standard, high])"
+)
+
+
+def test_environments_excluded_for_poc_casual_toy(tmp_path: Path) -> None:
+    """dogfood #3: 진입점은 있으나 poc+casual 인 장난감 → environments 미활성."""
+    fragments_dir = tmp_path / "skeleton"
+    _write_fragment(fragments_dir, "environments", _ENV_EXPR)
+    _write_fragment(fragments_dir, "overview", "always")
+    loader = ProfileLoader()
+    profile = _make_profile(provides_capabilities=["cli_entrypoint"])
+    axes = ScaleAxes(lifecycle="poc", availability="casual")
+    active, _trace = loader.compute_active_sections(axes, [profile], fragments_dir)
+    assert "environments" not in active
+
+
+def test_environments_included_for_mvp(tmp_path: Path) -> None:
+    """진입점 + mvp → environments 활성 (dev/staging/prod 필요)."""
+    fragments_dir = tmp_path / "skeleton"
+    _write_fragment(fragments_dir, "environments", _ENV_EXPR)
+    loader = ProfileLoader()
+    profile = _make_profile(provides_capabilities=["cli_entrypoint"])
+    axes = ScaleAxes(lifecycle="mvp", availability="casual")
+    active, _trace = loader.compute_active_sections(axes, [profile], fragments_dir)
+    assert "environments" in active
+
+
+def test_environments_included_for_poc_but_standard_availability(tmp_path: Path) -> None:
+    """poc 라도 availability=standard 면 environments 활성 (운영 관심사)."""
+    fragments_dir = tmp_path / "skeleton"
+    _write_fragment(fragments_dir, "environments", _ENV_EXPR)
+    loader = ProfileLoader()
+    profile = _make_profile(provides_capabilities=["cli_entrypoint"])
+    axes = ScaleAxes(lifecycle="poc", availability="standard")
+    active, _trace = loader.compute_active_sections(axes, [profile], fragments_dir)
+    assert "environments" in active
+
+
 def test_compute_active_sections_no_pii_excludes_audit_log(tmp_path: Path) -> None:
     fragments_dir = tmp_path / "skeleton"
     _write_fragment(fragments_dir, "audit_log", "data_sensitivity in [pii, payment]")

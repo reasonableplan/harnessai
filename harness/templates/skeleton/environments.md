@@ -1,7 +1,7 @@
 ---
 id: environments
 name: 환경 분리
-required_when: has.http_server or has.ui or has.navigation or has.cli_entrypoint
+required_when: (has.http_server or has.ui or has.navigation or has.cli_entrypoint) and (lifecycle in [mvp, ga] or availability in [standard, high])
 description: dev / staging / prod 환경별 설정 차이, 시크릿 관리, CORS, 보안 헤더
 ---
 
