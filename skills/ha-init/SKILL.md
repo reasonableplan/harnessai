@@ -45,7 +45,24 @@ python ~/.claude/skills/ha-init/run.py detect "$PROJECT_ROOT"
 출력은 JSON. 다음 정보 추출:
 - `matches[]` — 감지된 프로파일 목록 (id, name, path, required/optional sections, toolchain, whitelist, gstack_recommended)
 
-**수동 프로파일 선택 — 트리 fallback (매칭 0건 또는 사용자 추가 선택 시)**:
+**설명 기반 추천 먼저 (매칭 0건 시 — 비전문가 진입장벽 완화, blueprint 흡수 B)**:
+
+빈/신규 프로젝트라 detect 매칭이 0건이면 **트리로 바로 가지 말고** 먼저 설명 기반 추천을 제시한다
+(비전문가는 "nextjs vs vite"를 몰라 트리에서 이탈). 순서:
+
+1. **먼저 §3 사용자 설명을 수집** (이 경우 §2→§3 순서를 당겨서 설명부터 받음).
+2. 추천 계산:
+   ```bash
+   python ~/.claude/skills/ha-init/run.py recommend --description "<사용자 설명>"
+   ```
+   출력 `recommendations[]` (profile_id / score / signals / guideline_paths, 점수순).
+3. **top 1을 강하게 추천** — blueprint 방식: "선택 + 이유 + 트레이드오프". 이유·트레이드오프는
+   해당 프로파일 본문(guideline_paths / 프로파일 .md)을 읽고 LLM이 서술 (예: "nextjs 추천 —
+   근거: 웹앱/대시보드 신호. 이유: SSR+풀스택 단일 레포. 트레이드오프: SPA보다 초기 러닝커브").
+   AskUserQuestion: `추천 수락` / `다른 후보(2·3위)` / `직접 고를래 (트리)`.
+4. 수락/후보 선택 → 그 profile ID 확정. "직접 고를래" 또는 추천 0건 → 아래 트리 fallback.
+
+**수동 프로파일 선택 — 트리 fallback (추천 거부 / 사용자 추가 선택 시)**:
 
 AskUserQuestion 의 4-옵션 제약을 **트리 깊이로 우회**한다. 절대 confirmed 프로파일 중 일부만 임의로 추려서 보여주지 말 것.
 
@@ -323,9 +340,10 @@ AskUserQuestion 으로 각 제안을 확인:
 
 **`detect` 가 매칭 0건**:
 - 빈/신규 프로젝트라 마커 파일(`pyproject.toml` / `package.json` 등)이 아직 없는 흔한 경우.
-- **먼저 사용자 설명 기반으로 가장 맞는 프로파일 1개를 추천**한 뒤 §2 트리 fallback 으로
-  확정한다 (예: "웹앱/로그인/화면" → nextjs 후보 제시, "CLI 도구/명령어" → python-cli).
-  절대 추천 없이 "매칭 0건" 만 보여주고 멈추지 말 것 — 비전문가가 여기서 이탈한다.
+- **`recommend` 서브커맨드로 설명 기반 추천을 먼저 제시**한다 (§2 "설명 기반 추천 먼저" 참조):
+  `python ~/.claude/skills/ha-init/run.py recommend --description "<설명>"` → top 1 강하게 추천
+  (선택+이유+트레이드오프) → 수락/후보/트리 중 선택. 절대 추천 없이 "매칭 0건" 만 보여주고
+  멈추지 말 것 — 비전문가가 여기서 이탈한다.
 - `python ~/.claude/harness/bin/harness validate registry` 로 규칙 확인 (마커가 있는데도 0건일 때).
 
 **기존 plan 이 새 로직과 어긋남 (legacy stale)**:

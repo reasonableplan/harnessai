@@ -31,6 +31,7 @@ from utils import HARNESS_HOME, info, resolve_guideline_paths  # noqa: E402, I00
 from src.orchestrator.context import CANONICAL_SECTION_ORDER  # noqa: E402
 from src.orchestrator.capabilities import KNOWN_CAPABILITY_ATOMS  # noqa: E402
 from src.orchestrator.capability_inference import infer_capabilities_from_text  # noqa: E402
+from src.orchestrator.profile_recommendation import recommend_profiles  # noqa: E402
 from src.orchestrator.plan_manager import (  # noqa: E402
     PlanManager,
     ProfileRef,
@@ -119,6 +120,34 @@ def cmd_detect(args: argparse.Namespace) -> int:
         info(f"→ HARNESS_AI_HOME 환경변수 설정 필수 (외부 사용자)")
 
     print(json.dumps(output, ensure_ascii=False, indent=2))
+    return 0
+
+
+# ── recommend 서브커맨드 ──────────────────────────────────────────────
+
+
+def cmd_recommend(args: argparse.Namespace) -> int:
+    """설명 텍스트 → 후보 프로파일 점수순 (blueprint 흡수 B — unsure 진입장벽 완화).
+
+    결정론 스코어링만 — 이유/트레이드오프 서술은 SKILL(LLM)이 프로파일 본문으로 담당.
+    """
+    description = args.description.strip()
+    candidate_ids = (
+        [c.strip() for c in args.candidates.split(",") if c.strip()]
+        if args.candidates
+        else None
+    )
+    recs = recommend_profiles(description, candidate_ids)
+    out = [
+        {
+            "profile_id": r.profile_id,
+            "score": r.score,
+            "signals": list(r.signals),
+            "guideline_paths": [str(g) for g in resolve_guideline_paths(r.profile_id)],
+        }
+        for r in recs[: args.top]
+    ]
+    print(json.dumps({"recommendations": out}, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -464,6 +493,11 @@ def main() -> int:
     d = sub.add_parser("detect", help="프로젝트 디렉토리에서 매칭 프로파일 JSON 출력")
     d.add_argument("project_dir", help="프로젝트 루트 경로")
 
+    r = sub.add_parser("recommend", help="설명 텍스트 → 후보 프로파일 점수순 JSON")
+    r.add_argument("--description", required=True, help="사용자 자연어 설명")
+    r.add_argument("--candidates", default="", help="콤마 구분 후보 프로파일 ID 제한 (선택)")
+    r.add_argument("--top", type=int, default=3, help="반환할 최대 후보 수 (기본: 3)")
+
     w = sub.add_parser("write", help="harness-plan.md + skeleton.md 작성")
     w.add_argument("--project", required=True, help="프로젝트 루트")
     w.add_argument("--profiles", required=True, help="콤마 구분 프로파일 ID")
@@ -542,6 +576,8 @@ def main() -> int:
 
     if args.cmd == "detect":
         return cmd_detect(args)
+    if args.cmd == "recommend":
+        return cmd_recommend(args)
     if args.cmd == "write":
         return cmd_write(args)
 

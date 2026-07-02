@@ -4,6 +4,26 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.18.0] — 2026-07-02 — "블루프린트 흡수 (B): 설명 기반 프로파일 추천"
+
+원맨툴 자기완결성 — "다른 스킬 없이 ha-* 만으로" 의 최대 구멍(설계 진입) 첫 조각.
+ha-init 프로파일 선택 트리는 사용자가 스택(nextjs vs vite, postgres vs mongo 등)을
+*알아야* 고를 수 있어 비전문가가 이탈했다. `/blueprint` 의 핵심 가치("unsure → 강하게
+추천: 선택+이유+트레이드오프")를 별도 문서(BLUEPRINT.md) 없이 ha-init 에 흡수(방식 B —
+6축·프로파일 감지·capability 추론과 ~80% 겹치는 문자적 이식 대신 고유 가치만).
+
+### Added
+
+- **`profile_recommendation.py`** — 설명 텍스트 → 후보 프로파일 점수순. 결정론 키워드
+  스코어링(13 confirmed 프로파일별 판별 신호, 한국어 substring / 영어 word-boundary =
+  capability_inference 규약). 이유·트레이드오프 서술은 LLM(ha-init 스킬)이 프로파일 본문으로
+  담당 — 정적 지식 데이터 중복 없음(코드/LLM 경계). 테스트 +11
+- **ha-init `recommend` 서브커맨드** (`--description` / `--candidates` / `--top`) —
+  `recommendations[]`(profile_id / score / signals / guideline_paths) JSON.
+- **ha-init SKILL.md §2** — detect 매칭 0건 시 트리 fallback **전에** 설명 기반 추천 먼저:
+  top 1 강력 추천(선택+이유+트레이드오프) → `추천 수락` / `다른 후보` / `직접 트리`.
+  트러블슈팅 "매칭 0건" 안내도 실제 `recommend` 명령으로 갱신.
+
 ## [0.17.0] — 2026-07-02 — "의미 기반 인터뷰: decision_points 커버리지 (설계 탄탄 + HITL)"
 
 원맨툴 비전 재정의("자동화 아님 — 다른 스킬 없이 HarnessAI 만으로, HITL 중심, 설계부터 탄탄")에 따라
