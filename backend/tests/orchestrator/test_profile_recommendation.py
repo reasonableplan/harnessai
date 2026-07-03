@@ -77,3 +77,32 @@ def test_deterministic_order_and_tiebreak() -> None:
 def test_only_positive_scores_returned() -> None:
     recs = recommend_profiles("웹앱")
     assert all(r.score > 0 for r in recs)
+
+
+# --- 오탐 방지: "도구"/"tool" 제거 후 python-cli 동점 오탐 차단 ---
+
+
+def test_jira_like_web_tool_recommends_nextjs_top() -> None:
+    """지라 같은 웹 도구 설명 → nextjs 가 1위, python-cli 는 결과에 없어야 함."""
+    desc = "팀에서 이슈랑 할 일을 관리하는 지라 같은 웹 도구. 칸반 보드 포함."
+    recs = recommend_profiles(desc)
+    assert recs[0].profile_id == "nextjs"
+    assert "python-cli" not in _ids(recs)
+
+
+def test_collaboration_tool_excludes_python_cli() -> None:
+    """협업 도구 — python-cli 가 결과에 포함되면 안 됨."""
+    recs = recommend_profiles("팀을 위한 협업 도구")
+    assert "python-cli" not in _ids(recs)
+
+
+def test_real_cli_still_matches_python_cli() -> None:
+    """진짜 CLI 설명은 여전히 python-cli 를 포함해야 함 (회귀 방지)."""
+    recs = recommend_profiles("명령줄 자동화 스크립트")
+    assert "python-cli" in _ids(recs)
+
+
+def test_cli_keyword_still_matches_python_cli() -> None:
+    """'cli 도구' 설명에서 cli 신호로 python-cli 가 잡혀야 함 (회귀 방지)."""
+    recs = recommend_profiles("cli 도구 만들기")
+    assert "python-cli" in _ids(recs)

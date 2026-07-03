@@ -82,14 +82,14 @@ _PROFILE_SIGNALS: dict[str, tuple[str, ...]] = {
         "명령어",
         "터미널",
         "자동화",
-        "도구",
+        # "도구"/"tool" removed: too generic — matches web/collaboration tools (false positives).
+        # Real CLI descriptions still match via 명령줄/cli/command/script signals.
         "스크립트",
         "cli",
         "command",
         "terminal",
         "script",
         "automation",
-        "tool",
     ),
     "python-lib": (
         "라이브러리",

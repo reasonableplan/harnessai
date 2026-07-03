@@ -4,6 +4,45 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.19.1] — 2026-07-03 — "Personal Jira dogfood: detect/추천 휴리스틱 결함 3+1건 수정"
+
+v0.16~0.19 누적 변경을 Personal Jira 재구축 dogfood 로 실전 검증 — 설계 진입부에서
+발견된 결함 전건 수정. 공통 뿌리 = 키워드 detect 휴리스틱 양방향 결함
+(#2 너무 좁아 miss / #3·#3b 너무 넓어 false-resolve).
+
+### Fixed
+
+- **#1 `profile_recommendation`** — python-cli 신호에서 "도구"/"tool" 제거 (너무 일반적 —
+  "지라 같은 **웹 도구**"가 CLI 와 동점 1위 오탐). 실제 CLI 설명은 명령줄/cli/script 로 여전히 매칭.
+- **#2 `capability_inference`** — storage/users 키워드 대폭 확장 (관리/이슈/할일/태스크/등록/조회/
+  댓글… + manage/track/todo/issue…, 담당자/멤버/작성자 + member/assignee). "할 일 관리 앱"이
+  storage 추론 실패 → persistence/data_model 섹션 통째 누락되던 v0.16 #11 재발 차단.
+- **#3 `decision_coverage`** — detect 스캔 전에 미기입 플레이스홀더(`<...>`) 포함 라인 전체 제외.
+  빈 템플릿 예시("동시성: `<mutex / WAL / …>`")가 concurrency 를 "결정됨"으로 오판해
+  안전 크리티컬 질문(원자적 선점/TOCTOU)을 은폐하던 결함.
+- **#3b `decision_coverage`** — fragment **자신의 템플릿 본문**(헤딩 "### 백업/복구",
+  체크리스트 "- [ ] 비밀번호 해시", 가이드 "OAuth 선택 시…")에 이미 존재하는 detect 키워드를
+  load 시점에 제외 — 사용자 결정과 무관하게 항상 fire 하는 구별력 없는 노이즈.
+  실패 모드는 over-ask(안전) 방향. dogfood skeleton 실측: suppress 3건 → 0건 (11/11 질문).
+- **`test_check_locked`** — subprocess 파이프 인코딩 utf-8 고정 (부모 cp949 디코드 ×
+  자식 utf-8 출력 불일치로 Windows 로컬에서 4건 비결정 실패).
+- **`test_e2e_rework_loop`** — ruff format 위반 잔존분 정리 (CI quality 게이트).
+
+## [0.19.0] — 2026-07-02 — "P2 실패 자동회수 루프: rework 회귀는 정상 흐름"
+
+`/ha-run` 드라이버(P1)의 결함 마감 — verify FAIL 시 rework 대상 태스크가 done 에 머물러
+재빌드가 선택되지 않던 문제. "rework 회귀는 정상 흐름" 설계를 실제 구현.
+
+### Added
+
+- **`plan_manager.mark_for_rebuild()`** — verify FAIL + rework 대상 태스크를
+  done → `needs_rebuild` 로 전이 (사유 기록 포함).
+- **ha-verify `record`** — FAIL + `--rework-tasks` 시 mark_for_rebuild 자동 호출.
+- **ha-build `select_ready_tasks`** — `needs_rebuild` 태스크 최우선 선택
+  (`_INPROGRESS_STATES`/`_PENDING_STATES`/`_RESOLVED_STATES` 상태 분류).
+- **pipeline_advisor `_rework_reason()`** — building 회귀 사유를 advice 에 노출.
+- ha-run/ha-verify SKILL.md 배선. E2E rework 루프 테스트 포함 (pytest 1358).
+
 ## [0.18.1] — 2026-07-02 — "블루프린트 흡수 (B) 마감: 6축 평문화 + 결정 근거 기록"
 
 v0.18.0 조각1(프로파일 추천)에 이어 B 잔여 2조각 완료 — `/blueprint` 흡수 종결.

@@ -54,3 +54,28 @@ def test_only_returns_known_atoms() -> None:
 
 def test_case_insensitive() -> None:
     assert "storage" in infer_capabilities_from_text("A TODO app with a DATABASE")
+
+
+# --- dogfood #2: storage keyword gap regression tests ---
+
+
+def test_todo_management_implies_storage() -> None:
+    """'할 일 관리 앱' — module docstring(:5) example must infer storage."""
+    assert "storage" in infer_capabilities_from_text("할 일 관리 앱")
+
+
+def test_issue_management_implies_storage() -> None:
+    """'이슈 관리 도구' — Jira-style description must infer storage."""
+    assert "storage" in infer_capabilities_from_text("이슈 관리 도구")
+
+
+def test_task_assignee_implies_storage_and_users() -> None:
+    """Task-assignee webapp must infer both storage and users."""
+    inferred = infer_capabilities_from_text("태스크를 담당자에게 배정하는 웹앱")
+    assert "storage" in inferred
+    assert "users" in inferred
+
+
+def test_memo_save_still_implies_storage() -> None:
+    """Existing '저장' keyword must not regress."""
+    assert "storage" in infer_capabilities_from_text("메모 저장 앱")

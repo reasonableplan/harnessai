@@ -73,10 +73,10 @@ def test_rework_loop_end_to_end(tmp_path: Path, ha_build: ModuleType) -> None:
     # ── 단계 2: pipeline_advisor.advise(plan) ─────────────────────────────
     advice = advise(plan)
     assert advice.action == "build" and advice.args == "--resume"  # T-002(action/args)
-    assert "T-003" in advice.reason                                # T-003(reason)
+    assert "T-003" in advice.reason  # T-003(reason)
 
     # ── 단계 3: select_ready_tasks(tasks) ────────────────────────────────
     tasks = ha_build._parse_tasks(tasks_path.read_text(encoding="utf-8"))
     ready = ha_build.select_ready_tasks(tasks)
-    assert "T-003" in ready                                        # T-002(needs_rebuild 우선)
+    assert "T-003" in ready  # T-002(needs_rebuild 우선)
     assert ready.index("T-003") < ready.index("T-001")

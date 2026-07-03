@@ -154,3 +154,105 @@ def test_deterministic_order(tmp_path: Path) -> None:
     u2 = find_unresolved_decisions(skel, tmp_path)
     assert [x.point_id for x in u1] == [x.point_id for x in u2]
     assert [x.point_id for x in u1] == ["multi_tenant", "soft_delete"]
+
+
+# ── placeholder-line filtering ──────────────────────────────────────────
+
+_CONCURRENCY_DP = """decision_points:
+  - id: concurrency
+    ask: "동시 요청 시 충돌을 어떻게 처리하나요?"
+    detect: [동시, 충돌, 락, lock, 낙관적, 비관적, version, 단일 쓰레드, WAL, 마지막 우선]
+    hint: "낙관적 락(version 컬럼) 또는 WAL 전제"
+"""
+
+
+def test_placeholder_line_not_counted_as_resolved(tmp_path: Path) -> None:
+    """A line containing <...> must be excluded from detect scanning.
+
+    The label ("동시성:") contains "동시" which fires detect, and the unfilled
+    placeholder value ("<mutex / WAL / 단일 쓰레드 전제>") fires WAL/단일 쓰레드.
+    Neither constitutes a real user decision, so concurrency must stay unresolved.
+    """
+    _write_fragment(tmp_path, "persistence", "저장소 / 스키마", "b", _CONCURRENCY_DP)
+    skel = _skeleton("- 동시성: `<mutex / WAL / 단일 쓰레드 전제>`")
+    unresolved = find_unresolved_decisions(skel, tmp_path)
+    ids = {(u.section_id, u.point_id) for u in unresolved}
+    assert ("persistence", "concurrency") in ids
+
+
+def test_filled_placeholder_triggers_detect(tmp_path: Path) -> None:
+    """Once the placeholder is replaced with real content, detect works normally."""
+    _write_fragment(tmp_path, "persistence", "저장소 / 스키마", "b", _CONCURRENCY_DP)
+    # Real decision — no <...> span; "낙관적" and "version" both fire detect.
+    skel = _skeleton("- 동시성: 낙관적 락 (version 컬럼 사용)")
+    unresolved = find_unresolved_decisions(skel, tmp_path)
+    assert unresolved == []
+
+
+# ── scaffolding-keyword filtering ───────────────────────────────────────
+#
+# A detect keyword that already appears in the fragment's OWN template body
+# (headings, checklists, guidance) fires no matter what the user decides, so it
+# can never distinguish "addressed" from "unaddressed" — it must be dropped from
+# detect at load time, otherwise the scaffolding echoed into the skeleton
+# false-resolves the point (the #3 dogfood finding's residual sub-case).
+
+_SOFTDELETE_SCAFFOLD_DP = """decision_points:
+  - id: soft_delete
+    ask: "삭제는 완전 삭제인가요, soft delete 인가요?"
+    detect: [soft, deleted_at, 복구]
+    hint: "soft delete 면 deleted_at 컬럼"
+"""
+
+# Template body whose "### 백업 / 복구" heading contains the detect keyword "복구".
+_SCAFFOLD_BODY = "### 백업 / 복구 (해당 시)\n<백업 주기와 복구 절차>\n"
+
+
+def test_scaffolding_keyword_dropped_from_detect(tmp_path: Path) -> None:
+    """A detect keyword present in the fragment's own template body is dropped.
+
+    "복구" appears in the template heading "### 백업 / 복구", so it fires
+    regardless of the user's decision. load_decision_points must drop it while
+    keeping the discriminating keywords (soft, deleted_at).
+    """
+    _write_fragment(
+        tmp_path, "persistence", "저장소 / 스키마", _SCAFFOLD_BODY, _SOFTDELETE_SCAFFOLD_DP
+    )
+    detect = load_decision_points(tmp_path)["persistence"][0].detect
+    assert "복구" not in detect
+    assert "soft" in detect and "deleted_at" in detect
+
+
+def test_scaffolding_keyword_does_not_false_resolve(tmp_path: Path) -> None:
+    """The scaffolding heading echoed into the skeleton must not resolve the point."""
+    _write_fragment(
+        tmp_path, "persistence", "저장소 / 스키마", _SCAFFOLD_BODY, _SOFTDELETE_SCAFFOLD_DP
+    )
+    # Skeleton carries the template heading (assembler emits it) but the user made
+    # no soft-delete decision — only "복구" (scaffolding) is present.
+    skel = _skeleton("### 백업 / 복구 (해당 시)\nPostgreSQL, tasks 테이블")
+    ids = {(u.section_id, u.point_id) for u in find_unresolved_decisions(skel, tmp_path)}
+    assert ("persistence", "soft_delete") in ids
+
+
+def test_real_decision_still_resolves_after_scaffolding_filter(tmp_path: Path) -> None:
+    """Dropping scaffolding keywords must not block a genuine decision."""
+    _write_fragment(
+        tmp_path, "persistence", "저장소 / 스키마", _SCAFFOLD_BODY, _SOFTDELETE_SCAFFOLD_DP
+    )
+    # User genuinely picks soft delete via deleted_at — a surviving keyword.
+    skel = _skeleton("tasks: id PK, deleted_at datetime null (soft delete)")
+    assert find_unresolved_decisions(skel, tmp_path) == []
+
+
+def test_placeholder_only_keyword_not_treated_as_scaffolding(tmp_path: Path) -> None:
+    """A keyword living only inside an unfilled <...> placeholder is not scaffolding.
+
+    The template body mentions "deleted_at" only within a `<...>` span, so it is
+    not permanent scaffolding — it must remain in detect so a user who later fills
+    that placeholder with a real deleted_at decision resolves the point.
+    """
+    body = "### 삭제 정책\n<예: deleted_at 컬럼으로 soft delete>\n"
+    _write_fragment(tmp_path, "persistence", "저장소 / 스키마", body, _SOFTDELETE_SCAFFOLD_DP)
+    detect = load_decision_points(tmp_path)["persistence"][0].detect
+    assert "deleted_at" in detect and "soft" in detect

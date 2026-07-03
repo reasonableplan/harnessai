@@ -340,6 +340,8 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 
 **Phase 18 — v0.18.x (완료, 2026-07-02)**: **블루프린트 흡수 (B) — 설명 기반 프로파일 추천**. 자기완결성 최대 구멍(설계 진입 — 프로파일 트리가 nextjs-vs-vite / postgres-vs-mongo 를 *알아야* 골라 비전문가가 이탈) 봉합. `/blueprint` 핵심 가치("unsure → 강한 추천: 선택 + 이유 + 트레이드오프")를 별도 BLUEPRINT.md 없이 ha-init 에 흡수(고유 가치만 — 6축/detect/capability 추론과 ~80% 겹치는 부분은 제외). `profile_recommendation.py` — 13 confirmed 프로파일 결정론 키워드 스코어링 → `recommend` 서브커맨드, 이유·트레이드오프 서술은 LLM 담당(코드/LLM 경계). 이어 6축 인터뷰 평문화("예상 DAU?/99.9%+/poc-mvp-ga" jargon 을 평문 질문으로, enum 토큰은 괄호 병기 → CLI 계약 무변경) + `--decision-rationale`(plan 본문에 "왜 이 스택인가" 기록 → 비전문가 후일 독해). 신규 테스트 +13 (1333 → 1346).
 
+**Phase 19 — v0.19.x (완료, 2026-07-03)**: **실패 자동회수 루프 + Personal Jira dogfood 수정**. v0.19.0 은 `/ha-run` 드라이버의 "rework 회귀는 정상 흐름" 설계가 미구현이던 결함 마감 — verify FAIL 시 rework 대상이 `done` 에 머물러 재빌드가 선택되지 않았다. `plan_manager.mark_for_rebuild()`(done → `needs_rebuild` + 사유), ha-verify `record` 가 FAIL + `--rework-tasks` 시 자동 마킹, ha-build `select_ready_tasks` 가 `needs_rebuild` 최우선 선택, pipeline_advisor 가 회귀 사유 노출; E2E 루프 테스트 포함. 이어 v0.19.1 은 Personal Jira 를 비전문가 관점으로 처음부터 재구축하는 dogfood 로 v0.16~0.19 를 실전 검증 — 발견 3건 전부 수정: 프로파일 추천의 python-cli "도구" 오탐 제거, capability 추론 storage/users 키워드 확장("할 일 관리 앱"이 persistence 섹션을 잃지 않음), decision_coverage 가 미기입 `<...>` 플레이스홀더와 fragment 자신의 템플릿 스캐폴딩(헤딩/체크리스트/가이드)을 "결정됨"으로 오판하던 것 수정 — 은폐되던 동시성/TOCTOU 질문 복원(dogfood skeleton 실측: suppress 3 → 0, 11/11 질문). 신규 테스트 +26 (1346 → 1372).
+
 **v1.0.0 백로그**:
 - Live LESSONS 자동 학습 (ha-review 반복 패턴 → 후보 등록)
 - multi-provider (Gemini/OpenAI backend)

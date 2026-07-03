@@ -29,7 +29,7 @@ Sibling: skeleton_checklist.py (lexical), consistency_checker.py (cross-section)
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import yaml
@@ -38,6 +38,12 @@ from .context import split_sections_by_id
 
 # Matches the leading YAML frontmatter block (mirrors profile_loader._FRONTMATTER_RE).
 _FRONTMATTER_RE = re.compile(r"^---\r?\n(.*?)\r?\n---", re.DOTALL)
+
+# Matches any unfilled angle-bracket placeholder span on a line (e.g. `<mutex / WAL>`).
+# Lines containing such a span are excluded from detect scanning in its entirety —
+# stripping only the span value is insufficient because the line's label (e.g. "동시성:")
+# can itself fire a detect keyword, producing a false "resolved" verdict.
+_PLACEHOLDER_LINE_RE = re.compile(r"<[^>\n]*>")
 
 
 @dataclass(frozen=True)
@@ -104,6 +110,30 @@ def _parse_points(section_id: str, raw: object) -> list[DecisionPoint]:
     return points
 
 
+def _filter_scaffolding_keywords(points: list[DecisionPoint], body: str) -> list[DecisionPoint]:
+    """Drop detect keywords already present in the fragment's own template body.
+
+    A keyword baked into the blank template (a heading like "### 백업 / 복구", a
+    "- [ ] 비밀번호 해시" checklist item, an "OAuth 선택 시 …" guidance bullet) fires
+    regardless of what the user decides, so it can never distinguish addressed
+    from unaddressed — it only false-resolves the point once that scaffolding is
+    echoed into the assembled skeleton. Placeholder (<...>) lines are excluded
+    first, mirroring find_unresolved_decisions, so a keyword that lives only inside
+    an unfilled placeholder is kept (it becomes real once the user fills it).
+
+    Worst case a point loses every keyword and is always reported unresolved —
+    the safe direction (over-ask) versus silently hiding a decision.
+    """
+    filled_lower = "\n".join(
+        ln for ln in body.splitlines() if not _PLACEHOLDER_LINE_RE.search(ln)
+    ).lower()
+    result: list[DecisionPoint] = []
+    for p in points:
+        kept = tuple(kw for kw in p.detect if kw.lower() not in filled_lower)
+        result.append(p if kept == p.detect else replace(p, detect=kept))
+    return result
+
+
 def load_decision_points(
     fragments_dir: Path | None = None,
 ) -> dict[str, list[DecisionPoint]]:
@@ -135,7 +165,7 @@ def load_decision_points(
             continue
         points = _parse_points(frag_id, data.get("decision_points"))
         if points:
-            out[frag_id] = points
+            out[frag_id] = _filter_scaffolding_keywords(points, text[m.end() :])
     return out
 
 
@@ -164,7 +194,13 @@ def find_unresolved_decisions(
         points = dp_by_id.get(section_id)
         if not points:
             continue
-        body_lower = body.lower()
+        # Exclude lines that still contain an unfilled placeholder (<...>) before
+        # running detect. The line label (e.g. "동시성:") can itself fire a detect
+        # keyword, so removing only the span value is not enough — the whole line
+        # must be dropped. Once the user replaces <...> with real content, the line
+        # has no placeholder and is included again, allowing detect to work normally.
+        filled_lines = [ln for ln in body.splitlines() if not _PLACEHOLDER_LINE_RE.search(ln)]
+        body_lower = "\n".join(filled_lines).lower()
         for p in points:
             if any(kw.lower() in body_lower for kw in p.detect):
                 continue

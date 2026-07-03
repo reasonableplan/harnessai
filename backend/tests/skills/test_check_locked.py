@@ -49,6 +49,11 @@ def _call_hook(
     """hook 스크립트를 subprocess 로 호출하고 (exit_code, stdout, stderr) 반환."""
     env = os.environ.copy()
     env.pop("HARNESS_SKIP_LOCK_HOOK", None)
+    # Pin both sides of the pipe to UTF-8. Without this, on Windows the child
+    # writes locale-encoded (cp949) output and the parent decodes with the same
+    # locale — fine until PYTHONIOENCODING in the outer env flips only the
+    # child to UTF-8, breaking decode on the hook's Korean stderr messages.
+    env["PYTHONIOENCODING"] = "utf-8"
     if env_override:
         env.update(env_override)
 
@@ -58,6 +63,7 @@ def _call_hook(
         input=inp,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         env=env,
         timeout=10,
     )
