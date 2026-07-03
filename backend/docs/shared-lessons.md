@@ -658,3 +658,13 @@ _rate_limit_store: dict[int, list[float]] = defaultdict(list)
 **근거**: noraebang(react-native-expo) /ha-design 점검 — T-004 백업 IO 가 `FileSystem.readAsStringAsync`/`writeAsStringAsync` 사용. [verified] Expo FileSystem(legacy) docs + expo/expo#39858/#39922. 새 File API/legacy + SDK 핀으로 정정(2026-06-30).
 
 ---
+
+## LESSON-040: 리버스 프록시는 요청·응답 양방향 hop-by-hop 헤더 필터 필요
+
+**문제**: httpx/requests 로 리버스 프록시 구현 시 응답 헤더만 필터하고 들어온 요청 헤더(Content-Length/Connection/Transfer-Encoding/Accept-Encoding)를 그대로 업스트림에 전달하면, 클라이언트가 content 로부터 자체 프레이밍을 재계산하면서 원본 Content-Length 와 충돌해 'bad Content-Length' 로 전 요청이 실패한다. httpx.request 를 통째로 mock 한 단위 테스트는 실제 전송 프레이밍을 검증하지 못해 이 버그를 은폐한다(baker T-021: 모든 정상 타깃이 502, ha-smoke 실기동에서만 발견).
+
+**규칙**: 프록시는 요청과 응답 양쪽에서 hop-by-hop/프레이밍 헤더를 제거한다: 요청측 {host,content-length,connection,keep-alive,transfer-encoding,upgrade,te,trailers,accept-encoding}, 응답측 {connection,keep-alive,transfer-encoding,content-length,x-frame-options,content-security-policy}. accept-encoding 제거로 클라이언트가 디코딩 가능한 인코딩 재협상. 테스트는 httpx 를 통째 mock 하지 말고 최소 1개는 실제 로컬 서버 왕복(또는 respx 로 전송 헤더 assert)으로 프레이밍 검증.
+
+**근거**: baker backend/io_/preview_proxy.py — 응답 헤더만 _STRIPPED_RESPONSE_HEADERS 로 걸러 요청측 누락. test_preview_proxy.py 전부 httpx.request mock 이라 통과. ha-smoke url probe 로 실기동 502 포착.
+
+---
