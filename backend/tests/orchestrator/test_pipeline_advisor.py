@@ -107,6 +107,31 @@ def test_building_advises_build_resume() -> None:
     assert advice.args == "--resume"
 
 
+def test_building_with_rework_reason_includes_task_id() -> None:
+    """verify_history 마지막 ha-verify FAIL 에 [rework: T-003] 마킹 → reason 에 T-003 포함."""
+    plan = _plan("building")
+    plan.verify_history.append(
+        VerifyRecord(
+            step="ha-verify",
+            at="2026-07-03T00:00:00+00:00",
+            passed=False,
+            summary="toolchain failed [rework: T-003]",
+        )
+    )
+    advice = advise(plan)
+    assert advice.action == "build"
+    assert "T-003" in advice.reason
+
+
+def test_building_without_rework_reason_uses_default() -> None:
+    """verify_history 마지막 ha-verify 가 PASS 이거나 rework 마킹 없음 → 기본 문구 사용."""
+    plan = _plan("building")
+    plan.verify_history.append(_rec("ha-verify", passed=True))
+    advice = advise(plan)
+    assert advice.action == "build"
+    assert "T-" not in advice.reason
+
+
 def test_built_advises_verify_auto() -> None:
     advice = advise(_plan("built"))
     assert advice.action == "verify"

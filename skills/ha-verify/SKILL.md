@@ -55,6 +55,8 @@ profile path `backend/` 로 오매칭). 그대로 돌리면 'no tests ran' 가�
   출력 시 크래시한 것 (예: 한국어 Windows cp949 콘솔의 em-dash `UnicodeEncodeError`).
   CliRunner(utf-8 버퍼) 테스트는 이걸 못 잡으므로 **이 스모크 실패를 verify 실패로 간주**:
   `record --passed false --rework-tasks <entrypoint 태스크>` 로 기록하고 `/ha-build` 복귀.
+  record 실행 후: plan.pipeline → building 자동 회귀, tasks.md 대상 T-ID → needs_rebuild 전이.
+  다음: `/ha-build --resume` (needs_rebuild 태스크 자동 선택) 또는 `/ha-build <T-ID>` 수동.
   근본 수정은 LESSON-033 (기본 출력 ASCII-safe 또는 진입점 UTF-8 강제).
 - **cli_entrypoint 인데 `smoke_check.ran=false` (toolchain.smoke 미설정) WARN** — 런타임 게이트가
   비어 있다. plan/profile 의 `toolchain.smoke` 에 실제 invoke (`python -m <pkg> --help` +

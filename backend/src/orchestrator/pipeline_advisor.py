@@ -9,6 +9,7 @@ cross-step memory (verify_history).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from src.orchestrator.plan_manager import HarnessPlan, requires_hitl_freeze
@@ -27,6 +28,17 @@ class Advice:
     skill: str  # skill to invoke (e.g. "/ha-verify"); "" when none
     args: str  # skill arguments (e.g. "--resume"); "" when none
     reason: str  # user-facing explanation (Korean)
+
+
+def _rework_reason(plan: HarnessPlan) -> str | None:
+    """최근 ha-verify FAIL 의 rework_tasks 추출 → reason 문구 생성."""
+    for rec in reversed(plan.verify_history):
+        if rec.step == "ha-verify" and not rec.passed:
+            m = re.search(r"\[rework: ([^\]]+)\]", rec.summary or "")
+            if m:
+                task_list = m.group(1)
+                return f"verify FAIL 원인 태스크 재구현 ({task_list})"
+    return None
 
 
 def _smoke_state(plan: HarnessPlan) -> str:
@@ -79,7 +91,7 @@ def advise(plan: HarnessPlan | None) -> Advice:
                 "HITL freeze 미완 — /ha-design 재진입해 LOCKED 섹션(페르소나/기능/화면) 확인 필요",
             )
         return Advice("plan", MODE_AUTO, "/ha-plan", "", "설계 확정 — 태스크 분해 진행")
-    if step in ("planned", "building"):
+    if step == "planned":
         return Advice(
             "build",
             MODE_AUTO,
@@ -87,6 +99,10 @@ def advise(plan: HarnessPlan | None) -> Advice:
             "--resume",
             "다음 ready 태스크 구현 (--resume 자동 선택)",
         )
+    if step == "building":
+        rework_reason = _rework_reason(plan)
+        reason = rework_reason or "다음 ready 태스크 선택 진행"
+        return Advice("build", MODE_AUTO, "/ha-build", "--resume", reason)
     if step == "built":
         return Advice(
             "verify",

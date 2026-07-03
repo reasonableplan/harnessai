@@ -273,3 +273,53 @@ def test_record_passed_output_has_rework_tasks_field(ha_verify: ModuleType) -> N
     output = json.loads(captured[0])
     assert "rework_tasks" in output, f"rework_tasks field missing: {list(output.keys())}"
     assert output["rework_tasks"] == []
+
+
+# ── V6-5: passed=false + rework_tasks → mark_for_rebuild 호출 회귀 ──
+
+
+def test_record_calls_mark_for_rebuild_on_rework_tasks(
+    ha_verify: ModuleType, tmp_path: pytest.TempPathFactory
+) -> None:
+    """passed=false + rework_tasks → PlanManager.mark_for_rebuild 호출 확인 (회귀)."""
+    # tasks.md 가 존재해야 mark_for_rebuild 경로 진입
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        td_path = Path(td)
+        tasks_path = td_path / "tasks.md"
+        tasks_path.write_text(
+            "| ID    | Agent | Depends | Description | Status     |\n"
+            "|-------|-------|---------|-------------|------------|\n"
+            "| T-001 | coder |         | work        | done       |\n",
+            encoding="utf-8",
+        )
+        plan_path = td_path / "harness-plan.md"
+        mock_plan = _make_mock_plan("built")
+
+        with (
+            patch.object(
+                ha_verify,
+                "load_plan",
+                return_value=(mock_plan, plan_path, td_path),
+            ),
+            patch.object(ha_verify, "assert_state"),
+            patch.object(ha_verify, "record_verify"),
+            patch.object(ha_verify, "regress"),
+            patch.object(ha_verify, "save_plan"),
+            patch(
+                "src.orchestrator.plan_manager.PlanManager.mark_for_rebuild",
+                return_value=["T-001"],
+            ) as mock_rebuild,
+            patch("builtins.print"),
+        ):
+            args = MagicMock()
+            args.passed = "false"
+            args.summary = "pytest 1 failed"
+            args.rework_tasks = "T-001"
+            args.no_rework = False
+            args.force_continue = False
+            result = ha_verify.cmd_record(args)
+
+        assert result == 0
+        mock_rebuild.assert_called_once_with(tasks_path, ["T-001"])

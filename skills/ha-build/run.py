@@ -122,8 +122,9 @@ _RECORD_STATUS_CHOICES = ("done", "blocked", "in-progress", "skipped")
 def select_ready_tasks(tasks: dict[str, dict[str, str]]) -> list[str]:
     """지금 빌드 가능한 태스크 ID 목록 (A5 / `--resume`).
 
-    조건: status 가 대기/in-progress 이고 depends_on 이 전부 resolved.
-    정렬: in-progress 먼저(부분복구 우선, #7) → 대기, 각 그룹 내 T-ID 오름차순.
+    조건: status 가 재구축/대기/in-progress 이고 depends_on 이 전부 resolved.
+    정렬: needs_rebuild 먼저(skeleton 변경 반영 우선) → in-progress(부분복구 우선, #7) → 대기,
+    각 그룹 내 T-ID 오름차순.
     blocked/skipped/done 은 제외.
     """
 
@@ -136,6 +137,10 @@ def select_ready_tasks(tasks: dict[str, dict[str, str]]) -> list[str]:
     def tid_num(tid: str) -> int:
         return int(tid.split("-")[1])
 
+    needs_rebuild = sorted(
+        (t for t in tasks if tasks[t]["status"].strip().lower() in _NEEDS_REBUILD_STATES and deps_done(t)),
+        key=tid_num,
+    )
     inprogress = sorted(
         (t for t in tasks if tasks[t]["status"].strip().lower() in _INPROGRESS_STATES and deps_done(t)),
         key=tid_num,
@@ -144,7 +149,7 @@ def select_ready_tasks(tasks: dict[str, dict[str, str]]) -> list[str]:
         (t for t in tasks if tasks[t]["status"].strip().lower() in _PENDING_STATES and deps_done(t)),
         key=tid_num,
     )
-    return inprogress + pending
+    return needs_rebuild + inprogress + pending
 
 
 # ── 부분 완료 복구 (issue #7) ────────────────────────────────────────────
@@ -153,6 +158,7 @@ def select_ready_tasks(tasks: dict[str, dict[str, str]]) -> list[str]:
 # 선언 산출 파일 존재 여부로 부분 완료를 알려 "이어서/처음부터" 판단을 돕는다.
 _INPROGRESS_STATES = ("in-progress", "진행중")
 _PENDING_STATES = ("대기", "pending", "")
+_NEEDS_REBUILD_STATES = ("needs_rebuild",)
 
 _SPEC_BLOCK_RE = re.compile(
     r"^###\s+(T-\d+)\b(.*?)(?=^###\s+T-\d+\b|\Z)", re.MULTILINE | re.DOTALL
@@ -220,13 +226,19 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         if not _tasks_path.exists():
             info(f"[FAIL] tasks.md 없음: {_tasks_path}")
             return 1
-        _ready = select_ready_tasks(_parse_tasks(_tasks_path.read_text(encoding="utf-8")))
+        _resume_tasks = _parse_tasks(_tasks_path.read_text(encoding="utf-8"))
+        _ready = select_ready_tasks(_resume_tasks)
         if not _ready:
             info("[OK] /ha-build --resume — 빌드할 ready 태스크 없음 (전부 done 또는 의존성 미충족).")
             return 0
         args.task = _ready[0]
+        _selected_label = (
+            " (재구축)"
+            if _resume_tasks[_ready[0]]["status"].strip().lower() in _NEEDS_REBUILD_STATES
+            else ""
+        )
         info(
-            f"[OK] /ha-build --resume — 다음 태스크 자동 선택: {_ready[0]}\n"
+            f"[OK] /ha-build --resume — 다음 태스크 자동 선택: {_ready[0]}{_selected_label}\n"
             f"  · ready 큐: {', '.join(_ready)}"
         )
 

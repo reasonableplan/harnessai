@@ -592,8 +592,8 @@ class PlanManager:
     ) -> list[str]:
         """Rewrite status of done tasks to needs_rebuild in tasks.md.
 
-        Called exclusively by ha-redesign commit --status applied when affected_tasks
-        contain tasks whose status is already "done". This prevents ha-verify /
+        Called by ha-redesign commit --status applied (affected_tasks) and ha-verify
+        record (failed verify with rework_tasks). Both paths prevent ha-verify /
         ha-build --skip-done from silently validating stale code.
 
         Only tasks with status "done" (case-insensitive, including "완료"/"completed")

@@ -42,7 +42,12 @@ JSON 출력: `action` / `mode`(auto|hitl) / `skill` / `args` / `reason` / `curre
   드라이버는 넘겨주기만 한다. 인터뷰 완료 후 루프 복귀.
 - `review` (smoke FAIL) → AskUserQuestion 으로 선택지 제시:
   "① smoke 실패 원인 수정 (원인 태스크 rebuild)" / "② advisory 로 간주하고 리뷰 진행".
-  ① 선택 시 실패 output 을 근거로 `/ha-redesign` 또는 `/ha-build` 재진입 안내.
+  ① 선택 시 구체 4단계:
+    1. `harness analyze-failure <출력파일> --tasks docs/tasks.md` → 실패 T-ID 식별
+    2. `ha-verify record --passed false --rework-tasks <T-ID>` → verify_history 기록 + tasks.md needs_rebuild 전이
+    3. plan.pipeline → building 자동 회귀 (pipeline_advisor 가 build --resume 반환)
+    4. `/ha-build --resume` → needs_rebuild 태스크 자동 선택 후 재구현
+    fallback: smoke output 에서 T-ID 매칭 못 하면 entrypoint 태스크 또는 사용자 선택
 - `ship_confirm` → AskUserQuestion: "배포/PR 을 완료했나요?" — 완료 시에만 `/ha-ship` 호출.
   미완료면 배포 방법 안내 후 정지 (shipped 는 릴리스 선언 — 선마킹 금지).
 

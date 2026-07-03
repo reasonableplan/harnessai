@@ -28,6 +28,7 @@ from utils import (  # noqa: E402, I001
 )
 
 # backend src import — utils.py 가 backend/ 를 sys.path 에 추가 보장
+from src.orchestrator.plan_manager import PlanManager as _PlanManager  # noqa: E402
 from src.orchestrator.skeleton_hash import check_skeleton_hash  # noqa: E402
 
 # toolchain 핵심 명령 → 사전 점검할 실행파일
@@ -365,6 +366,18 @@ def cmd_record(args: argparse.Namespace) -> int:
         if plan.pipeline.current_step != "building":
             regress(plan, "building")
 
+    # failed verify 시 rework tasks 를 needs_rebuild 로 전이 — ha-build --skip-done 이
+    # stale 코드를 통과시키는 것을 막는다 (ha-redesign applied 와 동일 패턴).
+    rebuild_required_tasks: list[str] = []
+    if not passed and rework_tasks:
+        tasks_path = plan_path.parent / "tasks.md"
+        if tasks_path.exists():
+            try:
+                rebuild_required_tasks = _PlanManager().mark_for_rebuild(tasks_path, rework_tasks)
+            except OSError as exc:
+                info(f"[WARN] needs_rebuild 전이 실패 (tasks.md 쓰기 오류): {exc}")
+                info("       수동으로 stale task status 를 확인하세요.")
+
     save_plan(plan, plan_path)
 
     output = {
@@ -373,7 +386,8 @@ def cmd_record(args: argparse.Namespace) -> int:
         "current_step": plan.pipeline.current_step,
         "verify_history_count": len(plan.verify_history),
         "rework_tasks": rework_tasks,
-        "next": "/ha-review" if passed else f"/ha-build {rework_tasks[0] if rework_tasks else '<T-ID>'} (실패 원인 수정 후)",
+        "rebuild_required_tasks": rebuild_required_tasks,
+        "next": "/ha-review" if passed else "/ha-build --resume" if rework_tasks else "/ha-build <T-ID> (실패 원인 수정 후)",
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0
