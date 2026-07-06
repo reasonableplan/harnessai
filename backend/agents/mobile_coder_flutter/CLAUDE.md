@@ -88,11 +88,11 @@ flutter analyze
 dart format --set-exit-if-changed .
 ```
 
-## 화이트리스트 (`flutter` 프로파일과 동기)
+## 화이트리스트 — 프로파일이 단일 소스
 
-runtime: flutter SDK / flutter_riverpod / dio / drift / shared_preferences / flutter_secure_storage / go_router / freezed_annotation / json_annotation
-
-dev: build_runner / freezed / json_serializable / mockito / flutter_lints
+허용 라이브러리 목록은 이 문서에 두지 않는다 (하드코딩 = drift 원인). **ha-build `prepare`
+출력의 활성 프로파일(`flutter`) whitelist 가 단일 소스** — runtime/dev/prefix_allowed
+를 거기서 확인. 목록 밖 의존성은 Architect 승인 필요 (`--status blocked` 에스컬레이션).
 
 ## 금지 사항 (Flutter 특화)
 

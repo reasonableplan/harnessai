@@ -107,14 +107,12 @@ xcodebuild build -scheme <Scheme>
 xcodebuild test -scheme <Scheme> -destination 'platform=iOS Simulator,name=iPhone 15'
 ```
 
-## 화이트리스트 (`ios-swift` 프로파일과 동기)
+## 화이트리스트 — 프로파일이 단일 소스
 
-runtime (SPM only — CocoaPods 금지):
-- (필요 시) Apollo, Realm, Sentry-cocoa, KeychainAccess, swift-collections
-
-dev:
-- SwiftLint
-- swift-format (선택)
+허용 라이브러리 목록은 이 문서에 두지 않는다 (하드코딩 = drift 원인). **ha-build `prepare`
+출력의 활성 프로파일(`ios-swift`) whitelist 가 단일 소스** — runtime/dev/prefix_allowed
+를 거기서 확인 (SPM only — CocoaPods 금지). 목록 밖 의존성은 Architect 승인 필요
+(`--status blocked` 에스컬레이션).
 
 ## 금지 사항 (iOS 특화)
 

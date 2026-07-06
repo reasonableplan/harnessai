@@ -174,12 +174,18 @@ multiSelect: false (디자인 레퍼런스 — 1 개 출처만)
 
 #### 특별 가드 — `view.screens` 의 디자인 레퍼런스
 
-URL 미입력 시 인터뷰 강제 1 회 추가:
+URL 미입력 시 인터뷰 강제 1 회 추가. **옵션은 활성 프로파일 기준으로 낸다** — 비전문가가
+"알아서"라고 답해도 플랫폼에 맞는 폴백이 박히도록 (workout dogfood #11: 모바일인데 웹
+라이브러리 shadcn 이 폴백돼 실질 무의미했던 결함):
+
 - "디자인 레퍼런스 URL 없이 진행 = LESSON-014 재발 (밋밋). 다음 중 선택:"
   - "/design-consultation 으로 DESIGN.md 생성 (권장 — 폰트/컬러/모션까지 시스템화, LESSON-014 근본 처방)"
-  - "shadcn/ui 기본 사용 (가장 안전)" → fragment 에 `https://ui.shadcn.com` 박음
-  - "Mobbin 검색 후 1 개 박음" → 사용자 입력 받음
-  - "Dribbble 검색 후 1 개 박음" → 사용자 입력 받음
+  - **웹 프로파일**: "shadcn/ui 기본 사용 (가장 안전)" → fragment 에 `https://ui.shadcn.com` 박음
+  - **모바일 프로파일 (RN/Flutter/Android/iOS)**: "Mobbin 의 해당 도메인 앱 패턴 기본 사용"
+    → fragment 에 `https://mobbin.com` + 도메인 키워드 (예: "fitness tracker") 박고,
+    화면 설계 시 그 카테고리의 실제 앱 패턴 (탭 구조/기록 흐름/빈 상태) 을 참조하도록 메모.
+    shadcn 은 웹 라이브러리 — 모바일 폴백으로 박지 말 것.
+  - "Mobbin/Dribbble 직접 검색 후 1 개 박음" → 사용자 입력 받음
 
 #### 누적 추적
 

@@ -44,10 +44,12 @@ JSON 출력: 프로젝트 상태, 활성 프로파일별 `{id, path, cwd, smoke}
 | react-vite | url | `npm run dev -- --port <빈포트> --strictPort` | `http://127.0.0.1:<port>/` |
 | nextjs | url | `npm run dev -- --port <빈포트>` | `http://127.0.0.1:<port>/` |
 | nestjs | url | `PORT=<빈포트> npm run start` | `http://127.0.0.1:<port>/` |
+| django | url | `uv run python manage.py runserver 127.0.0.1:<빈포트>` | `http://127.0.0.1:<port>/` |
 | express 류 | url | `PORT=<빈포트> npm start` | `http://127.0.0.1:<port>/` |
 | electron | exit | `npx electron . --no-sandbox` 가 어려우면 main 프로세스 단독: `node -e "require('./dist/main.js')"` 류 — 최소한 `npx tsc --noEmit` 가 아닌 **번들 로드** 확인 | — |
 | CLI/스크립트 | exit | `<엔트리포인트> --help` 또는 `python -m <pkg> --help` | — |
 | flutter | exit | `flutter build <플랫폼> --debug` (기동 대신 빌드 성공) | — |
+| react-native-expo | exit | `bunx expo export` (JS 번들 성공 = import/모듈 해석 검증 — 네이티브 빌드 프록시) | — |
 | android-kotlin | exit | `./gradlew assembleDebug` | — |
 | ios-swift | exit | `swift build` (macOS 외에는 skip + summary 에 명시) | — |
 

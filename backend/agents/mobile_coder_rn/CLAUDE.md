@@ -100,11 +100,11 @@ bunx tsc --noEmit
 - skeleton 에 없는 화면/컴포넌트 추가
 - 테스트 없이 done (LESSON-021)
 
-## 화이트리스트 (`react-native-expo` 프로파일과 동기)
+## 화이트리스트 — 프로파일이 단일 소스
 
-runtime: expo / expo-router / expo-secure-store / expo-sqlite / zustand / nativewind / zod
-dev: jest / @testing-library/react-native / typescript / eslint
-목록 밖은 Architect 승인 필요.
+허용 라이브러리 목록은 이 문서에 두지 않는다 (하드코딩 = drift 원인). **ha-build `prepare`
+출력의 활성 프로파일(`react-native-expo`) whitelist 가 단일 소스** — runtime/dev/prefix_allowed
+를 거기서 확인. 목록 밖 의존성은 Architect 승인 필요 (`--status blocked` 에스컬레이션).
 
 ## 입력 / 출력
 

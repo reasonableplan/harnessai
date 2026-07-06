@@ -130,6 +130,8 @@ whitelist:
     - react-native-gesture-handler
     - react-native-safe-area-context
     - react-native-screens
+    - react-native-svg
+    - react-native-gifted-charts
     - "@react-native-async-storage/async-storage"
     - drizzle-orm
   dev:

@@ -43,7 +43,7 @@ JSON 출력: 활성 프로파일들 (whitelist + lessons_applied), git diff 변�
 **SecurityHooks** (활성 프로파일마다, mode 중복 제외):
 1. **secret-filter** — 하드코딩 시크릿 탐지
 2. **command-guard** — 위험 명령 (rm -rf, eval, DROP TABLE)
-3. **db-guard** — raw SQL, f-string SQL, WHERE 없는 DELETE
+3. **db-guard** — raw SQL, f-string SQL, WHERE 없는 DELETE, `.exec`/`.execAsync` 보간·concat SQL (v0.19.3)
 4. **dependency-check** — 화이트리스트 외 import/install
 5. **code-quality** — TS any, 빈 except, console.log, print
 6. **contract-validator** — skeleton 외 엔드포인트

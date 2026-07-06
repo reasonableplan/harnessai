@@ -314,7 +314,7 @@ AskUserQuestion 으로 각 제안을 확인:
   최소 스텁 생성 (네이밍 / 에러 패턴 / 상태관리 전략 3~5줄). "없음" 이면 skip
   (프로파일 guidelines 만으로 진행 — 권위 공석을 인지한 선택).
 
-### 6.5. git baseline (자동)
+### 6.6. git baseline (자동)
 
 `write` 가 plan 저장 후 **git 저장소 + 초기 커밋을 자동 보장**합니다 (이미 repo 면 no-op). 이유: ha-build/ha-review 의 보안 훅이 git diff 기반이라 repo 없이 시작하면 빌드 전 기간이 무검사가 됨 (P0). 출력 JSON 의 `git_baseline` 필드로 결과 확인 (existing/initialized/git-missing/failed).
 

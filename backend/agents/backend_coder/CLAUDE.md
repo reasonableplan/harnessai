@@ -36,7 +36,7 @@
 - skeleton 에 정의된 API 엔드포인트 구현 (FastAPI)
 - 비즈니스 로직 구현 (services 계층)
 - 테스트 작성 (pytest + httpx)
-- branch 생성 + PR 제출
+- 완료 마킹 (v2: `ha-build complete --status done` — toolchain 게이트 통과 필수. v1 Orchestra 경로에서만 branch + PR)
 
 ## 입력
 - 태스크 설명 (Orchestrator가 배정)
@@ -45,7 +45,7 @@
 ## 출력
 - Python 소스 코드
 - pytest 테스트
-- git branch + PR
+- toolchain 통과 증거 (v1 Orchestra 경로에서는 git branch + PR)
 
 ## 코드 작성 전 필수 확인 — 이걸 안 하면 reject됨
 

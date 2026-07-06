@@ -20,6 +20,8 @@
 | `electron` | 4 | ipc / state / structure / style — IpcResult 봉투 + store-action-IPC + CVA |
 | `python-cli` | 0 | (가이드라인 없음 — 프로파일 본문이 컨벤션 담당) |
 | `python-lib` | 0 | (가이드라인 없음 — 프로파일 본문이 컨벤션 담당) |
+| `django` | 0 | (가이드라인 없음 — 프로파일 본문이 컨벤션 담당) |
+| `claude-skill` | 0 | (가이드라인 없음 — 프로파일 본문이 컨벤션 담당) |
 
 ## 경고
 

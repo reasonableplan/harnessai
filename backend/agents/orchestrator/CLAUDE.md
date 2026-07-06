@@ -115,6 +115,9 @@ Phase 2+ — 확장 (MVP 이후)
 ```
 
 ### Phase 리뷰 트리거
+
+> v1 Orchestra 경로 전용 — v2 `/ha-*` 파이프라인에서는 merge/PR 단위 Phase 리뷰 대신
+> ha-verify(toolchain) + ha-review(보안/품질) 게이트가 검증을 담당한다.
 - 해당 Phase의 **모든 태스크가 merge 완료**되면 Reviewer에 Phase 리뷰 요청
 - Phase 리뷰 입력: Phase 태스크 ID 목록 + 각 PR 링크
 - Phase 리뷰 통과 → 다음 Phase 태스크 배정 시작

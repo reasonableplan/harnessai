@@ -4,6 +4,48 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.19.4] — 2026-07-06 — "push 전 전면 감사: 프롬프트/문서 stale 제거 + whitelist 단일소스화"
+
+프롬프트 표면 전수 감사 (SKILL.md 15 + 에이전트 프롬프트 12 + 프로파일/문서) + 외부
+리서치 (모델 라인업/Expo 생태계/차트 라이브러리/경량 임베딩) 결과 반영. 코드 경로는
+clean (구형 모델명·dead code·TODO 전부 0건) — stale 은 프롬프트/문서에 집중돼 있었다.
+
+### Fixed
+
+- **모바일 코더 4개 프롬프트 whitelist 단일소스화** — "(프로파일과 동기)" 를 주장하던
+  인라인 목록이 실제 프로파일과 대폭 불일치 (ios 는 프로파일에 없는 Apollo/Realm 을
+  허용 기재 — 위반 유도). 인라인 목록을 제거하고 "ha-build prepare 출력의 프로파일
+  whitelist = 단일 소스" 참조로 교체 — drift 원인 자체를 제거. 회귀 테스트 신설
+  (`test_agent_prompt_whitelist.py`, 6 tests)
+- SETUP.md "/ha-* 스킬 7종" → 15종 (stale count)
+- ha-init SKILL.md §6.5 번호 중복 (conventions 확인 / git baseline) → git baseline 을 §6.6
+- ha-review SKILL.md 훅 요약에 v0.19.3 신설 db-guard `.exec` 보간/concat 패턴 반영
+- ha-smoke 명령 도출 표에 django (url: `manage.py runserver`) +
+  react-native-expo (exit: `bunx expo export` 번들 프록시) 행 추가
+- ha-log SKILL.md 역할 문구 — 리포지토리 고정 경로 표현을 프로젝트별 해석 규칙과 일치시킴
+- GUIDELINES_NOTE.md 프로파일 표에 django/claude-skill (0건) 행 추가
+- coder/orchestrator 프롬프트의 v1 잔재 표현 정리 — "branch 생성 + PR 제출" 을
+  v2 `ha-build complete` 기준으로, "Phase 리뷰 트리거" 에 v1 전용 주석
+
+### Added
+
+- **react-native-expo whitelist 에 `react-native-svg` + `react-native-gifted-charts`**
+  — workout dogfood #14 실수요 (차트 요구를 로컬 우회로 처리했던 것) + 2026 생태계
+  조사 (gifted-charts/victory-native 양강) 근거로 승격
+- **ha-design 디자인 레퍼런스 모바일 폴백** (dogfood #11) — 특별 가드 옵션이 프로파일
+  기준으로 분기: 웹=shadcn/ui, 모바일=Mobbin 해당 도메인 앱 패턴 (+도메인 키워드 메모).
+  shadcn(웹 라이브러리)이 모바일 폴백으로 박히던 결함 해소
+
+### Research (기록)
+
+- 모델 티어 재평가: judge=opus-4-8 / code=sonnet-5 유지 확정 (Fable 5 는 2배 가격 +
+  refusal/retention 제약으로 subprocess judge 부적합. Sonnet 5 인트로가 2026-08-31 종료)
+- #4 키워드→임베딩 백로그 재평가: Model2Vec (정적 임베딩 8~30MB, CPU 500x) /
+  FastEmbed (ONNX) 로 "비쌈" 가정 완화 — 한국어 매칭 검증 후 도입 가능
+- Expo SDK 55+ 는 New Architecture 강제 (54 가 마지막 opt-out), 현행 SDK 56 (RN 0.85)
+
+---
+
 ## [0.19.3] — 2026-07-06 — "운동관리앱 dogfood 빌드→리뷰 전 구간: 게이트/훅 결함 5건 수정"
 
 운동관리앱 실주행 (ha-plan → ha-build ×13 → ha-verify → ha-smoke → ha-review APPROVE,

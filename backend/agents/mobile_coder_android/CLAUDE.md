@@ -97,23 +97,12 @@ cd <android_dir>
 ./gradlew ktlintFormat
 ```
 
-## 화이트리스트 (`android-kotlin` 프로파일과 동기)
+## 화이트리스트 — 프로파일이 단일 소스
 
-runtime (Gradle Version Catalog `versions.toml` 강제):
-- androidx.core:core-ktx
-- androidx.lifecycle:lifecycle-viewmodel-ktx / lifecycle-runtime-compose
-- androidx.activity:activity-compose
-- androidx.compose.* (BOM)
-- androidx.navigation:navigation-compose
-- androidx.room:room-runtime / room-ktx
-- com.squareup.retrofit2:retrofit / converter-moshi
-- com.squareup.okhttp3:okhttp / logging-interceptor
-- org.jetbrains.kotlinx:kotlinx-coroutines-android
-- com.google.dagger:hilt-android
-
-dev:
-- androidx.test:* / androidx.compose.ui:ui-test-junit4 / mockk / turbine
-- ktlint Gradle plugin
+허용 라이브러리 목록은 이 문서에 두지 않는다 (하드코딩 = drift 원인). **ha-build `prepare`
+출력의 활성 프로파일(`android-kotlin`) whitelist 가 단일 소스** — runtime/dev/prefix_allowed
+를 거기서 확인 (Gradle 은 Version Catalog `versions.toml` 일원화 강제).
+목록 밖 의존성은 Architect 승인 필요 (`--status blocked` 에스컬레이션).
 
 ## 금지 사항 (Android 특화)
 

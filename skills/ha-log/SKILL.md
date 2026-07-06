@@ -11,7 +11,7 @@ allowed-tools:
 
 ## 역할
 
-`backend/docs/worklog.md` 에 사용자 입력을 *논의 / 합의 / 다음* 카테고리 중 하나로 append.
+프로젝트의 `worklog.md` (루트에 있으면 그쪽, 기본 `docs/worklog.md`) 에 사용자 입력을 *논의 / 합의 / 다음* 카테고리 중 하나로 append.
 
 **입력**: 사용자가 박은 텍스트 (한 줄~여러 줄)
 **출력**: worklog.md 의 오늘 날짜 섹션에 append
