@@ -232,7 +232,7 @@ def _reroot_single_wrapper(declared: set[str], actual: set[str]) -> set[str]:
     root = next(iter(roots))
     if root in actual:
         return declared
-    rerooted = {d[len(root):] for d in declared if len(d) > len(root)}
+    rerooted = {d[len(root) :] for d in declared if len(d) > len(root)}
     return rerooted or declared
 
 

@@ -424,13 +424,47 @@ _PYTHON_IMPORT = re.compile(r"^(?:import|from)\s+([A-Za-z_][A-Za-z0-9_]*)", re.M
 # 언어 레벨 모듈이라 외부 의존성이 아님 (LESSON-041: 테스트의 fs/path WARN 홍수).
 _NODE_BUILTIN_MODULES = frozenset(
     {
-        "assert", "async_hooks", "buffer", "child_process", "cluster", "console",
-        "constants", "crypto", "dgram", "diagnostics_channel", "dns", "domain",
-        "events", "fs", "http", "http2", "https", "inspector", "module", "net",
-        "os", "path", "perf_hooks", "process", "punycode", "querystring",
-        "readline", "repl", "sqlite", "stream", "string_decoder", "timers",
-        "tls", "trace_events", "tty", "url", "util", "v8", "vm",
-        "worker_threads", "zlib",
+        "assert",
+        "async_hooks",
+        "buffer",
+        "child_process",
+        "cluster",
+        "console",
+        "constants",
+        "crypto",
+        "dgram",
+        "diagnostics_channel",
+        "dns",
+        "domain",
+        "events",
+        "fs",
+        "http",
+        "http2",
+        "https",
+        "inspector",
+        "module",
+        "net",
+        "os",
+        "path",
+        "perf_hooks",
+        "process",
+        "punycode",
+        "querystring",
+        "readline",
+        "repl",
+        "sqlite",
+        "stream",
+        "string_decoder",
+        "timers",
+        "tls",
+        "trace_events",
+        "tty",
+        "url",
+        "util",
+        "v8",
+        "vm",
+        "worker_threads",
+        "zlib",
     }
 )
 
@@ -446,6 +480,7 @@ def _frontend_package_root(pkg: str) -> str:
     if pkg.startswith("@"):
         return "/".join(parts[:2]) if len(parts) >= 2 else pkg
     return parts[0]
+
 
 # Stdlib imports are never external dependencies (LESSON-030: tomllib/pathlib FPs).
 _STDLIB_MODULES = frozenset(sys.stdlib_module_names)
@@ -538,9 +573,7 @@ def check_dependency(
                 # LESSON-041: subpath import 는 설치 패키지 루트로 정규화해 대조.
                 root = _frontend_package_root(pkg)
                 allowed = (
-                    pkg in fe_wl
-                    or root in fe_wl
-                    or any(pkg.startswith(p) for p in fe_prefixes)
+                    pkg in fe_wl or root in fe_wl or any(pkg.startswith(p) for p in fe_prefixes)
                 )
                 if not allowed:
                     findings.append(

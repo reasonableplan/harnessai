@@ -1157,12 +1157,7 @@ class TestStripTestFilesFromDiff:
 
     @staticmethod
     def _diff_block(path: str, added: str) -> str:
-        return (
-            f"diff --git a/{path} b/{path}\n"
-            f"--- a/{path}\n"
-            f"+++ b/{path}\n"
-            f"+{added}\n"
-        )
+        return f"diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n+{added}\n"
 
     def test_dunder_tests_dir_stripped(self) -> None:
         from src.orchestrator.security_hooks import strip_test_files_from_diff
