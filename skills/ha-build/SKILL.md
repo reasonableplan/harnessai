@@ -87,7 +87,7 @@ JSON 출력: 태스크 정보 (agent, depends_on, description, path), 활성 프
 "먼저 좀 봐두자" 모드로 빠지면 그대로 직접 작업 모드로 미끄러져 룰이 무너집니다.
 
 각 태스크마다 Agent tool 을 호출해 Sonnet 서브에이전트에 위임합니다.
-이렇게 하면 부모 세션 모델(Opus/Sonnet) 이나 extra-usage 토글 상태와 무관하게
+이렇게 하면 부모 세션 모델(Fable/Opus 등) 이나 extra-usage 토글 상태와 무관하게
 코드 작성은 항상 Sonnet 에서 실행됩니다.
 
 ```

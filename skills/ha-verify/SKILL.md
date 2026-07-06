@@ -2,7 +2,7 @@
 name: ha-verify
 description: |
   HarnessAI v2 — 프로파일의 toolchain (test/lint/type) 실행 + 결과 기록.
-  기계적 명령 실행 + 짧은 결과 파싱이 전부라 부모 세션 모델 그대로 사용 (Opus 라도 비용 미미).
+  기계적 명령 실행 + 짧은 결과 파싱이 전부라 부모 세션 모델 그대로 사용 (상위 모델이라도 비용 미미).
   Use when: /ha-build 완료 후, "검증해줘", "/ha-verify"
 allowed-tools:
   - Read
