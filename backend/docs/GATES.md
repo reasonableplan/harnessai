@@ -30,6 +30,7 @@
 | skeleton drift gate (freeze 후 외부 수정) | BLOCK | `--accept-skeleton-drift` |
 | depends_on 미충족 / 병렬 그룹 내 의존 | BLOCK | — (직렬화 필요) |
 | LESSON-021 toolchain (test+lint+type, done 전용) | BLOCK | `--skip-toolchain` |
+| git repo/설치 사전 조건 (not-git 시 done 차단 — 빌드 전 기간 보안훅 무검사 방지, v0.19.3 P0) | BLOCK | `--skip-security` |
 | security gate | BLOCK | `--skip-security` |
 | no-tests 우회 감지 (B3) | advisory(WARN) | — |
 | built 전이 시 skipped 공개 | advisory(WARN) | — |
@@ -81,5 +82,5 @@
 | reviewed 상태에서만 마킹 | BLOCK | — |
 
 ## 집계
-- BLOCK 계열: **17** · advisory/HITL 계열: **14+** (2026-06-22: ha-verify 런타임 인코딩 스모크 + ha-smoke 계층2 + ha-converge 회수 게이트 추가)
+- BLOCK 계열: **20** · advisory/HITL 계열: **17+** (2026-07-06 전수 재집계 — v0.19.2 "작성 가이드" 잔재 + v0.19.3 ha-build git 사전 조건 반영. 기준: severity 가 BLOCK 표기인 행. 보안훅/ai-slop findings 행은 BLOCK/WARN 혼합이라 "+" 계상)
 - 다이어그램/README 의 "8개 게이트" 는 이 표 기준으로 갱신할 것.
