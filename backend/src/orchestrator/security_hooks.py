@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -58,14 +59,8 @@ class SecurityResult:
 _DOC_FILE_SUFFIXES = (".md", ".rst", ".txt")
 
 
-def strip_doc_files_from_diff(diff: str) -> str:
-    """Remove documentation-file blocks from a git diff (LESSON-030).
-
-    Excluded blocks:
-    - ``.md`` / ``.rst`` / ``.txt`` files
-    - ``docs/`` and ``templates/`` paths
-    - ``.harness-backup-*`` backup files
-    """
+def _strip_file_blocks_from_diff(diff: str, should_skip: Callable[[str], bool]) -> str:
+    """Remove file blocks whose header path matches ``should_skip`` from a git diff."""
     if not diff:
         return diff
     lines = diff.splitlines(keepends=True)
@@ -76,17 +71,47 @@ def strip_doc_files_from_diff(diff: str) -> str:
             # File header: "diff --git a/<path> b/<path>"
             parts = line.split(" b/", 1)
             path = parts[1].strip() if len(parts) == 2 else ""
-            skip = (
-                path.endswith(_DOC_FILE_SUFFIXES)
-                or "/docs/" in path
-                or "/templates/" in path
-                or ".harness-backup-" in path
-                or path.startswith("docs/")
-                or path.startswith("templates/")
-            )
+            skip = should_skip(path)
         if not skip:
             out.append(line)
     return "".join(out)
+
+
+def strip_doc_files_from_diff(diff: str) -> str:
+    """Remove documentation-file blocks from a git diff (LESSON-030).
+
+    Excluded blocks:
+    - ``.md`` / ``.rst`` / ``.txt`` files
+    - ``docs/`` and ``templates/`` paths
+    - ``.harness-backup-*`` backup files
+    """
+    return _strip_file_blocks_from_diff(
+        diff,
+        lambda path: (
+            path.endswith(_DOC_FILE_SUFFIXES)
+            or "/docs/" in path
+            or "/templates/" in path
+            or ".harness-backup-" in path
+            or path.startswith("docs/")
+            or path.startswith("templates/")
+        ),
+    )
+
+
+# Test fixtures deliberately contain destructive SQL / fake credentials to
+# exercise error paths (LESSON-041: store 테스트의 DROP TABLE 이 command-guard
+# BLOCK 오탐). 리뷰 정책 (ha-review §2.6/§2.7) 도 테스트 픽스처 발견을 FP 로
+# 분류하므로 훅 스캔 전에 테스트 파일 블록을 제외한다.
+_TEST_PATH_RE = re.compile(
+    r"(?:^|/)(?:__tests__|tests?)/"
+    r"|(?:^|/)(?:test_[^/]+\.py|[^/]+_test\.py|conftest\.py)$"
+    r"|\.(?:test|spec)\.[^/.]+$"
+)
+
+
+def strip_test_files_from_diff(diff: str) -> str:
+    """Remove test-file blocks from a git diff (LESSON-041)."""
+    return _strip_file_blocks_from_diff(diff, lambda path: bool(_TEST_PATH_RE.search(path)))
 
 
 # Self-imports of the project's own packages are not external dependencies
@@ -283,7 +308,10 @@ _COMMAND_PATTERNS: list[tuple[re.Pattern[str], str, Severity]] = [
         Severity.BLOCK,
     ),
     (
-        re.compile(r"\bexec\s*\((?!.*#\s*noqa)"),
+        # LESSON-041: `.exec(` 메서드 호출 (SQLite 드라이버 db.exec 등) 은 Python
+        # builtin exec() 가 아님 — bare `exec(` 만 코드 인젝션 대상.
+        # 보간/concat SQL 을 담은 `.exec(` 는 db-guard 가 별도 차단.
+        re.compile(r"(?<![\w.])exec\s*\((?!.*#\s*noqa)"),
         "exec() 사용 — 코드 인젝션 위험",
         Severity.BLOCK,
     ),
@@ -353,6 +381,19 @@ _DB_PATTERNS: list[tuple[re.Pattern[str], str, Severity]] = [
         "WHERE 없는 UPDATE 의심 — 전체 행 수정 위험",
         Severity.WARN,
     ),
+    (
+        # LESSON-041: SQLite 드라이버 .exec()/.execAsync() 에 템플릿 보간 SQL —
+        # command-guard 가 method-call exec 를 스코프아웃한 대신 여기서 차단.
+        re.compile(r"\.exec(?:Async|Sync)?\s*\(\s*`[^`\n]*\$\{"),
+        "템플릿 보간 SQL (.exec) — SQL 인젝션 위험",
+        Severity.BLOCK,
+    ),
+    (
+        # LESSON-041: .exec("..." + var) 식 문자열 concat SQL.
+        re.compile(r"""\.exec(?:Async|Sync)?\s*\(\s*[^,)\n]*\+\s*[^,)\n]*\)"""),
+        "문자열 concat SQL (.exec) — SQL 인젝션 위험",
+        Severity.BLOCK,
+    ),
 ]
 
 
@@ -378,6 +419,33 @@ def check_db_guard(text: str) -> list[Finding]:
 # ---------------------------------------------------------------------------
 
 _PYTHON_IMPORT = re.compile(r"^(?:import|from)\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE)
+
+# Bare Node builtin imports (`node:` prefix 없이) — #19 scope-out 과 동일 근거:
+# 언어 레벨 모듈이라 외부 의존성이 아님 (LESSON-041: 테스트의 fs/path WARN 홍수).
+_NODE_BUILTIN_MODULES = frozenset(
+    {
+        "assert", "async_hooks", "buffer", "child_process", "cluster", "console",
+        "constants", "crypto", "dgram", "diagnostics_channel", "dns", "domain",
+        "events", "fs", "http", "http2", "https", "inspector", "module", "net",
+        "os", "path", "perf_hooks", "process", "punycode", "querystring",
+        "readline", "repl", "sqlite", "stream", "string_decoder", "timers",
+        "tls", "trace_events", "tty", "url", "util", "v8", "vm",
+        "worker_threads", "zlib",
+    }
+)
+
+
+def _frontend_package_root(pkg: str) -> str:
+    """Import 경로 → 설치 패키지 루트 (LESSON-041 subpath 정규화).
+
+    ``drizzle-orm/sqlite-core`` → ``drizzle-orm``,
+    ``@scope/pkg/sub`` → ``@scope/pkg``. subpath 는 같은 설치 패키지이므로
+    루트가 화이트리스트에 있으면 허용.
+    """
+    parts = pkg.split("/")
+    if pkg.startswith("@"):
+        return "/".join(parts[:2]) if len(parts) >= 2 else pkg
+    return parts[0]
 
 # Stdlib imports are never external dependencies (LESSON-030: tomllib/pathlib FPs).
 _STDLIB_MODULES = frozenset(sys.stdlib_module_names)
@@ -462,12 +530,18 @@ def check_dependency(
         for i, line in enumerate(lines, start=1):
             for m in _FRONTEND_IMPORT.finditer(line):
                 pkg = m.group(2)
-                # Node builtins (node: prefix) are always allowed — renderer
-                # boundary enforcement is a separate import-boundary concern
-                # and out of scope for this dependency-whitelist hook (#19).
-                if pkg.startswith("node:"):
+                # Node builtins (node: prefix 또는 bare) are always allowed —
+                # renderer boundary enforcement is a separate import-boundary
+                # concern and out of scope for this hook (#19, LESSON-041).
+                if pkg.startswith("node:") or pkg in _NODE_BUILTIN_MODULES:
                     continue
-                allowed = pkg in fe_wl or any(pkg.startswith(p) for p in fe_prefixes)
+                # LESSON-041: subpath import 는 설치 패키지 루트로 정규화해 대조.
+                root = _frontend_package_root(pkg)
+                allowed = (
+                    pkg in fe_wl
+                    or root in fe_wl
+                    or any(pkg.startswith(p) for p in fe_prefixes)
+                )
                 if not allowed:
                     findings.append(
                         Finding(

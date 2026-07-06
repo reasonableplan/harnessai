@@ -668,3 +668,18 @@ _rate_limit_store: dict[int, list[float]] = defaultdict(list)
 **근거**: baker backend/io_/preview_proxy.py — 응답 헤더만 _STRIPPED_RESPONSE_HEADERS 로 걸러 요청측 누락. test_preview_proxy.py 전부 httpx.request mock 이라 통과. ha-smoke url probe 로 실기동 502 포착.
 
 ---
+
+## Pending Lessons (자동 추출 — 사용자 promotion 대기)
+
+> 자동 추출된 LESSON. 사용자 검토 후 main 섹션으로 promote (auto_extracted 마커 제거) 또는 거부 (블록 삭제).
+
+## LESSON-041: command-guard FP: SQLite 드라이버 .exec() + 테스트 DROP TABLE (mobile/SQLite)
+<!-- auto_extracted: true / promotion_pending: true / extracted_at: 2026-07-06 -->
+
+**문제**: react-native-expo + expo-sqlite/drizzle 프로젝트에서 command-guard 훅이 DB 드라이버의 .exec() 메서드(begin/commit/rollback/PRAGMA/상수 DDL)와 테스트 파일의 DROP TABLE(에러경로 시뮬)을 코드 인젝션/데이터파괴 BLOCK 으로 오탐. 백엔드 shell exec()/사용자입력 SQL 기준 룰이 SQLite 클라이언트 API 에 그대로 적용돼 발생.
+
+**규칙**: command-guard 는 (1) __tests__/ 경로의 상수 SQL(테스트 픽스처·에러 시뮬)은 제외하고, (2) SQLite 드라이버 .exec()/.execAsync() 는 인자가 문자열 리터럴/상수면 통과, 사용자 입력이 문자열 concat/템플릿 보간될 때만 BLOCK 하도록 스코프. 판정 전 fp-check 로 프로덕션 도달성 확인.
+
+**근거**: workout-app /ha-review: 9 BLOCK 전부 FP (logs/routines store test 의 DROP TABLE 2건 + testSqliteDb.ts 의 .exec 7건). 프로덕션 client.ts 는 drizzle/expo-sqlite API 만 사용.
+
+---

@@ -95,35 +95,32 @@ def test_security_gate_warns_when_git_not_installed(
     assert "git" in combined
 
 
-def test_security_gate_warns_when_not_git_repo(ha_build, tmp_path, monkeypatch, capsys) -> None:
-    """git 있지만 repo 아님 → WARN 출력 + 빈 리스트 반환."""
+def test_security_gate_blocks_when_not_git_repo(ha_build, tmp_path, monkeypatch) -> None:
+    """git 있지만 repo 아님 → done 차단 (P0: WARN skip 이면 빌드 전 기간 무검사).
+
+    workout-app dogfood 에서 13개 태스크 내내 보안 훅이 skip 된 구멍의 회귀 테스트.
+    /ha-init 이 git baseline 을 보장하므로 정상 흐름에서는 도달하지 않음.
+    """
     monkeypatch.setattr(ha_build, "_is_git_repo", lambda p: (False, True))
     plan = _make_plan()
 
     result = ha_build._run_security_gate(tmp_path, plan)
 
-    assert result == []
-    captured = capsys.readouterr()
-    combined = captured.out + captured.err
-    assert "[WARN]" in combined
-    assert "git" in combined
+    assert len(result) == 1
+    assert "git" in result[0]
 
 
-def test_security_gate_warn_message_includes_git_init_hint(
-    ha_build, tmp_path, monkeypatch, capsys
+def test_security_gate_block_message_includes_git_init_hint(
+    ha_build, tmp_path, monkeypatch
 ) -> None:
-    """not-repo WARN 메시지에 git init 힌트 포함."""
+    """not-repo 차단 메시지에 git init 힌트 + --skip-security 옵트아웃 안내 포함."""
     monkeypatch.setattr(ha_build, "_is_git_repo", lambda p: (False, True))
     plan = _make_plan()
 
-    # info() 는 stderr 로 출력 — redirect 로 캡처해 git init 힌트 단언
-    import contextlib
-    import io
+    result = ha_build._run_security_gate(tmp_path, plan)
 
-    buf = io.StringIO()
-    with contextlib.redirect_stderr(buf):
-        ha_build._run_security_gate(tmp_path, plan)
-    assert "git init" in buf.getvalue()
+    assert any("git init" in f for f in result)
+    assert any("--skip-security" in f for f in result)
 
 
 def test_security_gate_proceeds_normally_in_git_repo(ha_build, tmp_path, monkeypatch) -> None:

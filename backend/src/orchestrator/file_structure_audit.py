@@ -214,6 +214,28 @@ def _collect_dirs(
         _collect_dirs(scan_root, entry, current_depth + 1, top_n, out)
 
 
+def _reroot_single_wrapper(declared: set[str], actual: set[str]) -> set[str]:
+    """Single-root wrapper re-rooting (drift FP #4).
+
+    Profile trees illustrate the app dir with a wrapper root (``mobile/``,
+    ``backend/`` — the inline comment "또는 apps/mobile/" shows the name is
+    illustrative), but actual scans are relative to the profile path, so the
+    wrapper never matches the filesystem. When the declared tree has exactly
+    one top-level dir and it is absent from ``actual``, compare the tree
+    *contents* instead.
+
+    KEEP IN SYNC with harness/bin/harness ``_reroot_single_wrapper``.
+    """
+    roots = {d.split("/", 1)[0] + "/" for d in declared}
+    if len(roots) != 1:
+        return declared
+    root = next(iter(roots))
+    if root in actual:
+        return declared
+    rerooted = {d[len(root):] for d in declared if len(d) > len(root)}
+    return rerooted or declared
+
+
 def compute_drift(declared: set[str], actual: set[str]) -> DriftResult:
     """Compare declared (from profile) vs actual (from filesystem) dir sets.
 
@@ -221,6 +243,7 @@ def compute_drift(declared: set[str], actual: set[str]) -> DriftResult:
     missing = declared - actual  (declared but not present)
     match   = True when both are empty
     """
+    declared = _reroot_single_wrapper(declared, actual)
     # Exclude template placeholder dirs from missing check — <domain>/ etc.
     # They will never exist on disk and are intentional variable names.
     declared_concrete = {d for d in declared if "<" not in d}

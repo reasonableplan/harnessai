@@ -142,6 +142,7 @@ whitelist:
     - "@testing-library/react-native"
     - "@testing-library/jest-native"
     - expo-doctor
+    - drizzle-kit
     - "@types/react"
     - "@types/jest"
   prefix_allowed:

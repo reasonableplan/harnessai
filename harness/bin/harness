@@ -947,6 +947,27 @@ def _collect_dirs_recursive(
         _collect_dirs_recursive(scan_root, entry, depth + 1, top_n, out)
 
 
+def _reroot_single_wrapper(declared: set[str], actual: set[str]) -> set[str]:
+    """Single-root wrapper re-rooting (drift FP #4).
+
+    프로파일 트리는 앱 디렉토리를 래퍼 루트(`mobile/`, `backend/` — 인라인 주석
+    "또는 apps/mobile/" 이 보여주듯 이름은 예시)로 감싸지만, 실제 프로젝트에는
+    그 래퍼가 없을 수 있다 (profile path="." 인 루트 배치 등). 트리의 최상위
+    디렉토리가 정확히 1개이고 actual 에 없으면 래퍼로 간주하고 내용물 기준 비교.
+
+    KEEP IN SYNC with backend/src/orchestrator/file_structure_audit.py
+    ``_reroot_single_wrapper``.
+    """
+    roots = {d.split("/", 1)[0] + "/" for d in declared}
+    if len(roots) != 1:
+        return declared
+    root = next(iter(roots))
+    if root in actual:
+        return declared
+    rerooted = {d[len(root):] for d in declared if len(d) > len(root)}
+    return rerooted or declared
+
+
 def _check_file_structure_drift(
     project: Path,
     profiles_dir: Path,
@@ -1008,6 +1029,9 @@ def _check_file_structure_drift(
                 ancestor = "/".join(segs[:i]) + "/"
                 if "<" not in ancestor and not _has_skip_segment(ancestor):
                     declared_concrete.add(ancestor)
+        # drift FP #4: single-root 래퍼 (mobile/, backend/) 가 actual 에 없으면
+        # 내용물 기준으로 재비교 (profile path="." 루트 배치 대응).
+        declared_concrete = _reroot_single_wrapper(declared_concrete, actual)
         extras = sorted(actual - declared_concrete - _BENIGN_EXTRA_DIRS)
         missing = sorted(declared_concrete - actual)
         drift_checks.append((str(profile_id), extras, missing))

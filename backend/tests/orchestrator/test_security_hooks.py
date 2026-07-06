@@ -1091,3 +1091,144 @@ class TestParseTsconfigPathPrefixes:
         assert "@shared/other/" in result
         # 중복 여부: 같은 prefix 두 번 없어야 함
         assert len(result) == len(set(result))
+
+
+# ---------------------------------------------------------------------------
+# LESSON-041 — command-guard/db-guard SQLite 드라이버 FP + test-strip + subpath
+# ---------------------------------------------------------------------------
+
+
+class TestCommandGuardExecMethodCall:
+    """LESSON-041: `.exec(` 메서드 호출은 Python builtin exec() 가 아님."""
+
+    def test_sqlite_driver_exec_constant_clean(self) -> None:
+        code = 'raw.exec("PRAGMA foreign_keys = ON;")'
+        findings = check_command_guard(code)
+        assert findings == []
+
+    def test_sqlite_driver_exec_transaction_clean(self) -> None:
+        code = 'this.client.exec("commit");'
+        findings = check_command_guard(code)
+        assert findings == []
+
+    def test_bare_python_exec_still_blocked(self) -> None:
+        code = "exec(user_code)"
+        findings = check_command_guard(code)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    def test_drop_table_still_blocked_outside_tests(self) -> None:
+        # DROP 자체는 여전히 BLOCK — 테스트 파일 제외는 strip_test_files_from_diff 몫.
+        code = 'db.exec("DROP TABLE users")'
+        findings = check_command_guard(code)
+        assert any("DROP" in f.message for f in findings)
+
+
+class TestDbGuardExecInterpolation:
+    """LESSON-041: 보간/concat SQL 을 담은 `.exec(` 는 db-guard 가 차단."""
+
+    def test_template_interpolation_blocked(self) -> None:
+        code = "db.exec(`DELETE FROM logs WHERE id = ${userId}`)"
+        findings = check_db_guard(code)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    def test_exec_async_interpolation_blocked(self) -> None:
+        code = "await db.execAsync(`SELECT * FROM ${table}`)"
+        findings = check_db_guard(code)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    def test_string_concat_blocked(self) -> None:
+        code = 'db.exec("DELETE FROM logs WHERE id = " + userId)'
+        findings = check_db_guard(code)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    def test_constant_template_literal_clean(self) -> None:
+        code = "db.exec(`CREATE TABLE items (id INTEGER PRIMARY KEY)`)"
+        findings = check_db_guard(code)
+        assert findings == []
+
+    def test_constant_variable_arg_clean(self) -> None:
+        code = "raw.exec(migrationSql);"
+        findings = check_db_guard(code)
+        assert findings == []
+
+
+class TestStripTestFilesFromDiff:
+    """LESSON-041: 테스트 픽스처의 파괴적 SQL/가짜 시크릿은 훅 스캔 제외."""
+
+    @staticmethod
+    def _diff_block(path: str, added: str) -> str:
+        return (
+            f"diff --git a/{path} b/{path}\n"
+            f"--- a/{path}\n"
+            f"+++ b/{path}\n"
+            f"+{added}\n"
+        )
+
+    def test_dunder_tests_dir_stripped(self) -> None:
+        from src.orchestrator.security_hooks import strip_test_files_from_diff
+
+        diff = self._diff_block(
+            "src/containers/logs/store/__tests__/logs.store.test.ts",
+            'raw.exec("DROP TABLE workout_logs");',
+        )
+        assert strip_test_files_from_diff(diff) == ""
+
+    def test_test_suffix_stripped(self) -> None:
+        from src.orchestrator.security_hooks import strip_test_files_from_diff
+
+        diff = self._diff_block("src/app.spec.tsx", "const x = 1;")
+        assert strip_test_files_from_diff(diff) == ""
+
+    def test_pytest_file_stripped(self) -> None:
+        from src.orchestrator.security_hooks import strip_test_files_from_diff
+
+        for path in ("tests/test_auth.py", "backend/tests/conftest.py", "pkg/auth_test.py"):
+            diff = self._diff_block(path, "DROP TABLE users;")
+            assert strip_test_files_from_diff(diff) == "", path
+
+    def test_production_file_kept(self) -> None:
+        from src.orchestrator.security_hooks import strip_test_files_from_diff
+
+        # testSqliteDb.ts 는 이름에 test 가 들어가도 테스트 디렉토리/접미사가 아님 — 유지.
+        for path in ("src/db/testSqliteDb.ts", "src/core/validation.ts", "src/latest/api.ts"):
+            diff = self._diff_block(path, "export const x = 1;")
+            assert strip_test_files_from_diff(diff) == diff, path
+
+    def test_mixed_diff_strips_only_test_blocks(self) -> None:
+        from src.orchestrator.security_hooks import strip_test_files_from_diff
+
+        prod = self._diff_block("src/db/client.ts", "export const db = open();")
+        test = self._diff_block("src/db/__tests__/migration.test.ts", 'raw.exec("DROP TABLE x");')
+        assert strip_test_files_from_diff(prod + test) == prod
+
+
+class TestDependencySubpathNormalization:
+    """LESSON-041: subpath import 는 설치 패키지 루트로 정규화해 화이트리스트 대조."""
+
+    def test_subpath_of_whitelisted_root_clean(self) -> None:
+        code = 'import { sqliteTable } from "drizzle-orm/sqlite-core";'
+        findings = check_dependency(
+            code, is_frontend=True, frontend_whitelist={"drizzle-orm"}, frontend_prefixes=()
+        )
+        assert findings == []
+
+    def test_scoped_subpath_of_whitelisted_root_clean(self) -> None:
+        code = 'import { A } from "@scope/pkg/deep/sub";'
+        findings = check_dependency(
+            code, is_frontend=True, frontend_whitelist={"@scope/pkg"}, frontend_prefixes=()
+        )
+        assert findings == []
+
+    def test_unknown_root_still_warned(self) -> None:
+        code = 'import { x } from "left-pad/core";'
+        findings = check_dependency(
+            code, is_frontend=True, frontend_whitelist={"drizzle-orm"}, frontend_prefixes=()
+        )
+        assert any(f.severity == Severity.WARN for f in findings)
+
+    def test_bare_node_builtin_clean(self) -> None:
+        code = 'import * as fs from "fs";\nimport * as path from "path";'
+        findings = check_dependency(
+            code, is_frontend=True, frontend_whitelist=set(), frontend_prefixes=()
+        )
+        assert findings == []

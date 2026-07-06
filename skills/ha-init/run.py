@@ -443,6 +443,20 @@ def cmd_write(args: argparse.Namespace) -> int:
         return 1
     pm.save(plan, out_plan)
 
+    # P0: git baseline 보장 — ha-build/ha-review 의 보안 훅이 git diff 기반이라
+    # repo 없이 시작하면 빌드 전 기간 무검사가 됨 (workout-app dogfood 확인).
+    git_baseline = _ensure_git_baseline(project)
+    if git_baseline == "git-missing":
+        print(
+            "[WARN] git 미설치 — 보안 훅 (git diff 기반) 이 빌드 중 skip 됩니다. "
+            "git 설치 권장.",
+            file=sys.stderr,
+        )
+    elif git_baseline.startswith("failed"):
+        print(f"[WARN] git baseline 생성 실패: {git_baseline}", file=sys.stderr)
+    else:
+        print(f"[git] baseline: {git_baseline}", file=sys.stderr)
+
     # capability 추론 제안 (P5 #11) — 설명에서 감지됐지만 아직 활성 안 된 has.* atom.
     # 자동 활성화 아님 — SKILL.md 가 사용자에게 확인 후 --external-capabilities 로 재작성.
     # auto 모드에서만 (override 는 사용자가 섹션을 명시 선택한 상태).
@@ -462,6 +476,7 @@ def cmd_write(args: argparse.Namespace) -> int:
         "project": str(project),
         "skeleton_path": str(out_skeleton),
         "plan_path": str(out_plan),
+        "git_baseline": git_baseline,
         "axis_warnings": axis_warnings,
         "included_sections": ordered_included,
         "capability_suggestions": capability_suggestions,
@@ -484,6 +499,43 @@ def cmd_write(args: argparse.Namespace) -> int:
         ],
     }, ensure_ascii=False, indent=2))
     return 0
+
+
+def _ensure_git_baseline(project: Path) -> str:
+    """git 저장소 + 초기 커밋 보장 (P0 — 보안 게이트의 diff 기반 전제).
+
+    반환: "existing" | "initialized" | "initialized (commit failed: ...)"
+          | "git-missing" | "failed: <사유>"
+    커밋 실패 (user.name 미설정 등) 여도 repo 생성 자체는 성공 처리 —
+    보안 훅은 HEAD 없이도 --cached / untracked pseudo-diff 로 동작.
+    """
+    import subprocess
+
+    def _run(cmd: list[str]) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            cmd, cwd=str(project), capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=60,
+        )
+
+    try:
+        r = _run(["git", "rev-parse", "--is-inside-work-tree"])
+    except FileNotFoundError:
+        return "git-missing"
+    except subprocess.TimeoutExpired:
+        return "failed: git rev-parse timeout"
+    if r.returncode == 0 and r.stdout.strip() == "true":
+        return "existing"
+
+    try:
+        if _run(["git", "init", "-q"]).returncode != 0:
+            return "failed: git init"
+        _run(["git", "add", "-A"])
+        c = _run(["git", "commit", "-q", "-m", "chore: harness init baseline"])
+        if c.returncode != 0:
+            return "initialized (commit failed: git config user.* 확인)"
+        return "initialized"
+    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+        return f"failed: {e}"
 
 
 def _now_tag() -> str:

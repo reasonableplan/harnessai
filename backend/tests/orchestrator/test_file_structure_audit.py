@@ -377,3 +377,45 @@ def test_integrity_file_structure_no_drift_no_warn(tmp_path: Path) -> None:
         i for i in report.issues if i.severity == "warn" and "file_structure drift" in i.message
     ]
     assert drift_warns == []
+
+
+# ---------------------------------------------------------------------------
+# _reroot_single_wrapper — drift FP #4 (single-root 래퍼 재기준)
+# ---------------------------------------------------------------------------
+
+
+class TestRerootSingleWrapper:
+    def test_wrapper_absent_from_actual_rerooted(self) -> None:
+        """profile path='.' 루트 배치: mobile/ 래퍼가 actual 에 없으면 내용물 비교."""
+        from src.orchestrator.file_structure_audit import compute_drift
+
+        declared = {"mobile/", "mobile/app/", "mobile/src/", "mobile/src/shared/"}
+        actual = {"app/", "src/", "src/shared/", "src/db/"}
+        result = compute_drift(declared, actual)
+        assert result.missing == []
+        assert result.extras == ["src/db/"]
+
+    def test_wrapper_present_in_actual_kept(self) -> None:
+        """모노레포: mobile/ 이 실재하면 재기준 없이 그대로 비교."""
+        from src.orchestrator.file_structure_audit import compute_drift
+
+        declared = {"mobile/", "mobile/app/"}
+        actual = {"mobile/", "mobile/app/"}
+        result = compute_drift(declared, actual)
+        assert result.match
+
+    def test_multi_root_tree_not_rerooted(self) -> None:
+        """최상위 디렉토리가 2개 이상이면 래퍼가 아님 — 재기준 안 함."""
+        from src.orchestrator.file_structure_audit import compute_drift
+
+        declared = {"app/", "src/"}
+        actual = {"app/", "src/"}
+        result = compute_drift(declared, actual)
+        assert result.match
+
+    def test_wrapper_only_tree_falls_back(self) -> None:
+        """자식 없는 단일 루트 트리는 재기준 결과가 공집합 — 원본 유지 (보수적)."""
+        from src.orchestrator.file_structure_audit import _reroot_single_wrapper
+
+        declared = {"mobile/"}
+        assert _reroot_single_wrapper(declared, {"app/"}) == declared

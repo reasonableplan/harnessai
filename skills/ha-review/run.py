@@ -38,6 +38,7 @@ from src.orchestrator.security_hooks import (  # noqa: E402
     parse_skeleton_stack_whitelist,
     parse_tsconfig_path_prefixes,
     strip_doc_files_from_diff,
+    strip_test_files_from_diff,
 )
 from src.orchestrator.context import extract_section_by_id  # noqa: E402
 from src.orchestrator.skeleton_hash import check_skeleton_hash  # noqa: E402
@@ -627,7 +628,9 @@ def _collect_findings(
 
     # LESSON-030: 문서 diff (.md 산문/인라인 예시) 가 코드 패턴 훅을 오발시키므로
     # 보안 훅 입력은 코드 파일 블록만. 자기 패키지 import 는 외부 의존성이 아님.
-    code_diff = strip_doc_files_from_diff(diff)
+    # LESSON-041: 테스트 픽스처 (파괴적 SQL 시뮬/가짜 시크릿) 도 훅 스캔 제외
+    # (리뷰 §2.6/§2.7 이 테스트 픽스처 발견을 FP 로 분류하는 것과 일관).
+    code_diff = strip_test_files_from_diff(strip_doc_files_from_diff(diff))
     local_pkgs = detect_local_packages(project)
 
     # FP #19: skeleton §3 승인 라이브러리 + tsconfig paths 별칭을 frontend

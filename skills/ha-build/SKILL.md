@@ -124,7 +124,7 @@ Agent({
      파일 경로/필드를 직접 결정하기 전에 skeleton 의 persistence/interface.http/view.*
      섹션에 명시돼 있는지 확인. 명시 없으면 위 에스컬레이션.
 2. <HARNESS_AI_HOME>/backend/agents/<agent>/CLAUDE.md — 역할 프롬프트 (권위 순서 + 자율 결정 금지 테이블)
-3. docs/conventions.md + docs/guidelines/ — 사용자 스타일 최상위 권위
+3. docs/conventions.md + docs/guidelines/ — 사용자 스타일 최상위 권위 (프로젝트에 없으면 건너뜀 — 프로파일 공식 가이드라인은 prepare 출력의 guideline_paths 절대경로가 단일 소스)
 4. 스펙 블록이 참조하는 skeleton 섹션 (예: persistence.users, interface.http.auth) — 세부 구현
 5. 활성 프로파일 본문 — 허용 라이브러리 / toolchain
 6. 기존 코드 — 스펙 블록의 "참조 파일" + 동일 레이어 기존 구현 (패턴 복제)
@@ -166,6 +166,7 @@ python ~/.claude/skills/ha-build/run.py complete --task T-001 --status done
   전부** 강제 실행. 하나라도 실패하면 done 거부 (태스크는 마킹 안 됨).
 - 문서/설계처럼 toolchain 무관한 태스크엔 `--skip-toolchain` 명시.
 - security_hooks 만 의도적으로 우회할 땐 `--skip-security` (toolchain 과 독립).
+- **git 저장소가 아니면 `--status done` 이 차단**됩니다 (보안 훅이 git diff 기반 — P0). /ha-init 이 git baseline 을 자동 보장하며, 기존 프로젝트는 `git init && git add -A && git commit` 후 재시도 (의도적 skip 은 `--skip-security`).
 - 배경: ui-assistant 2차 E2E 에서 단위 테스트만 통과 → done 흐름으로 pyright 15 errors 누적 발견.
 
 **v0.10.0**: `--status done` complete 후 worklog.md (docs/worklog.md) 에 변경 자동 append 됨.

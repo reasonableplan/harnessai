@@ -4,6 +4,52 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.19.3] — 2026-07-06 — "운동관리앱 dogfood 빌드→리뷰 전 구간: 게이트/훅 결함 5건 수정"
+
+운동관리앱 실주행 (ha-plan → ha-build ×13 → ha-verify → ha-smoke → ha-review APPROVE,
+2026-07-06) 에서 발굴. 공통 뿌리 둘 — ① 게이트 전제(git repo)가 강제되지 않아 조용히
+무력화, ② 백엔드 shell/Python 기준 훅 패턴이 mobile/SQLite 문맥을 모름 (LESSON-030 계열).
+
+### Fixed
+
+- **P0 — 빌드 기간 보안 게이트 무력화** — git repo 아니면 ha-build security_gate 가
+  WARN 후 silent pass → 13개 태스크 내내 무검사 (실주행 확인). 이중 수정:
+  (a) `ha-init write` 가 git baseline (init + 초기 커밋) 자동 보장 — 출력 JSON
+  `git_baseline` 필드. (b) `ha-build` not-git 시 done **차단** (의도적 skip 은
+  `--skip-security` 명시). git 미설치는 환경 문제로 WARN 유지.
+- **command-guard `.exec()` 오탐 (LESSON-041 pending)** — SQLite 드라이버 메서드
+  `db.exec("PRAGMA…")` 를 Python builtin exec() 코드 인젝션으로 BLOCK (실주행 7건 FP).
+  regex 에 `(?<![\w.])` — bare `exec(` 만 차단. 약화 방지로 db-guard 에 `.exec()`
+  템플릿 보간/문자열 concat SQL BLOCK 2패턴 신설 (진짜 인젝션 경로는 더 정확히).
+- **테스트 픽스처 훅 스캔 오탐** — 테스트의 `DROP TABLE` 에러경로 시뮬이 데이터 파괴
+  BLOCK (실주행 2건 FP). `strip_test_files_from_diff` 신설, ha-build/ha-review 양쪽
+  적용 — 리뷰 §2.6/§2.7 이 테스트 픽스처를 FP 로 분류하는 정책과 정합 (LESSON-030
+  문서 제외와 동일 메커니즘).
+- **dependency-check subpath 미해석** — `drizzle-orm/sqlite-core`, `expo-router/…`,
+  `expo/config` 등 화이트리스트 부모의 subpath 를 전부 "화이트리스트 외" WARN (실주행
+  노이즈 15건 — 진짜 신호 1건이 묻힘). import 경로를 설치 패키지 루트로 정규화
+  (`@scope/pkg/sub`→`@scope/pkg`) + bare Node builtin (fs/path 등) skip (#19 scope-out
+  과 동일 근거). react-native-expo 프로파일 dev whitelist 에 drizzle-kit 추가
+  (drizzle-orm 의 표준 동반 도구 누락).
+- **file_structure drift 좌표계 모순** — 프로파일 트리는 `mobile/`/`backend/` 래퍼
+  루트로 선언하는데 스캔은 profile path 기준 상대경로 → path="." 루트 배치에서
+  전 디렉토리가 유령 missing (실주행: extras 20 + missing 19 오보고). single-root
+  래퍼가 actual 에 없으면 내용물 기준 재비교 (`_reroot_single_wrapper`) — backend
+  audit + bin/harness 인라인 복제본 양쪽 (KEEP IN SYNC).
+- **ha-build SKILL.md guideline 경로 혼동** — Agent prompt 의 `docs/guidelines/` 참조를
+  서브에이전트들이 실파일로 오인 (실주행 3회 보고). "없으면 건너뜀 — prepare 출력의
+  guideline_paths 절대경로가 단일 소스" 명시.
+
+### Notes
+
+- 실주행 재스캔 효과: 9 BLOCK + 16 WARN → 1 PLAUSIBLE BLOCK (실보간 — fp-check 대상)
+  + 1 정당 WARN (화이트리스트 확장 신호). backend 1407 passed.
+- 미수정 (기록만): 빌드 게이트가 번들 성립을 못 봄 (T-001 NativeWind preset 누락이
+  T-005 에서야 발견 — toolchain.smoke 설계 논의 필요), jest-expo ↔ expo-sqlite 네이티브
+  로드 불가 (node:sqlite 어댑터 우회가 워크어라운드 — LESSON 승격 후보).
+- 사전 존재 실패 1건 별개: `test_ha_design_run.py::test_commit_passes_when_lessons_md_missing`
+  (stash 검증으로 본 변경 무관 확인 — ha-design 경로).
+
 ## [0.19.2] — 2026-07-06 — "운동관리앱 dogfood 드라이런: 설계 진입부 결함 5건 수정"
 
 비전문가 페르소나 드라이런(ha-init → ha-design, 2026-07-05)에서 발굴된 결함 전건 수정.

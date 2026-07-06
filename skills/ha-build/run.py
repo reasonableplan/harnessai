@@ -412,26 +412,27 @@ def _run_security_gate(project: Path, plan) -> list[str]:
 
     git diff HEAD (uncommitted changes) 또는 --cached (staged) 에서 diff 추출.
     security_hooks.SecurityHooks 로 BLOCK 패턴 검사.
-    not-git repo 는 WARN 출력 후 silent pass → visible pass 로 변경.
-    ImportError 시 조용히 skip (CI 환경 등).
+    not-git repo 는 done 차단 (P0: WARN skip 이면 전체 빌드 기간 보안 훅이
+    무력화됨 — workout-app dogfood 에서 13개 태스크 내내 미검사 확인).
+    git 미설치는 환경 문제로 WARN 유지. ImportError 시 조용히 skip (CI 환경 등).
     """
-    # G3: not-git repo 에서 silent pass → visible WARN
     is_repo, git_installed = _is_git_repo(project)
     if not git_installed:
         info(
             "[WARN] /ha-build security_gate skipped — git 명령 미설치.\n"
             "       보안 훅이 git diff 로 변경분을 추출하므로 git 없이는 검사 불가.\n"
-            "       권장: git 설치 후 재실행."
+            "       권장: git 설치 후 재실행. 의도적 skip 은 --skip-security."
         )
         return []
     if not is_repo:
-        info(
-            "[WARN] /ha-build security_gate skipped — git 저장소 아님.\n"
-            "       보안 훅이 git diff 로 변경분을 추출하므로 git repo 없이는 검사 불가.\n"
-            f"       project: {project}\n"
-            "       권장: git init && git add -A && git commit -m \"initial\" 후 재실행."
-        )
-        return []
+        # P0: silent/WARN pass → 차단. /ha-init 이 git baseline 을 보장하므로
+        # 정상 흐름에서는 도달하지 않음. 의도적 우회는 --skip-security.
+        return [
+            "[security:gate] git 저장소 아님 — 보안 훅이 git diff 기반이라 검사 불가. "
+            f"(project: {project}) "
+            '조치: git init && git add -A && git commit -m "initial" 후 재시도, '
+            "또는 의도적 skip 이면 --skip-security 명시."
+        ]
 
     diff_text = ""
     for git_args in (["git", "diff", "HEAD"], ["git", "diff", "--cached"]):
@@ -464,12 +465,15 @@ def _run_security_gate(project: Path, plan) -> list[str]:
             Severity,
             detect_local_packages,
             strip_doc_files_from_diff,
+            strip_test_files_from_diff,
         )
     except ImportError:
         return []
 
     # LESSON-030: 문서 diff (.md 산문/인라인 예시) 는 코드 패턴 훅 대상 아님.
+    # LESSON-041: 테스트 픽스처 (파괴적 SQL 시뮬 등) 도 훅 스캔 제외.
     diff_text = strip_doc_files_from_diff(diff_text)
+    diff_text = strip_test_files_from_diff(diff_text)
 
     # Scan added lines only — deleted code (- prefix) must not trigger findings.
     added_text = "\n".join(
