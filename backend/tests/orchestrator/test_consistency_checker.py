@@ -430,14 +430,14 @@ def test_offline_constraint_loopback_url_excluded() -> None:
 
 
 def test_offline_constraint_download_verb_flagged() -> None:
-    """오프라인 선언 + 다운로드 동사 → critical finding."""
+    """오프라인 선언 + 다운로드 동사 → warn finding (키워드 단독 = 약한 신호, dogfood #21 강등)."""
     skel = (
         "## 1. NFR\noffline only — no network.\n\n"
-        "## 7. 배포\n런타임에 그래마 파일을 다운로드해서 파서를 초기화한다.\n"
+        "## 7. 초기화\n런타임에 그래마 파일을 다운로드해서 파서를 초기화한다.\n"
     )
     findings = check_offline_network_violation(skel)
     assert len(findings) >= 1
-    assert all(f.severity == "critical" for f in findings)
+    assert all(f.severity == "warn" for f in findings)
     assert any("다운로드" in f.target for f in findings)
 
 
@@ -480,6 +480,44 @@ def test_offline_constraint_dedup_same_marker() -> None:
     findings = check_offline_network_violation(skel)
     targets = [f.target for f in findings]
     assert len(targets) == len(set(targets)), "중복 target 이 dedup 되지 않음"
+
+
+def test_offline_constraint_design_reference_url_excluded() -> None:
+    """dogfood #21: 디자인 레퍼런스/문서 URL 은 런타임 네트워크가 아님 → 제외."""
+    skel = (
+        "## 1. NFR\n오프라인 전용 앱 — 외부 인터넷 호출 없음.\n\n"
+        "## 5. 화면 정의\n"
+        "### 디자인 레퍼런스 (필수 — 사용자 입력)\n"
+        "| 항목 | 출처 (URL) | 비고 |\n"
+        "|---|---|---|\n"
+        "| 메인 톤 | NativeWind 기본 (https://www.nativewind.dev) | 기능 우선 |\n"
+        "| 팔레트 | https://tailwindcss.com/docs/customizing-colors | slate 중심 |\n"
+    )
+    findings = check_offline_network_violation(skel)
+    assert findings == []
+
+
+def test_offline_constraint_store_upload_deploy_context_excluded() -> None:
+    """dogfood #21: '스토어 업로드'(배포 절차) 는 앱 런타임 위반이 아님 → 제외."""
+    skel = (
+        "## 1. NFR\n오프라인 전용 — 네트워크 호출 없음.\n\n"
+        "## 12. 배포 파이프라인\n"
+        "스토어 업로드 (수동)\n"
+        "롤백: 이전 버전 재빌드/재업로드 또는 EAS Update 로 되돌림.\n"
+    )
+    findings = check_offline_network_violation(skel)
+    assert findings == []
+
+
+def test_offline_constraint_runtime_url_under_doc_heading_only_excluded() -> None:
+    """문서 문맥이 아닌 섹션의 런타임 URL 은 여전히 critical (TP 보존)."""
+    skel = (
+        "## 1. NFR\n오프라인 전용 앱 — 외부 인터넷 호출 없음.\n\n"
+        "## 9. HTTP API\n런타임에 https://api.remote.io/v1 을 호출한다.\n"
+    )
+    findings = check_offline_network_violation(skel)
+    assert len(findings) == 1
+    assert findings[0].severity == "critical"
 
 
 def test_run_all_includes_offline_check() -> None:

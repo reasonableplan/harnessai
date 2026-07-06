@@ -3,6 +3,15 @@ id: data_model
 name: 데이터 모델
 required_when: has.storage
 description: ERD + 컬럼/인덱스/관계/마이그레이션 정책. persistence 가 "어디에 저장" 이라면 data_model 은 "무엇을 어떻게 모델링".
+decision_points:
+  - id: multi_tenant
+    ask: "데이터를 사용자별로 격리하나요, 전체 공유인가요? (단일 사용자면 '격리 불필요'로 확정)"
+    detect: [사용자별, 격리, user_id, tenant, owner, 단일 사용자, 전체 공유, 개인용]
+    hint: "격리면 소유 컬럼(user_id/owner_id)이 대부분 테이블에 필요"
+  - id: soft_delete
+    ask: "삭제는 완전 삭제(hard)인가요, 복구 가능(soft delete)인가요? 보관 기간은?"
+    detect: [soft delete, hard delete, deleted_at, 완전 삭제, 하드 삭제, 복구, 보관, 영구 삭제]
+    hint: "soft delete 면 deleted_at 컬럼 + 조회 시 필터 규칙까지"
 ---
 
 ## {{section_number}}. 데이터 모델

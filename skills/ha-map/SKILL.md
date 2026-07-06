@@ -50,7 +50,7 @@ skeleton.md 경로를 묻거나 `/ha-design` 선행을 안내하고 중단.
 | 2. 요청 흐름 | 핵심 동작 1~2개의 단계 흐름 | orchestrator 파이프라인 단계 |
 | 3. 인터페이스 맵 | 커맨드/엔드포인트 + 옵션 + exit code | interface + 에러 섹션 |
 
-> DB ER 다이어그램은 `/ha-design` 이 persistence 섹션에 이미 생성 — **재생성 X**, 링크만.
+> DB ER 다이어그램은 `/ha-design` 이 data_model 섹션에 이미 생성 — **재생성 X**, 링크만.
 
 ### 4. (있으면) PNG 렌더
 ```bash

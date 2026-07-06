@@ -605,7 +605,7 @@ def test_compute_active_sections_pii_activates_audit_log(tmp_path: Path) -> None
 
 
 _ENV_EXPR = (
-    "(has.http_server or has.ui or has.navigation or has.cli_entrypoint) "
+    "(has.http_server or has.cli_entrypoint) "
     "and (lifecycle in [mvp, ga] or availability in [standard, high])"
 )
 
@@ -640,6 +640,32 @@ def test_environments_included_for_poc_but_standard_availability(tmp_path: Path)
     loader = ProfileLoader()
     profile = _make_profile(provides_capabilities=["cli_entrypoint"])
     axes = ScaleAxes(lifecycle="poc", availability="standard")
+    active, _trace = loader.compute_active_sections(axes, [profile], fragments_dir)
+    assert "environments" in active
+
+
+def test_environments_excluded_for_serverless_mobile(tmp_path: Path) -> None:
+    """dogfood 운동앱: 서버 없는 모바일(ui+navigation, http_server/cli 없음) → environments 미활성.
+
+    CORS/보안헤더/서버 배포 환경은 HTTP 서버 전제 개념 — 모바일 환경 분리는
+    mobile.build_config 가 전담한다.
+    """
+    fragments_dir = tmp_path / "skeleton"
+    _write_fragment(fragments_dir, "environments", _ENV_EXPR)
+    loader = ProfileLoader()
+    profile = _make_profile(provides_capabilities=["ui", "navigation", "build_config"])
+    axes = ScaleAxes(lifecycle="mvp", availability="standard")
+    active, _trace = loader.compute_active_sections(axes, [profile], fragments_dir)
+    assert "environments" not in active
+
+
+def test_environments_included_for_http_server(tmp_path: Path) -> None:
+    """풀스택(http_server) → environments 활성 (CORS/보안헤더/env 분리 유효)."""
+    fragments_dir = tmp_path / "skeleton"
+    _write_fragment(fragments_dir, "environments", _ENV_EXPR)
+    loader = ProfileLoader()
+    profile = _make_profile(provides_capabilities=["http_server", "ui"])
+    axes = ScaleAxes(lifecycle="mvp", availability="casual")
     active, _trace = loader.compute_active_sections(axes, [profile], fragments_dir)
     assert "environments" in active
 

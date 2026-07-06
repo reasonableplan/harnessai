@@ -51,6 +51,17 @@ def _find_placeholders(text: str) -> list[str]:
     """미해결 placeholder 토큰 목록. TS 제네릭(<T>, <K, V>)은 제외 (FP #6)."""
     return [m for m in _PLACEHOLDER_RE.findall(text) if not _GENERIC_TYPE_RE.match(m)]
 
+
+# 잔여 작성 가이드 블록: 템플릿의 "> 작성 가이드:" 인용 블록이 commit 시점까지
+# 남으면 가이드 예시 텍스트(hypothesis/fast-check 등)가 clarify 모호어 검사에서
+# substring 오탐 연쇄를 유발한다 (dogfood #19/#20).
+_GUIDE_RESIDUE_RE = re.compile(r"^>\s*작성\s*가이드", re.MULTILINE)
+
+
+def _find_guide_residues(text: str) -> list[str]:
+    """잔여 '> 작성 가이드' 블록 매치 목록 (건수 집계용)."""
+    return _GUIDE_RESIDUE_RE.findall(text)
+
 # LOCKED 섹션 fill 상태 감지용 (v0.10.0+ 복구 지원)
 _LOCKED_SECTION_IDS = ("requirements", "user_journey", "view.screens")
 _AI_WRITABLE_RE = re.compile(
@@ -194,6 +205,27 @@ def cmd_commit(args: argparse.Namespace) -> int:
             info(f"  - {p[:60]}")
         if len(placeholders) > 5:
             info(f"  ... +{len(placeholders) - 5} 개 더")
+
+    # 잔여 "> 작성 가이드" 블록 검출 — BLOCK (dogfood #19/#20). 잔재는 clarify
+    # substring 오탐 연쇄를 유발하고, 제거가 항상 올바른 조치라 우회 플래그 없음.
+    # tasks/notes 섹션은 placeholder 검사와 동일하게 제외 (이후 스킬이 채움).
+    guide_residues = _find_guide_residues(text_for_check)
+    if guide_residues:
+        info(
+            f"[FAIL] 잔여 '> 작성 가이드' 블록 {len(guide_residues)}건 — "
+            "템플릿 작성 가이드는 commit 전 제거 필수 (잔재가 clarify 오탐 유발). "
+            "grep '> 작성 가이드' docs/skeleton.md 로 위치 확인 후 제거."
+        )
+        output = {
+            "skeleton_path": str(skel),
+            "plan_path": str(plan_path),
+            "placeholders_remaining": len(placeholders),
+            "guide_residues_remaining": len(guide_residues),
+            "transitioned_to": None,
+            "next": None,
+        }
+        print(json.dumps(output, ensure_ascii=False, indent=2))
+        return 1
 
     # 설계-시점 cross-section 검증 (design backlog A) — advisory, commit 은 진행.
     # 섹션 간 참조가 어긋난 채 freeze 되는 것을 표면화 — §4 충돌 검토(LLM)의 기계 보강.

@@ -303,16 +303,31 @@ _CODEFENCE_RE = re.compile(r"```.*?```", re.DOTALL)
 # 인라인 백틱 제거.
 _INLINE_TICK_RE = re.compile(r"`[^`\n]+`")
 
+# 문서/레퍼런스 문맥 — 디자인 레퍼런스·참고 문서 URL 은 앱 런타임 네트워크가
+# 아니다 (dogfood #21: nativewind.dev/tailwindcss.com 디자인 레퍼런스 critical FP).
+# 라인 또는 가장 가까운 상위 헤딩에서 탐지.
+_DOC_CONTEXT_RE = re.compile(r"레퍼런스|reference|참고|문서|docs", re.IGNORECASE)
+
+# 배포/스토어 문맥 — "스토어 업로드" 등 릴리즈 절차는 앱 런타임 위반이 아니다
+# (dogfood #21: 배포 섹션의 "업로드" critical FP). 라인 단위로만 적용 —
+# 헤딩 단위 제외는 배포 섹션 내 진짜 런타임 다운로드 TP 를 놓친다.
+_DEPLOY_CONTEXT_RE = re.compile(
+    r"스토어|배포|롤백|출시|마켓|release|deploy|TestFlight|App\s?Store|Play\s?Store|EAS\b",
+    re.IGNORECASE,
+)
+
 
 def check_offline_network_violation(skel_text: str) -> list[ConsistencyFinding]:
     """오프라인/네트워크 제약이 선언된 skeleton 에서 모순 마커를 탐지한다.
 
     1. skeleton 전체 텍스트에서 오프라인 제약 선언을 탐지한다.
     2. 제약이 없으면 즉시 [] 반환 — 이 검사는 제약을 선언한 프로젝트에만 적용.
-    3. 제약이 있으면 코드펜스·인라인 백틱을 제거한 텍스트에서 모순 마커를 스캔:
-       - 비-루프백 외부 URL (루프백/플레이스홀더 제외)
-       - 다운로드/원격 fetch 동사
-    4. 매칭된 마커마다 critical finding 을 생성하고, 동일 target 은 dedup 한다.
+    3. 제약이 있으면 코드펜스·인라인 백틱을 제거한 텍스트를 라인 단위로 스캔:
+       - 비-루프백 외부 URL (루프백/플레이스홀더 제외) → critical.
+         단, 문서/레퍼런스 문맥(라인 또는 가장 가까운 헤딩)은 제외 (dogfood #21).
+       - 다운로드/원격 fetch 동사 → warn (키워드 단독 = 약한 신호).
+         단, 배포/스토어 문맥 라인은 제외 (dogfood #21).
+    4. 매칭된 마커마다 finding 을 생성하고, 동일 target 은 dedup 한다.
     """
     if not skel_text:
         return []
@@ -337,7 +352,7 @@ def check_offline_network_violation(skel_text: str) -> list[ConsistencyFinding]:
     seen: set[str] = set()
     findings: list[ConsistencyFinding] = []
 
-    def _add(marker: str) -> None:
+    def _add(marker: str, severity: str) -> None:
         truncated = marker[:60]
         if truncated in seen:
             return
@@ -350,22 +365,33 @@ def check_offline_network_violation(skel_text: str) -> list[ConsistencyFinding]:
                 break
         findings.append(
             ConsistencyFinding(
-                severity="critical",
+                severity=severity,
                 pattern="offline-constraint-violation",
                 target=truncated,
                 message=_VIOLATION_MSG + section_hint,
             )
         )
 
-    # 비-루프백 외부 URL 스캔.
-    for m in _EXTERNAL_URL_RE.finditer(stripped):
-        host = m.group(1).split("/")[0].split(":")[0]
-        if not _LOOPBACK_HOST_RE.match(host):
-            _add(m.group(0))
+    # 라인 단위 스캔 — 문맥(가장 가까운 헤딩/라인) 기반 FP 제외 (dogfood #21).
+    current_heading = ""
+    for line in stripped.splitlines():
+        if line.lstrip().startswith("#"):
+            current_heading = line
+            continue
 
-    # 다운로드/원격 fetch 동사 스캔.
-    for m in _DOWNLOAD_VERB_RE.finditer(stripped):
-        _add(m.group(0))
+        # 비-루프백 외부 URL 스캔 — 문서/레퍼런스 문맥 제외.
+        doc_context = bool(_DOC_CONTEXT_RE.search(line) or _DOC_CONTEXT_RE.search(current_heading))
+        if not doc_context:
+            for m in _EXTERNAL_URL_RE.finditer(line):
+                host = m.group(1).split("/")[0].split(":")[0]
+                if not _LOOPBACK_HOST_RE.match(host):
+                    _add(m.group(0), "critical")
+
+        # 다운로드/원격 fetch 동사 스캔 — 배포 문맥 라인 제외.
+        # 키워드 단독(URL 없음)은 약한 신호라 warn 으로 강등 (LESSON-030 계열).
+        if not _DEPLOY_CONTEXT_RE.search(line):
+            for m in _DOWNLOAD_VERB_RE.finditer(line):
+                _add(m.group(0), "warn")
 
     return findings
 

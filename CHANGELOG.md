@@ -4,6 +4,36 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.19.2] — 2026-07-06 — "운동관리앱 dogfood 드라이런: 설계 진입부 결함 5건 수정"
+
+비전문가 페르소나 드라이런(ha-init → ha-design, 2026-07-05)에서 발굴된 결함 전건 수정.
+공통 뿌리 = 트리거/검사기의 문맥 무시 매칭 (LESSON-030 계열).
+
+### Fixed
+
+- **#1 `environments` fragment 트리거 오활성** — `has.ui or has.navigation` 제거 →
+  `(has.http_server or has.cli_entrypoint) and (규모 조건)`. CORS/보안 헤더/dev-staging-prod
+  는 http_server 개념 — 서버 없는 모바일/SPA 에서 섹션이 통째로 오활성되던 결함.
+  모바일 환경 분리는 mobile.build_config 소유 (경계 명확화).
+- **#21 `consistency_checker` offline 오탐** — 라인 기반 + 최근접 헤딩 컨텍스트 스캔으로
+  재작성. 레퍼런스/문서 문맥의 URL 제외, 스토어 배포 문맥의 다운로드 동사 제외,
+  동사 단독 매치는 critical → warn 강등 (URL = 강신호, 동사 = 약신호).
+- **#19 `skeleton_checklist` vague-word 오탐** — `\b` 가 하이픈 경계에서 fire 하여
+  `fast-check`/`type-safe` 같은 고유명사/복합어를 모호어로 오판 → lookaround
+  `(?<![\w-])…(?![\w-])` 로 교체. bare "fast" 는 여전히 탐지.
+- **#6 `data_model` ↔ `persistence` 스키마 중복** — 둘 다 has.storage 트리거라 항상
+  동시 활성인데 ERD/스키마/인덱스/마이그레이션 서브섹션이 양쪽에 존재 → ERD 이중 작성
+  강요. data_model = 스키마 단일 소스로 확정, persistence = 저장소 타입/동시성/파일/백업.
+  multi_tenant/soft_delete decision_points 도 내용 따라 이동 (detect 는 섹션 본문 한정 —
+  답을 data_model 에 쓰면 persistence 쪽이 미해소 오탐). ha-design/ha-map SKILL.md ·
+  architect CLAUDE.md 동기. 부수로 #18 일부 해소 (soft delete/hard delete 영어 detect).
+
+### Added
+
+- **#20 ha-design commit "> 작성 가이드" 잔재 BLOCK 게이트** — 가이드 블록이 산출물에
+  남은 채 커밋되는 것을 차단 (tasks/notes 제외). 제거가 항상 올바른 조치라 override
+  플래그 없음. GATES.md 등재.
+
 ## [0.19.1] — 2026-07-03 — "Personal Jira dogfood: detect/추천 휴리스틱 결함 3+1건 수정"
 
 v0.16~0.19 누적 변경을 Personal Jira 재구축 dogfood 로 실전 검증 — 설계 진입부에서

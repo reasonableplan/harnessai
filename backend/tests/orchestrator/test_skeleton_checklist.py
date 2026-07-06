@@ -57,6 +57,20 @@ def test_vague_english_word_flagged() -> None:
     assert len(findings) >= 1
 
 
+def test_hyphenated_library_name_not_flagged() -> None:
+    """dogfood #19: 'fast-check' 라이브러리명의 substring 'fast' 는 clarity 오탐 금지."""
+    skel = _skel(("테스트 전략", "property-based 테스트는 hypothesis 와 fast-check 로 작성한다."))
+    findings = _findings_by_category(skel, "clarity")
+    assert findings == []
+
+
+def test_bare_english_vague_word_still_flagged() -> None:
+    """단독 'fast' 는 여전히 clarity finding (TP 보존)."""
+    skel = _skel(("성능 목표", "The API should be fast."))
+    findings = _findings_by_category(skel, "clarity")
+    assert len(findings) == 1
+
+
 def test_task_decomposition_section_ignored_for_clarity() -> None:
     """'태스크 분해' 섹션의 '빠르게'는 무시(도구 산출물 섹션)."""
     skel = _skel(("태스크 분해", "빠르게 구현한다."))

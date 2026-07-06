@@ -13,6 +13,7 @@
 | HITL LOCKED 인터뷰 (requirements/user_journey/view.screens) | 강제 | `--ai-draft` 옵트인 (기록됨) |
 | LESSON 인용 검증 (미정의 LESSON-NNN) | BLOCK | `--allow-unknown-lessons` |
 | placeholder 잔재 카운트 | advisory | — |
+| "> 작성 가이드" 잔재 (tasks/notes 제외) | BLOCK | — (제거가 항상 올바른 조치) |
 
 ### /ha-plan (commit)
 | 게이트 | severity | 우회 |

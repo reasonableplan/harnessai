@@ -198,7 +198,7 @@ LOCKED 섹션 채울 때마다:
 `included_sections` 의 각 섹션에 대해:
 
 **섹션 owner 결정** (어느 역할이 책임지는가):
-- `auth`, `persistence`, `interface.http`, `interface.cli`, `interface.ipc`, `interface.sdk`, `errors`, `state.flow`, `core.logic`, `configuration`, `integrations`, `observability`, `deployment` → **Architect**
+- `auth`, `persistence`, `data_model`, `interface.http`, `interface.cli`, `interface.ipc`, `interface.sdk`, `errors`, `state.flow`, `core.logic`, `configuration`, `integrations`, `observability`, `deployment` → **Architect**
 - `view.screens`, `view.components` → **Designer**
 - `overview`, `requirements`, `stack` → **둘 다 협의** (Architect 가 초안, Designer 검토)
 - `tasks`, `notes` → 비워둔다 (각각 /ha-plan, /ha-build 가 채움)
@@ -212,7 +212,7 @@ LOCKED 섹션 채울 때마다:
 - [ ] `<...>` placeholder 0개
 - [ ] 표의 모든 행이 실제 값으로 채워짐 (DB 컬럼은 타입·제약 명시, API 는 method+path+schema 모두)
 - [ ] 에러 코드 섹션: 코드 ID + HTTP status + 설명 3종 세트 완비
-- [ ] `persistence` 섹션: **Mermaid ER 다이어그램 포함** (테이블 정의 앞에 위치)
+- [ ] `data_model` 섹션: **Mermaid ER 다이어그램 포함** (테이블 정의 앞에 위치) — `persistence` 에는 저장소 타입/파일/백업만 (스키마 중복 금지)
 - 분량보다 **구체성** 기준 — "Users 테이블" 이 아니라 "id(PK)/email(unique,not null)/token_version(int,default=0)"
 
 **`auth` 섹션 보안 체크리스트 (작성 완료 전 전부 확인)**:
@@ -243,7 +243,7 @@ LOCKED 섹션 채울 때마다:
 
 | 섹션 (included 일 때만) | 보여줄 것 | 질문 |
 |---|---|---|
-| `persistence` | Mermaid ER + 테이블/관계 요약 | "DB 스키마가 맞습니까?" |
+| `data_model` | Mermaid ER + 테이블/관계 요약 | "DB 스키마가 맞습니까?" |
 | `auth` | 방식·토큰 수명·저장 위치 (+FE/모바일: silent refresh·만료 UX·탭 동기화) | "인증/세션 전략이 맞습니까?" |
 | `interface.http` | 엔드포인트 표 (+rate limit 주요값) | "API 목록이 맞습니까? 빠진 것은?" |
 | `environments` | 환경 표 + CORS origin | "환경 분리 설정이 맞습니까?" |

@@ -96,8 +96,11 @@ def _strip_code_blocks(text: str) -> str:
 
 # Vague terms that should be accompanied by a numeric target on the same line.
 # Pattern: vague word present AND no adjacent number+unit on the same sentence/line.
+# 하이픈 인접은 비매칭 — 고유명사/복합어(fast-check, type-safe)의 substring 오탐
+# 차단 (dogfood #19, LESSON-030 계열). \b 는 하이픈 앞뒤에서 boundary 로 작동해
+# "fast-check" 의 "fast" 를 매치하므로 lookaround 로 대체.
 _VAGUE_WORD_RE = re.compile(
-    r"\b("
+    r"(?<![\w-])("
     r"빠른|빠르게|빠름|빠르다|빠른지|빠른\s*응답"
     r"|적절한|적절히|적절하게|적절하다"
     r"|충분한|충분히|충분하다"
@@ -105,7 +108,7 @@ _VAGUE_WORD_RE = re.compile(
     r"|효율적|효율적인|효율적으로"
     r"|많은|많이|많다"
     r"|fast|simple|scalable|efficient|lightweight|large|small"
-    r")\b",
+    r")(?![\w-])",
     re.IGNORECASE,
 )
 
