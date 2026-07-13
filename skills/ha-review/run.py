@@ -970,6 +970,9 @@ def cmd_record(args: argparse.Namespace) -> int:
 
     passed = verdict == "approve"
     summary = args.summary or ("APPROVE" if passed else "REJECT")
+    if rework_tasks:
+        # pipeline_advisor 가 회귀 사유를 읽는 마킹 (ha-verify 와 동일 포맷).
+        summary = f"{summary} [rework: {', '.join(rework_tasks)}]"
     record_verify(plan, step="ha-review", passed=passed, summary=summary)
 
     if passed:
@@ -991,6 +994,16 @@ def cmd_record(args: argparse.Namespace) -> int:
             except OSError as exc:
                 info(f"[WARN] needs_rebuild 전이 실패 (tasks.md 쓰기 오류): {exc}")
                 info("       수동으로 해당 태스크 status 를 확인하세요.")
+            else:
+                # mark_for_rebuild 는 done 태스크만 전이시킨다 — 오타/미매칭이면 아무것도
+                # 안 내려가 /ha-build --resume 이 또 빈 손으로 멈춘다. 조용히 넘기지 않는다.
+                not_marked = [tid for tid in rework_tasks if tid not in rebuild_required_tasks]
+                if not_marked:
+                    info(
+                        f"[WARN] needs_rebuild 미전이: {', '.join(not_marked)} — "
+                        "tasks.md 에 없거나 status 가 done 이 아닙니다.\n"
+                        "       T-ID 오타인지 확인하세요 (미전이 태스크는 --resume 이 선택하지 않습니다)."
+                    )
 
     save_plan(plan, plan_path)
 

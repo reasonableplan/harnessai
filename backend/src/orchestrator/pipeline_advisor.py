@@ -30,14 +30,22 @@ class Advice:
     reason: str  # user-facing explanation (Korean)
 
 
+_REWORK_ORIGIN = {"ha-verify": "verify FAIL", "ha-review": "review REJECT"}
+
+
 def _rework_reason(plan: HarnessPlan) -> str | None:
-    """최근 ha-verify FAIL 의 rework_tasks 추출 → reason 문구 생성."""
+    """최근 ha-verify FAIL / ha-review REJECT 의 rework_tasks 추출 → reason 문구 생성.
+
+    두 경로 모두 building 으로 회귀시키고 needs_rebuild 를 내린다 — 회귀 사유를
+    ha-verify 만 읽으면 REJECT 후 "다음 ready 태스크 선택" 이라는 엉뚱한 안내가 나간다.
+    """
     for rec in reversed(plan.verify_history):
-        if rec.step == "ha-verify" and not rec.passed:
+        origin = _REWORK_ORIGIN.get(rec.step)
+        if origin and not rec.passed:
             m = re.search(r"\[rework: ([^\]]+)\]", rec.summary or "")
             if m:
                 task_list = m.group(1)
-                return f"verify FAIL 원인 태스크 재구현 ({task_list})"
+                return f"{origin} 원인 태스크 재구현 ({task_list})"
     return None
 
 

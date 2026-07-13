@@ -564,3 +564,47 @@ def test_reject_no_rework_flag_allows_missing_task_id(
 
     assert code == 0
     assert "needs_rebuild" not in (tmp_path / "tasks.md").read_text(encoding="utf-8")
+
+
+def test_reject_summary_carries_rework_marker(ha_review: ModuleType, tmp_path: Path) -> None:
+    """summary 에 [rework: T-003] 마킹 — pipeline_advisor 가 회귀 사유를 읽는 경로."""
+    args = _reject_args('["[hook] app/x.tsx:1 — 위반 → T-003"]')
+    recorded: list[str] = []
+
+    plan_path = tmp_path / "harness-plan.md"
+    plan_path.write_text("", encoding="utf-8")
+    (tmp_path / "tasks.md").write_text(_TASKS_MD, encoding="utf-8")
+
+    mock_plan = MagicMock()
+    mock_plan.pipeline.current_step = "verified"
+
+    with (
+        patch.object(ha_review, "load_plan", return_value=(mock_plan, plan_path, tmp_path)),
+        patch.object(ha_review, "assert_state"),
+        patch.object(
+            ha_review,
+            "record_verify",
+            side_effect=lambda plan, step, passed, summary: recorded.append(summary),
+        ),
+        patch.object(ha_review, "regress"),
+        patch.object(ha_review, "save_plan"),
+        patch("builtins.print"),
+    ):
+        assert ha_review.cmd_record(args) == 0
+
+    assert "[rework: T-003]" in recorded[0]
+
+
+def test_reject_warns_when_task_id_not_transitioned(ha_review: ModuleType, tmp_path: Path) -> None:
+    """지목한 T-ID 가 tasks.md 에 없으면(오타 등) 조용히 넘어가지 말고 경고.
+
+    mark_for_rebuild 는 done 태스크만 전이시킨다 — 미매칭이면 needs_rebuild 가 하나도
+    안 생겨 /ha-build --resume 이 다시 dead-end 가 된다.
+    """
+    args = _reject_args('["[hook] src/x.py:1 — 위반 → T-999"]')
+    code, captured = _run_reject(ha_review, tmp_path, args)
+
+    assert code == 0
+    assert any("needs_rebuild 미전이" in line and "T-999" in line for line in captured)
+    payload = json.loads(captured[-1])
+    assert payload["rebuild_required_tasks"] == []

@@ -49,6 +49,9 @@ JSON 출력: `action` / `mode`(auto|hitl) / `skill` / `args` / `reason` / `curre
     3. plan.pipeline → building 자동 회귀 (pipeline_advisor 가 build --resume 반환)
     4. `/ha-build --resume` → needs_rebuild 태스크 자동 선택 후 재구현
     fallback: 출력에서 T-ID 매칭 못 하면 entrypoint 태스크 또는 사용자 선택
+  ha-review REJECT 도 같은 루프다 — `ha-review record --verdict reject` 가 violations 의 `T-NNN`
+  (또는 `--rework-tasks`) 을 needs_rebuild 로 내리고 building 으로 회귀시키므로, 이어서
+  `/ha-build --resume` 이 그 태스크를 자동 선택한다.
 - `ship_confirm` → AskUserQuestion: "배포/PR 을 완료했나요?" — 완료 시에만 `/ha-ship` 호출.
   미완료면 배포 방법 안내 후 정지 (shipped 는 릴리스 선언 — 선마킹 금지).
 

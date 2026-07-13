@@ -88,7 +88,8 @@ def _run_record(
         args.force_continue = False
         exit_code = ha_verify.cmd_record(args)
 
-    output = json.loads(captured[0]) if captured else {}
+    # WARN(info) 도 print 로 나가므로 JSON 은 마지막 출력이다 (미전이 T-ID 경고 등).
+    output = json.loads(captured[-1]) if captured else {}
     return {"exit_code": exit_code, "output": output}
 
 

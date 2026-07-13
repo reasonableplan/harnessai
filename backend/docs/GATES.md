@@ -38,6 +38,7 @@
 | no-tests 우회 감지 (B3) | advisory(WARN) | — |
 | built 전이 시 skipped 공개 | advisory(WARN) | — |
 | scaffold complete 의 `--skip-toolchain` 특례 (갓 스캐폴드된 앱 test 스크립트 부재, v0.20.0) | advisory(정당한 우회) | security gate 는 유지 (`--skip-security` 미적용) |
+| rework 재진입 — prepare 가 done/skipped/needs_rebuild 를 in-progress 로 되돌림 (v0.21.1). 안 되돌리면 배치의 첫 complete 가 built 로 전이해 형제 태스크의 게이트가 실행되지 않음 | 자동 가드 | — |
 
 ### /ha-verify
 | 게이트 | severity | 우회 |
@@ -59,6 +60,8 @@
 | 역방향 contract (선언-미구현 엔드포인트) | advisory | — |
 | test distribution | advisory | — |
 | APPROVE+BLOCK 차단 / REJECT+violations 필수 | BLOCK | `--allow-block` / — |
+| REJECT 시 재작업 T-ID 필수 (violations 의 `T-NNN` 또는 `--rework-tasks`, v0.21.1) | BLOCK | `--no-rework` |
+| REJECT → 지목 태스크 `needs_rebuild` 전이 + 미전이 T-ID 경고 (v0.21.1) | 자동 가드 | — |
 
 ### /ha-redesign
 | 게이트 | severity | 우회 |
@@ -73,6 +76,8 @@
 | verified/reviewed 상태에서만 실행 | BLOCK(exit 2) | — |
 | 런타임 기동 probe (exit 0 / URL readiness) — `verify_history` step=`smoke` 기록 | advisory(상태 전이 없음) | — |
 | 계층2 — 기동 후 선언 GET 엔드포인트 타격 (404/5xx=FAIL, 떠도 라우트 깨짐) | advisory | — |
+| 부적격 `--endpoint` (경로가 `/` 로 시작 안 함 — Git Bash MSYS 변환) → 기동 전 FAIL (v0.21.1) | BLOCK | — (`MSYS_NO_PATHCONV=1` 로 재실행) |
+| probe detail 에 실제 타격/skip 개수 노출 — "0개 OK" 가 성공으로 위장되지 않게 (v0.21.1) | 자동 가드 | — |
 
 ### /ha-accept
 | 게이트 | severity | 우회 |

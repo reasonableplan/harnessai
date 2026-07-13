@@ -4,6 +4,43 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.21.1] — 2026-07-13 — "subtrack dogfood: 게이트 무음 통과 + rework 상태기계"
+
+실전 드라이런(subtrack — Next.js 16 + Drizzle/SQLite)으로 v0.20.0 스캐폴딩과 v0.21.0
+수용검증을 전 구간 주행하며 발굴한 결함 10건을 뿌리 단위로 수정. 로그는 레포 밖
+(`Desktop/subtrack-dryrun-log.md`). 파이프라인 자체는 완주 (init→…→reviewed, vitest 101).
+
+### Fixed
+
+- **ha-smoke: 계층2 무음 무력화** — Git Bash(MSYS)가 `--endpoint /api/x` 를
+  `C:/Program Files/Git/api/x` 로 변환하면 path 파라미터 skip 휴리스틱(`:` 포함)에 걸려
+  **검사 0건인 채 PASS** 가 났다. 경로가 아닌 endpoint 는 기동 전 하드 FAIL(+MSYS 힌트),
+  probe detail 은 실제 타격/skip 개수를 항상 보고.
+- **ha-review REJECT → needs_rebuild 전이** — REJECT 는 building 으로 회귀시키면서 태스크는
+  done 그대로 두어 `/ha-build --resume` 이 "빌드할 태스크 없음" 으로 dead-end 였다.
+  violations 의 `T-NNN`(또는 `--rework-tasks`)을 파싱해 전이하고, 대상이 없으면 exit 1
+  (`--no-rework` 로만 우회). 미전이 T-ID(오타 등)는 WARN — ha-verify 도 동일 보강.
+- **ha-build rework 재진입** — 완료 태스크를 다시 prepare 해도 tasks.md 가 done 이라
+  `all_resolved` 가 참으로 남았고, 배치의 첫 complete 가 곧바로 built 로 전이해 **형제
+  태스크가 스텁/toolchain/security 게이트를 통과할 기회를 잃었다.** prepare 가
+  done/skipped/needs_rebuild 를 in-progress 로 되돌린다.
+- **pipeline_advisor** — building 회귀 사유를 ha-verify FAIL 만 읽어, REJECT 후 "다음 ready
+  태스크 선택" 이라는 엉뚱한 안내가 나갔다. ha-review REJECT 도 동일 취급.
+- **ha-build scaffold (v0.20.0 실전 첫 주행)** — 병합 후 package.json name 이 샌드박스
+  임시명으로 남던 문제 / create-next-app 의 pnpm `allowBuilds` 플레이스홀더 미승인으로
+  비대화형 install 이 항상 실패(ERR_PNPM_IGNORED_BUILDS)하던 문제 / 실패 원인이 stdout 에
+  찍혀 유실되던 문제 / 실패해도 next 힌트가 done 을 유도하던 문제.
+- **security_hooks db-guard FP** — 키워드 뒤 `\b` 부재로 Drizzle `text('updated_at')` 을
+  raw SQL 로 오인 BLOCK.
+- ha-build worklog append 타임아웃 5s → 20s (Windows 콜드스타트에 유실).
+
+### 미해결 (다음 후보)
+
+- **/ha-accept 표현력** — 전역 집계 GWT(월 합계·절약액)를 자기완결 시나리오로 표현할 수단이
+  없다 (시나리오별 DB 격리·날짜식·부정 단언 부재). 실전에서 GWT 9개 중 4개가 underivable.
+
+---
+
 ## [0.21.0] — 2026-07-13 — "수용검증 계층 /ha-accept: GWT 수용 기준 → 실행 시나리오"
 
 검증 사다리의 마지막 빈 칸 — test/lint/type(verify) → 기동(smoke) → **"요구사항대로

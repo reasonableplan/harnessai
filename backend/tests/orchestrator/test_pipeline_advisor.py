@@ -234,3 +234,24 @@ def test_every_advice_has_nonempty_reason() -> None:
     ]
     for p in plans:
         assert advise(p).reason.strip(), f"reason 누락: {p and p.pipeline.current_step}"
+
+
+def test_building_after_review_reject_reports_rework_reason() -> None:
+    """ha-review REJECT 로 회귀한 경우도 rework 사유를 보고 (verify FAIL 과 동일 취급).
+
+    REJECT 는 needs_rebuild 를 내리고 building 으로 회귀시킨다. advisor 가 ha-verify
+    엔트리만 보면 "다음 ready 태스크 선택 진행" 이라는 엉뚱한 이유를 말한다.
+    """
+    plan = _plan("building")
+    plan.verify_history.append(
+        VerifyRecord(
+            step="ha-review",
+            at="2026-07-13T00:00:00+00:00",
+            passed=False,
+            summary="WARN 7건 [rework: T-005, T-007]",
+        )
+    )
+    advice = advise(plan)
+    assert advice.action == "build"
+    assert "T-005" in advice.reason
+    assert "review" in advice.reason.lower() or "리뷰" in advice.reason

@@ -377,6 +377,15 @@ def cmd_record(args: argparse.Namespace) -> int:
             except OSError as exc:
                 info(f"[WARN] needs_rebuild 전이 실패 (tasks.md 쓰기 오류): {exc}")
                 info("       수동으로 stale task status 를 확인하세요.")
+            else:
+                # done 태스크만 전이된다 — 미매칭(오타 등)이면 --resume 이 빈 손으로 멈춘다.
+                not_marked = [tid for tid in rework_tasks if tid not in rebuild_required_tasks]
+                if not_marked:
+                    info(
+                        f"[WARN] needs_rebuild 미전이: {', '.join(not_marked)} — "
+                        "tasks.md 에 없거나 status 가 done 이 아닙니다.\n"
+                        "       T-ID 오타인지 확인하세요 (미전이 태스크는 --resume 이 선택하지 않습니다)."
+                    )
 
     save_plan(plan, plan_path)
 
