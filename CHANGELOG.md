@@ -4,6 +4,32 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.20.0] — 2026-07-12 — "스캐폴딩 흡수: T-000 결정론 부트스트랩 + 스텁 스탬퍼"
+
+"결정론으로 처리 가능한 구조는 LLM 에게 맡기지 않는다" — 설정 보일러플레이트와 파일
+구조를 기계가 잡고 LLM 은 로직만 채우는 형태로 전환. LLM 손작성 보일러플레이트가
+"test 통과해도 앱이 안 뜨는" 산출물의 주 발생원이라는 진단(런타임 깨짐 최우선 피드백)
+에서 출발. 조사 근거: Plop/Hygen(스텁 원리)·Projen(생성물 게이트)·create-next-app v16
+플래그 검증. 설계: `backend/docs/scaffolding-design.md`
+
+### Added
+
+- **`toolchain.scaffold` 프로파일 필드** — 비대화 스캐폴드 명령 (nextjs =
+  `create-next-app@16` + `--no-agents-md` 로 생성 CLAUDE.md 충돌 차단 / react-vite =
+  `create-vite --no-interactive`). 공식 스캐폴더 없는 프로파일은 null 유지
+- **T-000 결정론 부트스트랩** — ha-plan commit 이 자동 주입 (scaffold 프로파일 보유 +
+  detect 불일치 시, 중복 주입 방지). ha-build `scaffold` 서브커맨드 = 샌드박스 실행 →
+  무덮어쓰기 병합 → install → detect 재평가 (멱등). `scaffold` 는 예약 의사 에이전트
+- **스텁 스탬퍼** — ha-build prepare 가 declared_files 부재분을 HARNESS-STUB 마커
+  스텁으로 선생성 (확장자별 주석 문법, 디렉토리/글롭/.json 제외, `--no-stamp` 옵트아웃)
+  — 경로/파일명 드리프트를 프롬프트 준수 문제에서 물리적 불가능으로 격상
+- **게이트 3** — scaffold 선행 BLOCK (`--skip-scaffold-gate`) / 스텁 미구현 BLOCK
+  (우회 없음 — 구현 또는 삭제가 조치) / T-000 complete `--skip-toolchain` 특례
+  (갓 스캐폴드된 앱은 test 스크립트 부재 — security gate 는 유지). GATES 집계 BLOCK 22
+- 회귀 49 tests (scaffold 20 + stamper 26 + profile_loader 3)
+
+---
+
 ## [0.19.5] — 2026-07-08 — "프롬프트 전수 평가 후속 + 유사도구 조사 채택 배치 3건"
 
 v0.19.4 전수 평가에서 남긴 결함 수정 + 외부 유사도구 조사(Ralph 루프/DeepWiki 인용 방식)

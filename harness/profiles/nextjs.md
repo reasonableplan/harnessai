@@ -101,6 +101,9 @@ toolchain:
   lint: "pnpm lint"
   type: "pnpm exec tsc --noEmit"
   format: "pnpm format"
+  scaffold: >-
+    pnpm create next-app@16 . --ts --tailwind --eslint --app --no-src-dir
+    --import-alias "@/*" --use-pnpm --skip-install --disable-git --no-agents-md --yes
 
 whitelist:
   runtime:

@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "_ha_shared"))
 from utils import (  # noqa: E402
     HARNESS_HOME,
+    SCAFFOLD_AGENT,
     assert_state,
     get_active_profiles,
     info,
@@ -25,11 +26,18 @@ from utils import (  # noqa: E402
 
 # Import backend modules for agent mismatch validation (Group 3 Step 2).
 # These are available because _ha_shared/utils.py already inserts backend/ into sys.path.
+# _matches_detect is module-private in profile_loader but both ha-plan (T-000
+# injection) and ha-build (scaffold execution) need the exact same detect
+# evaluation deepinit already relies on for existing-codebase idempotency —
+# same codebase, so importing the private helper directly is preferred over
+# duplicating the logic.
 from src.orchestrator.agent_matching import match_task_to_agent  # noqa: E402
 from src.orchestrator.config import load_agents_config  # noqa: E402
 from src.orchestrator.profile_loader import (  # noqa: E402
+    Profile,
     ProfileLoader,
     ProfileNotFoundError,
+    _matches_detect,
     find_consistency_violations,
 )
 from src.orchestrator.skeleton_hash import (  # noqa: E402
@@ -91,6 +99,11 @@ def _validate_agent_mappings(
         task_id = m.group(1)
         agent_id = m.group(2)
 
+        if agent_id == SCAFFOLD_AGENT:
+            # Reserved pseudo-agent for T-000 deterministic scaffold bootstrap —
+            # not in agents.yaml by design (scaffolding-design.md §2).
+            continue
+
         if agent_id not in all_agents:
             mismatches.append(
                 _AgentMismatch(
@@ -115,6 +128,54 @@ def _validate_agent_mappings(
             )
 
     return mismatches
+
+
+# tasks.md 표의 헤더 구분행 (|---|---|...|) — T-000 을 그 직후에 삽입할 기준점.
+_TABLE_HEADER_SEPARATOR_RE = re.compile(r"^\|[\-\s:|]+\|\s*$", re.MULTILINE)
+
+# 이미 T-000 행이 있는지 확인 (LLM 이 직접 넣었으면 중복 주입 금지).
+_T000_ROW_RE = re.compile(r"^\|\s*T-000\s*\|", re.MULTILINE)
+
+
+def _compute_t000_row(
+    profiles: list[Profile],
+    profile_paths: list[str],
+    project: Path,
+    tasks_content: str,
+) -> str | None:
+    """T-000 결정론 스캐폴드 부트스트랩 주입 행을 계산 (scaffolding-design.md §2).
+
+    3개 조건 전부 만족 시에만 주입 행 문자열을 반환, 아니면 None:
+      1. 활성 프로파일 중 toolchain.scaffold 보유 프로파일 존재
+      2. 그 프로파일이 자신의 path 에서 detect 불일치 (아직 부트스트랩 안 됨)
+      3. tasks_content 에 T-000 행이 이미 없음
+    """
+    unbootstrapped: list[str] = []
+    for profile, path in zip(profiles, profile_paths, strict=True):
+        if not profile.toolchain.scaffold:
+            continue
+        base = project if path == "." else (project / path)
+        if not _matches_detect(base, profile.detect):
+            unbootstrapped.append(profile.id)
+
+    if not unbootstrapped:
+        return None
+    if _T000_ROW_RE.search(tasks_content):
+        return None
+
+    return f"| T-000 | {SCAFFOLD_AGENT} | - | 결정론 스캐폴드 부트스트랩 ({', '.join(unbootstrapped)}) | 대기 |"
+
+
+def _inject_t000_row(tasks_content: str, row: str) -> str:
+    """tasks_content 의 첫 태스크 표 헤더 구분행 직후에 row 를 삽입.
+
+    구분행을 못 찾으면 (표 구조 자체가 깨진 극단 케이스) 맨 앞에 삽입 —
+    이 경우도 schema 검증이 별도로 위반을 보고한다.
+    """
+    m = _TABLE_HEADER_SEPARATOR_RE.search(tasks_content)
+    if not m:
+        return f"{row}\n{tasks_content}"
+    return f"{tasks_content[: m.end()]}\n{row}{tasks_content[m.end() :]}"
 
 
 def cmd_prepare(args: argparse.Namespace) -> int:
@@ -343,11 +404,24 @@ def cmd_commit(args: argparse.Namespace) -> int:
         for sv in schema_violations:
             info(f"  line {sv.line_number} [{sv.kind}]: {sv.detail}")
 
+    # ── T-000 결정론 스캐폴드 부트스트랩 주입 (scaffolding-design.md §2) ────────
+    # agent-mismatch + schema 검증 통과 후, tasks.md 쓰기 전 시점. 주입되는 T-000 자체는
+    # 결정론 산출물이라 위 두 검증의 대상이 아니다 (scaffold agent 는 이미
+    # _validate_agent_mappings 에서 면제 — LLM 이 직접 넣은 경우도 그대로 통과한다).
+    # profiles 는 위 has_keys 계산에 쓰인 것과 동일 리스트 — profile 로드가 실패해
+    # profiles=[] 인 경우 profile_paths 도 함께 비어 injection 이 자연히 skip 된다.
+    profile_paths = [ref.path for ref in plan.profiles[: len(profiles)]]
+    tasks_content = args.tasks_content
+    t000_row = _compute_t000_row(profiles, profile_paths, project, tasks_content)
+    if t000_row:
+        tasks_content = _inject_t000_row(tasks_content, t000_row)
+        info(f"[INFO] T-000 결정론 스캐폴드 부트스트랩 태스크 자동 주입: {t000_row.strip()}")
+
     # tasks.md 작성
     tasks_md = (
         f"# Tasks — {project.name}\n\n"
         f"생성: {plan.last_activity}\n\n"
-        f"{args.tasks_content.strip()}\n"
+        f"{tasks_content.strip()}\n"
     )
 
     # skeleton 의 tasks 섹션 동기화 — read first so a missing/corrupt skeleton
@@ -361,7 +435,7 @@ def cmd_commit(args: argparse.Namespace) -> int:
     # literal "\1"/"\g<...>" sequences that re.sub would treat as group refs.
     new_skel = re.sub(
         r"(## \d+\. 태스크 분해\n)(.*?)(?=^## \d+\.|\Z)",
-        lambda m: f"{m.group(1)}\n{args.tasks_content.strip()}\n\n",
+        lambda m: f"{m.group(1)}\n{tasks_content.strip()}\n\n",
         skel_text, count=1, flags=re.DOTALL | re.MULTILINE,
     )
     try:
@@ -388,7 +462,7 @@ def cmd_commit(args: argparse.Namespace) -> int:
     # 태스크 ID 카운트 — 완전한 태스크 행(첫 컬럼 T-ID)만 센다. 순진한
     # `\|\s*(T-\d+)\s*\|` 는 의존성 컬럼의 단일 T-ID 셀(`| T-003 |`)도 집계해
     # 행 수를 부풀린다 (이슈 #10). 검증에 쓰는 _TASK_AGENT_ROW_RE 로 통일.
-    task_ids = [m.group(1) for m in _TASK_AGENT_ROW_RE.finditer(args.tasks_content)]
+    task_ids = [m.group(1) for m in _TASK_AGENT_ROW_RE.finditer(tasks_content)]
 
     output = {
         "tasks_path": str(tasks_path),

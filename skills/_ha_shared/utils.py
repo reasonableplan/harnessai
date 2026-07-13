@@ -290,6 +290,11 @@ MOBILE_PROFILE_IDS: frozenset[str] = frozenset(
 FRONTEND_PROFILE_IDS: frozenset[str] = frozenset({"react-vite", "nextjs", "electron"})
 BACKEND_PROFILE_IDS: frozenset[str] = frozenset({"fastapi", "nestjs", "python-cli", "python-lib"})
 
+# T-000 결정론 스캐폴드 부트스트랩의 예약 의사(pseudo) 에이전트 (Phase A).
+# agents.yaml 에 존재하지 않음 — ha-plan 의 agent-mismatch 검증과 ha-build 의
+# prepare/scaffold 흐름이 이 상수로 특별 취급한다.
+SCAFFOLD_AGENT = "scaffold"
+
 
 def resolve_guideline_paths(profile_id: str) -> list[Path]:
     """profile_id 의 templates/guidelines/<profile_id>/*.md 정렬된 절대 경로 리스트.

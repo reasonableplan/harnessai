@@ -49,6 +49,7 @@ toolchain:
   lint: "pnpm lint"
   type: "pnpm exec tsc --noEmit"
   format: "pnpm format"
+  scaffold: "pnpm create vite . --template react-ts --no-interactive"
 
 whitelist:
   runtime:

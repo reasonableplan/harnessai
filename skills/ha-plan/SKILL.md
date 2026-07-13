@@ -129,6 +129,12 @@ run.py 가:
 - 동기화로 skeleton.md 가 바뀌면 `skeleton_hash` / `section_hashes` baseline 도 refresh (issue #1 — 안 하면 다음 ha-redesign 이 거짓 외부수정 경고)
 - `current_step` "designed" → "planned"
 
+**`T-000` / agent `scaffold` 는 예약** — 활성 프로파일 중 `toolchain.scaffold` 보유분이
+아직 부트스트랩 안 됐으면 `commit` 이 헤더 직후에 `T-000` 태스크를 자동 주입한다
+(결정론 스캐폴드 부트스트랩, v0.20.0). **LLM 은 tasks 표에 `scaffold` 에이전트 태스크를
+직접 만들지 말 것** — 이미 있으면 중복 주입은 안 하지만, 수동 작성은 스펙 없는 태스크가
+된다. 구현은 `/ha-build scaffold --task T-000` 참조.
+
 #### `--replan` — ha-redesign 후 전체 재분해
 기본 ha-plan 은 `designed` 상태에서만 실행된다. `/ha-redesign` 은 cross-cutting 스킬이라
 `current_step` 을 `planned` 로 유지하므로, redesign 으로 skeleton 이 바뀐 뒤 **태스크 전체를

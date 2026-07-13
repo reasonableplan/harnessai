@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "_ha_shared"))
@@ -15,6 +17,7 @@ from utils import (  # noqa: E402, I001
     FRONTEND_PROFILE_IDS,
     HARNESS_HOME,
     MOBILE_PROFILE_IDS,
+    SCAFFOLD_AGENT,
     TASK_ROW_RE,
     assert_state,
     get_active_profiles,
@@ -29,6 +32,12 @@ from utils import (  # noqa: E402, I001
 )
 
 from src.orchestrator.plan_manager import requires_hitl_freeze  # noqa: E402
+
+# _matches_detect is module-private in profile_loader but the scaffold
+# subcommand needs the exact same detect evaluation ha-plan's T-000 injection
+# and deepinit already rely on — same codebase, so importing the private
+# helper directly is preferred over duplicating the logic.
+from src.orchestrator.profile_loader import _matches_detect  # noqa: E402
 from src.orchestrator.skeleton_hash import check_skeleton_hash  # noqa: E402
 
 
@@ -78,6 +87,60 @@ def _agent_to_guideline_paths(agent: str, plan) -> list[str]:
         return sorted(paths)
 
     return []
+
+
+def _scaffold_commands_for_task(plan, project: Path) -> list[dict[str, str]]:
+    """활성 프로파일 중 toolchain.scaffold 보유분의 {profile, path, command} 목록.
+
+    prepare 출력용 (scaffolding-design.md §4) — 실제 detect 재확인/실행은
+    `scaffold` 서브커맨드(§3)의 책임이다.
+    """
+    commands: list[dict[str, str]] = []
+    for i, p in enumerate(get_active_profiles(plan, project)):
+        if not p.toolchain.scaffold:
+            continue
+        path = str(plan.profiles[i].path) if i < len(plan.profiles) else "."
+        commands.append({"profile": p.id, "path": path, "command": p.toolchain.scaffold})
+    return commands
+
+
+_SCAFFOLD_MERGE_SKIP_DIRS = frozenset({".git", "node_modules"})
+
+
+def _merge_no_overwrite(src_dir: Path, dst_dir: Path) -> tuple[int, list[str]]:
+    """src_dir 산출물을 dst_dir 로 무덮어쓰기 병합 (scaffolding-design.md §3-3).
+
+    - 파일이 dst_dir 에 이미 존재하면 절대 덮지 않고 skipped 에 상대경로 기록.
+    - 디렉토리는 재귀 병합 (shutil.move 는 기존 디렉토리를 서브디렉토리로 옮겨버려 사용 불가).
+    - `.git`/`node_modules` 는 어느 깊이에서든 이동 대상에서 제외.
+
+    반환: (이동된 파일 수, dst_dir 에 이미 존재해 건너뛴 상대경로 목록 — '/' 구분).
+    """
+    moved = 0
+    skipped: list[str] = []
+
+    def _walk(src: Path, dst: Path, rel: str) -> None:
+        nonlocal moved
+        dst.mkdir(parents=True, exist_ok=True)
+        for entry in sorted(src.iterdir()):
+            if entry.name in _SCAFFOLD_MERGE_SKIP_DIRS:
+                continue
+            entry_rel = f"{rel}/{entry.name}" if rel else entry.name
+            target = dst / entry.name
+            if entry.is_dir():
+                if target.exists() and not target.is_dir():
+                    skipped.append(entry_rel)
+                    continue
+                _walk(entry, target, entry_rel)
+            else:
+                if target.exists():
+                    skipped.append(entry_rel)
+                    continue
+                shutil.move(str(entry), str(target))
+                moved += 1
+
+    _walk(src_dir, dst_dir, "")
+    return moved, skipped
 
 
 def _parse_tasks(tasks_text: str) -> dict[str, dict[str, str]]:
@@ -180,6 +243,91 @@ def _declared_files(tasks_text: str, tid: str) -> list[str]:
         ]
         return list(dict.fromkeys(files))
     return []
+
+
+# ── 스텁 스탬퍼 (scaffolding-design.md §5~§6) ────────────────────────────────
+# declared_files 경로/네이밍을 LLM 이 놓치는 실수를 "프롬프트 준수 문제"에서
+# "물리적으로 불가능"으로 격상 — prepare 가 부재 파일을 마커 스텁으로 선생성한다.
+_STUB_MARKER = "HARNESS-STUB"
+
+_COMMENT_SYNTAX: dict[str, tuple[str, str]] = {
+    **{ext: ("# ", "") for ext in (".py", ".yml", ".yaml", ".sh")},
+    **{
+        ext: ("// ", "")
+        for ext in (
+            ".ts", ".tsx", ".js", ".jsx", ".mjs", ".kt", ".swift", ".dart", ".go", ".rs", ".java",
+        )
+    },
+    **{ext: ("/* ", " */") for ext in (".css", ".scss")},
+    **{ext: ("<!-- ", " -->") for ext in (".md", ".html")},
+    ".sql": ("-- ", ""),
+}
+
+
+def _stub_content(rel_path: str, tid: str) -> str | None:
+    """rel_path 확장자의 주석 문법으로 감싼 스텁 1줄 내용. 스탬프 불가하면 None.
+
+    제외: '/' 로 끝나는 토큰(디렉토리), '*'/'?' 포함(글롭), 매핑에 없는 확장자.
+    """
+    if rel_path.endswith("/") or "*" in rel_path or "?" in rel_path:
+        return None
+    syntax = _COMMENT_SYNTAX.get(Path(rel_path).suffix)
+    if syntax is None:
+        return None
+    prefix, suffix = syntax
+    return f"{prefix}{_STUB_MARKER} {tid}: ha-build prepare 선생성 스텁 — 구현 시 이 줄 제거{suffix}\n"
+
+
+def _stamp_declared_files(
+    project: Path, declared: list[str], tid: str
+) -> tuple[list[str], list[str]]:
+    """declared 중 부재 파일을 스텁으로 선생성. 반환: (stamped, unstamped).
+
+    이미 존재하는 파일은 건드리지 않는다 (둘 중 어디에도 포함되지 않음). 부모
+    디렉토리는 자동 생성. 개별 파일 OSError 는 in-progress 마킹 실패 처리와
+    동일하게 WARN 후 계속.
+    """
+    stamped: list[str] = []
+    unstamped: list[str] = []
+    for rel in declared:
+        target = project / rel
+        if target.exists():
+            continue
+        content = _stub_content(rel, tid)
+        if content is None:
+            unstamped.append(rel)
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+            stamped.append(rel)
+        except OSError as e:
+            info(f"[WARN] {tid} 스텁 생성 실패 ({rel}): {e}")
+            unstamped.append(rel)
+    return stamped, unstamped
+
+
+def _declared_stub_files(project: Path, declared: list[str]) -> list[str]:
+    """declared 중 실존 파일이면서 첫 3줄에 HARNESS-STUB 마커가 남은 상대경로 목록.
+
+    prepare 의 reentry stub_files 보고(§5)와 complete 의 스텁 미구현 게이트(§6) 공용.
+    읽기 실패(OSError)는 WARN 후 대상에서 제외 (fail-open — 일시적 FS 오류로 무관한
+    태스크까지 막지 않기 위함).
+    """
+    out: list[str] = []
+    for rel in declared:
+        target = project / rel
+        if not target.exists():
+            continue
+        try:
+            with target.open("r", encoding="utf-8", errors="replace") as f:
+                first_lines = [next(f, "") for _ in range(3)]
+        except OSError as e:
+            info(f"[WARN] 스텁 마커 확인 실패 ({rel}): {e}")
+            continue
+        if any(_STUB_MARKER in line for line in first_lines):
+            out.append(rel)
+    return out
 
 
 def _mark_in_progress(tasks_text: str, tid: str) -> str:
@@ -295,6 +443,28 @@ def cmd_prepare(args: argparse.Namespace) -> int:
             info(f"[FAIL] {e}")
             return 2
 
+    # ── scaffold 선행 게이트 (scaffolding-design.md §4) ─────────────────────
+    # 미해결 scaffold(T-000) 태스크가 있는데 이번 --task 대상이 아니면 다른 태스크를
+    # 먼저 빌드하지 못하게 차단 — 결정론 부트스트랩 없이 코드를 얹으면 file_structure
+    # 규약이 어긋난다. --task 로 scaffold 태스크 자신을 지정했으면 통과 (지금 하는 중).
+    if not getattr(args, "skip_scaffold_gate", False):
+        unresolved_scaffold = [
+            tid
+            for tid, t in tasks.items()
+            if t["agent"] == SCAFFOLD_AGENT
+            and t["status"].strip().lower() not in _RESOLVED_STATES
+            and tid not in target_ids
+        ]
+        if unresolved_scaffold:
+            info(
+                "[BLOCK] T-000 부트스트랩 선행 필요 — 미해결 scaffold 태스크: "
+                f"{', '.join(unresolved_scaffold)}\n"
+                "  · 먼저 실행: python ~/.claude/skills/ha-build/run.py prepare --task "
+                f"{unresolved_scaffold[0]} 후 scaffold --task {unresolved_scaffold[0]}\n"
+                "  · 우회하려면(의도적): --skip-scaffold-gate"
+            )
+            return 1
+
     # depends_on 만족 검사
     issues: list[str] = []
     for tid in target_ids:
@@ -326,20 +496,35 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     # 파일 존재로 부분 완료를 알린다. 대기 면 착수 마킹해 다음 중단 시 보이게 한다.
     reentry_info: dict[str, dict] = {}
     new_tasks_text = tasks_text
+    no_stamp = getattr(args, "no_stamp", False)
     for tid in target_ids:
         declared = _declared_files(tasks_text, tid)
         existing = [f for f in declared if (project / f).exists()]
         is_reentry = tasks[tid]["status"].strip().lower() in _INPROGRESS_STATES
+        is_scaffold = tasks[tid]["agent"] == SCAFFOLD_AGENT
+        stamped: list[str] = []
+        unstamped: list[str] = []
+        stub_files: list[str] = []
+        # ── 스텁 스탬퍼 (scaffolding-design.md §5) — 비-reentry·비-scaffold 만 ──
+        if is_reentry:
+            stub_files = _declared_stub_files(project, declared)
+        elif not is_scaffold and not no_stamp:
+            stamped, unstamped = _stamp_declared_files(project, declared, tid)
         reentry_info[tid] = {
             "reentry": is_reentry,
             "declared_files": declared,
             "existing_files": existing,
+            "stamped_files": stamped,
+            "unstamped": unstamped,
+            "stub_files": stub_files,
         }
         if is_reentry:
             info(
                 f"[WARN] {tid} 이전에 착수됨 (status=in-progress) — 서브에이전트 중단 후 재진입 가능성.\n"
                 f"  · 선언 산출 파일 {len(declared)}개 중 {len(existing)}개 존재"
                 + (f": {', '.join(existing)}" if existing else "")
+                + f"\n  · 스텁 미구현 {len(stub_files)}개"
+                + (f": {', '.join(stub_files)}" if stub_files else "")
                 + "\n  · 부분 산출물을 점검하고 '이어서' 또는 '처음부터' 결정하세요 (덮어쓰기 주의)."
             )
         else:
@@ -353,20 +538,26 @@ def cmd_prepare(args: argparse.Namespace) -> int:
 
     profiles = get_active_profiles(plan, project)
 
+    def _task_entry(tid: str) -> dict:
+        entry = {"id": tid, **tasks[tid], **reentry_info[tid]}
+        if tasks[tid]["agent"] == SCAFFOLD_AGENT:
+            # scaffold 는 Agent 위임 없는 결정론 태스크 — 존재하지 않는
+            # agents/scaffold/CLAUDE.md 경로 대신 scaffold_commands 를 제공.
+            entry["scaffold"] = True
+            entry["scaffold_commands"] = _scaffold_commands_for_task(plan, project)
+            entry["guideline_paths"] = []
+        else:
+            entry["agent_prompt"] = str(
+                HARNESS_HOME / "backend" / "agents" / tasks[tid]["agent"] / "CLAUDE.md"
+            )
+            entry["guideline_paths"] = _agent_to_guideline_paths(tasks[tid]["agent"], plan)
+        return entry
+
     output = {
         "project": str(project),
         "plan_path": str(plan_path),
         "tasks_path": str(tasks_path),
-        "tasks": [
-            {
-                "id": tid,
-                **tasks[tid],
-                **reentry_info[tid],
-                "agent_prompt": str(HARNESS_HOME / "backend" / "agents" / tasks[tid]["agent"] / "CLAUDE.md"),
-                "guideline_paths": _agent_to_guideline_paths(tasks[tid]["agent"], plan),
-            }
-            for tid in target_ids
-        ],
+        "tasks": [_task_entry(tid) for tid in target_ids],
         "profiles": [
             {
                 "id": p.id,
@@ -603,6 +794,22 @@ def cmd_complete(args: argparse.Namespace) -> int:
         info(f"[FAIL] --status: {'|'.join(_RECORD_STATUS_CHOICES)}, 현재 '{args.status}'")
         return 2
 
+    tasks_path = plan_path.parent / "tasks.md"
+    text = tasks_path.read_text(encoding="utf-8")
+
+    # 스텁 미구현 게이트 (scaffolding-design.md §6) — LESSON-021 toolchain 게이트 앞.
+    # skipped/blocked 는 게이트 불필요. 우회 플래그 없음(설계 §6 명시) — 조치는
+    # 구현 완료 또는 (스펙상 불필요해진 파일이면) 삭제뿐.
+    if args.status == "done":
+        stub_remaining = _declared_stub_files(project, _declared_files(text, args.task))
+        if stub_remaining:
+            info(f"[BLOCK] 스텁 미구현 잔존 {len(stub_remaining)}건 — done 마킹 거부:")
+            for f in stub_remaining:
+                info(f"  · {f}")
+            info("구현 완료 또는 스펙상 불필요해진 파일이면 삭제 후 재시도.")
+            return 1
+        info("[gate] 스텁 미구현 게이트 통과")
+
     # LESSON-021: done 마킹 전 toolchain 전체 강제 (test + lint + type)
     # skipped/blocked 는 게이트 불필요 — 빌드 안 한 태스크에 검증 무의미.
     # --skip-toolchain 로 opt-out (문서/설계 태스크 등).
@@ -627,9 +834,6 @@ def cmd_complete(args: argparse.Namespace) -> int:
             info("위반 수정 후 재시도. 의도적 skip 이면 --skip-security 명시.")
             return 1
         info("[gate] security_hooks 통과 — done 마킹 진행")
-
-    tasks_path = plan_path.parent / "tasks.md"
-    text = tasks_path.read_text(encoding="utf-8")
 
     # 해당 태스크 행의 상태 컬럼만 교체 (B1: 매칭 실패 시 즉시 종료 — plan 갱신 안 함)
     new_text = re.sub(
@@ -739,6 +943,129 @@ def cmd_complete(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_scaffold(args: argparse.Namespace) -> int:
+    """T-000 결정론 스캐폴드 실행 (scaffolding-design.md §3). Agent 위임 없음.
+
+    프로파일별 (toolchain.scaffold 보유 + detect 불일치인 것만):
+    샌드박스에서 scaffold 명령 실행 → 무덮어쓰기 병합 → install → detect 재평가.
+    이미 detect 를 만족하는 프로파일은 멱등 skip.
+    """
+    plan, plan_path, project = load_plan()
+
+    try:
+        validate_task_id(args.task)
+    except ValueError as e:
+        info(f"[FAIL] {e}")
+        return 2
+
+    tasks_path = plan_path.parent / "tasks.md"
+    if not tasks_path.exists():
+        info(f"[FAIL] tasks.md 없음: {tasks_path}")
+        return 1
+    tasks = _parse_tasks(tasks_path.read_text(encoding="utf-8"))
+    if args.task not in tasks:
+        info(f"[FAIL] 태스크 '{args.task}' 없음 in tasks.md")
+        return 1
+    if tasks[args.task]["agent"] != SCAFFOLD_AGENT:
+        info(
+            f"[FAIL] '{args.task}' 는 scaffold 태스크가 아님 "
+            f"(agent={tasks[args.task]['agent']!r}, 기대값={SCAFFOLD_AGENT!r})"
+        )
+        return 2
+
+    results: list[dict[str, object]] = []
+    overall_ok = True
+
+    for i, p in enumerate(get_active_profiles(plan, project)):
+        if not p.toolchain.scaffold:
+            continue
+        path = str(plan.profiles[i].path) if i < len(plan.profiles) else "."
+        target = project if path == "." else (project / path)
+        target.mkdir(parents=True, exist_ok=True)
+
+        if _matches_detect(target, p.detect):
+            # 이미 부트스트랩됨 — 멱등 skip (재실행 안전성).
+            results.append(
+                {"id": p.id, "path": path, "scaffolded": False, "moved": 0, "skipped": [], "install_ok": True}
+            )
+            continue
+
+        sandbox = Path(tempfile.mkdtemp(prefix="ha-scaffold-"))
+        try:
+            try:
+                r = subprocess.run(
+                    # shell=True 근거: toolchain gate 와 동일 — 프로파일 frontmatter 는
+                    # 레포 내 신뢰 소스 (scaffolding-design.md §3).
+                    p.toolchain.scaffold, shell=True, cwd=str(sandbox),
+                    capture_output=True, text=True,
+                    encoding="utf-8", errors="replace", timeout=600,
+                )
+            except subprocess.TimeoutExpired:
+                info(f"[FAIL] {p.id} scaffold 명령 타임아웃 (>10분): {p.toolchain.scaffold}")
+                overall_ok = False
+                results.append(
+                    {"id": p.id, "path": path, "scaffolded": False, "moved": 0, "skipped": [], "install_ok": False}
+                )
+                continue
+            if r.returncode != 0:
+                info(
+                    f"[FAIL] {p.id} scaffold 명령 실패 (rc={r.returncode}): "
+                    f"{p.toolchain.scaffold}\n{r.stderr}"
+                )
+                overall_ok = False
+                results.append(
+                    {"id": p.id, "path": path, "scaffolded": False, "moved": 0, "skipped": [], "install_ok": False}
+                )
+                continue
+
+            moved, skipped = _merge_no_overwrite(sandbox, target)
+
+            install_ok = True
+            if p.toolchain.install:
+                try:
+                    ir = subprocess.run(
+                        p.toolchain.install, shell=True, cwd=str(target),
+                        capture_output=True, text=True,
+                        encoding="utf-8", errors="replace", timeout=900,
+                    )
+                    install_ok = ir.returncode == 0
+                    if not install_ok:
+                        info(
+                            f"[FAIL] {p.id} install 실패 (rc={ir.returncode}): "
+                            f"{p.toolchain.install}\n{ir.stderr}"
+                        )
+                        overall_ok = False
+                except subprocess.TimeoutExpired:
+                    info(f"[FAIL] {p.id} install 타임아웃 (>15분): {p.toolchain.install}")
+                    install_ok = False
+                    overall_ok = False
+
+            if not _matches_detect(target, p.detect):
+                info(f"[FAIL] {p.id} 스캐폴드 산출물이 profile detect 를 만족하지 않음: {path}")
+                overall_ok = False
+
+            results.append(
+                {
+                    "id": p.id,
+                    "path": path,
+                    "scaffolded": True,
+                    "moved": moved,
+                    "skipped": skipped,
+                    "install_ok": install_ok,
+                }
+            )
+        finally:
+            shutil.rmtree(sandbox, ignore_errors=True)
+
+    output = {
+        "task": args.task,
+        "profiles": results,
+        "next": f"complete --task {args.task} --status done --skip-toolchain",
+    }
+    print(json.dumps(output, ensure_ascii=False, indent=2))
+    return 0 if overall_ok else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="ha-build")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -761,6 +1088,19 @@ def main() -> int:
         action="store_true",
         help="HITL frozen_status 게이트 우회 (v0.10.0 — 마이그레이션/개발용. 정상 흐름은 /ha-design freeze 후 진입).",
     )
+    p.add_argument(
+        "--skip-scaffold-gate",
+        action="store_true",
+        help="T-000 결정론 스캐폴드 선행 게이트 우회 (의도적 사용 — 비추천).",
+    )
+    p.add_argument(
+        "--no-stamp",
+        action="store_true",
+        help="declared_files 스텁 선생성 건너뛰기 (opt-out — 기본은 스탬프함).",
+    )
+
+    s = sub.add_parser("scaffold")
+    s.add_argument("--task", required=True, help="scaffold agent 로 배정된 태스크 ID (보통 T-000)")
 
     c = sub.add_parser("complete")
     c.add_argument("--task", required=True)
@@ -785,6 +1125,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.cmd == "prepare":
         return cmd_prepare(args)
+    if args.cmd == "scaffold":
+        return cmd_scaffold(args)
     return cmd_complete(args)
 
 

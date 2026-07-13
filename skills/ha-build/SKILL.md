@@ -79,6 +79,35 @@ JSON 출력: 태스크 정보 (agent, depends_on, description, path), 활성 프
   **새로 처음부터 만들기 전에** `existing_files` (선언 산출 중 이미 존재하는 파일) 를 점검해
   "이어서" 할지 "처음부터" 할지 결정하라. Agent prompt 에 부분 산출물 상태를 명시할 것.
 - `declared_files` / `existing_files` — spec 의 "생성/수정 파일" 중 실재하는 것. 부분 완료 판단 근거.
+- `stamped_files` / `unstamped` — 비-reentry·비-scaffold 태스크에서 prepare 가 declared 부재 파일을
+  HARNESS-STUB 마커 스텁으로 선생성한 파일 / 제외(디렉토리·글롭·주석 불가 확장자)돼 미생성 보고된 파일.
+  `prepare --no-stamp` 로 이번 실행만 스탬프 끄기 가능.
+- `stub_files` — reentry 태스크에서 declared 실존 파일 중 HARNESS-STUB 마커가 남은 파일 목록
+  (부분복구 시 "존재하지만 미구현" 판단 보조).
+
+### 1.5. scaffold 태스크 분기 (T-000, v0.20.0)
+
+`prepare` 출력 task 에 **`scaffold: true`** 가 있으면 (agent=`scaffold`, `/ha-plan` 이 자동
+주입한 결정론 부트스트랩 태스크) — **Agent 위임 없이** 곧바로 다음을 실행한다:
+
+```bash
+python ~/.claude/skills/ha-build/run.py scaffold --task T-000
+```
+
+- `scaffold_commands` (프로파일별 `{profile, path, command}`) 는 참고용 — 실제 실행/무덮어쓰기
+  병합/install/detect 재확인은 run.py 가 전부 처리한다. 부모/Agent 가 직접 커맨드를 실행하지 말 것.
+- 성공(exit 0) 후:
+  ```bash
+  python ~/.claude/skills/ha-build/run.py complete --task T-000 --status done --skip-toolchain
+  ```
+  **`--skip-toolchain` 이 정당한 유일 지점**: 갓 스캐폴드된 앱은 test 스크립트가 없어 LESSON-021
+  게이트가 항상 실패한다 — T-001 이후부터는 정상적으로 toolchain 게이트가 걸린다.
+  **security gate 는 그대로 유지**된다 (`--skip-security` 는 별도 플래그이며 여기서 켜지 않는다).
+- 실패(exit≠0)면 `scaffold` 의 stdout/stderr 원인(네트워크 부재 등)을 사용자에게 보고 —
+  fallback 없이 그대로 blocked 처리.
+
+**선행 게이트**: 미해결 scaffold 태스크가 있는데 다른 `--task` 로 `prepare` 를 부르면 BLOCK
+(`--skip-scaffold-gate` 로 의도적 우회 가능 — 비추천).
 
 ### 2. 구현 — Agent 위임 (단일/병렬 공통)
 
@@ -133,6 +162,9 @@ Agent({
 - 테스트 먼저 작성 → 실패 확인 → 구현 → 테스트 통과 → 린트
 - 스펙 블록의 "구현 세부" 를 코드에 1:1 매핑 (컬럼 누락/타입 변경/필드 추가 금지)
 - 새 파일/수정 파일 모두 프로파일 화이트리스트 + conventions 내에서만
+- prepare 가 declared 파일을 HARNESS-STUB 마커 스텁으로 선생성했을 수 있음 — 구현 시 마커
+  줄을 제거하고 채울 것. 스펙상 불필요해진 스텁은 삭제하고 핸드오프 노트에 사유 기록.
+  마커가 남으면 complete done 이 차단됨.
 
 출력 계약: 작업 완료 보고 끝에 핸드오프 노트 (한 일 / 우려 1가지 / 스펙 따랐지만 이견 /
 다음 역할에게 — 역할 CLAUDE.md 의 '핸드오프 노트' 양식) 를 반드시 남기세요.

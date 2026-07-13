@@ -2258,3 +2258,68 @@ def test_toolchain_smoke_defaults_to_none(tmp_path: Path) -> None:
     _write_profile(harness / "profiles", "nosmoke", required_sections=["overview"])
     loader = ProfileLoader(harness_dir=harness)
     assert loader.load("nosmoke").toolchain.smoke is None
+
+
+# ── toolchain.scaffold (T-000 결정론 스캐폴드 부트스트랩, scaffolding-design.md) ──
+
+
+def test_toolchain_scaffold_field_parsed(tmp_path: Path) -> None:
+    """toolchain.scaffold 명령이 Toolchain.scaffold 로 매핑된다."""
+    harness = tmp_path / "harness"
+    _write_profile(
+        harness / "profiles",
+        "scaffoldprof",
+        required_sections=["overview"],
+        extra_frontmatter={
+            "toolchain": {
+                "install": "i",
+                "test": "t",
+                "lint": "l",
+                "scaffold": "pnpm create next-app@16 .",
+            }
+        },
+    )
+    loader = ProfileLoader(harness_dir=harness)
+    assert loader.load("scaffoldprof").toolchain.scaffold == "pnpm create next-app@16 ."
+
+
+def test_toolchain_scaffold_defaults_to_none(tmp_path: Path) -> None:
+    """scaffold 미지정 프로파일은 None (fastapi 등 공식 스캐폴더 없는 프로파일 — 기존 비파괴)."""
+    harness = tmp_path / "harness"
+    _write_profile(harness / "profiles", "noscaffold", required_sections=["overview"])
+    loader = ProfileLoader(harness_dir=harness)
+    assert loader.load("noscaffold").toolchain.scaffold is None
+
+
+def test_toolchain_scaffold_child_overrides_parent(tmp_path: Path) -> None:
+    """extends 상속 시 자식의 toolchain.scaffold 가 부모 값을 override 한다."""
+    harness = tmp_path / "harness"
+    _write_profile(
+        harness / "profiles",
+        "parent",
+        required_sections=["overview"],
+        extra_frontmatter={
+            "toolchain": {
+                "install": "i",
+                "test": "t",
+                "lint": "l",
+                "scaffold": "parent-scaffold-cmd",
+            }
+        },
+    )
+    _write_profile(
+        harness / "profiles",
+        "child",
+        extends="parent",
+        required_sections=["overview"],
+        extra_frontmatter={
+            "toolchain": {
+                "install": "i2",
+                "test": "t2",
+                "lint": "l2",
+                "scaffold": "child-scaffold-cmd",
+            }
+        },
+    )
+    loader = ProfileLoader(harness_dir=harness)
+    assert loader.load("child").toolchain.scaffold == "child-scaffold-cmd"

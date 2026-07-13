@@ -60,6 +60,9 @@ class Toolchain:
     # /ha-smoke 런타임 기동 검증 명령 (exit 0 = PASS). 서버형 프로파일은
     # 포트가 프로젝트마다 달라 여기 고정하지 않고 SKILL.md 휴리스틱이 도출.
     smoke: str | None = None
+    # T-000 결정론 스캐폴드 부트스트랩 명령 (비대화형, cwd(`.`) 대상 필수).
+    # 공식 스캐폴더가 없는 프로파일(fastapi 등)은 None 유지 (scaffolding-design.md §1).
+    scaffold: str | None = None
 
 
 @dataclass(frozen=True)
@@ -381,10 +384,10 @@ class ProfileLoader:
         반환값:
             (active, trace) — active 는 정렬된 활성 섹션 ID 리스트,
             trace 는 {section_id: required_when_expression} dict.
-            파싱 에러로 보수적 활성된 경우 trace 값은 "<parse-error: {expression}>" 형식.
 
-        표현식 파싱 실패 시: stderr 에 경고 출력 후 보수적으로 활성화 (false negative 방지).
-        invalid expression 은 harness validate 가 사전에 거부.
+        표현식 파싱 실패 시: ExpressionParseError 를 raise (fail-fast, frag_id 포함).
+        보수적 활성화는 typo 를 silently 숨겨 폐기됨 (Group 5 Step 3 strictness) —
+        invalid expression 은 harness validate 가 사전에 거부한다.
 
         external_capabilities: Group 1-D — user-declared BaaS / external service
         atoms unioned into has_keys so fragment required_when evaluation includes them.
@@ -463,6 +466,7 @@ class ProfileLoader:
                 type=tc.get("type"),
                 format=tc.get("format"),
                 smoke=tc.get("smoke"),
+                scaffold=tc.get("scaffold"),
             ),
             whitelist=Whitelist(
                 runtime=tuple(wl.get("runtime") or []),
