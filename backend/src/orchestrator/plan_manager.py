@@ -51,9 +51,11 @@ ALLOWED_LIFECYCLE = {"poc", "mvp", "ga"}
 ALLOWED_REDESIGN_STATUS = {"proposed", "approved", "applied", "rejected"}
 
 # Task status produced by redesign propagation — distinct from ha-build statuses
-# (done | blocked | in-progress) so that ha-verify / ha-build --skip-done cannot
-# silently pass stale code. Only mark_for_rebuild() may set this value; general
-# task status updates go through ha-build complete.
+# (done | blocked | in-progress) so that stale code cannot silently pass as built:
+# `ha-build --resume` never re-selects a done task, so the status must drop to
+# needs_rebuild for the task to re-enter the build (and needs_rebuild is picked
+# first). Only mark_for_rebuild() may set this value; general task status updates
+# go through ha-build complete.
 TASK_STATUS_NEEDS_REBUILD = "needs_rebuild"
 
 # Eng-review audit trail — captures external engineering review events (e.g. /plan-eng-review).
@@ -592,9 +594,11 @@ class PlanManager:
     ) -> list[str]:
         """Rewrite status of done tasks to needs_rebuild in tasks.md.
 
-        Called by ha-redesign commit --status applied (affected_tasks) and ha-verify
-        record (failed verify with rework_tasks). Both paths prevent ha-verify /
-        ha-build --skip-done from silently validating stale code.
+        Called by ha-redesign commit --status applied (affected_tasks), ha-verify
+        record (failed verify with rework_tasks) and ha-review record (REJECT with
+        violation task IDs). All three prevent stale code from silently validating:
+        `ha-build --resume` never re-selects a done task, so the status must drop to
+        needs_rebuild for the task to be rebuilt.
 
         Only tasks with status "done" (case-insensitive, including "완료"/"completed")
         are transitioned; tasks with any other status are left unchanged. This is an

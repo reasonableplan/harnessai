@@ -348,7 +348,8 @@ def cmd_commit(args: argparse.Namespace) -> int:
                         )
 
     # Safety guard: when applied, transition any affected done tasks to needs_rebuild
-    # so that ha-verify / ha-build --skip-done cannot silently pass stale code.
+    # so that stale code cannot silently pass ha-verify — `ha-build --resume` never
+    # re-selects a done task, so the status must drop for the task to be rebuilt.
     # Only "applied" triggers this — proposed/approved/rejected carry no code change.
     # affected_tasks (agent 판단) ∪ hash 파생 후보. mark_for_rebuild 는 done 상태만
     # 전이하므로 superset 전달이 안전하다.

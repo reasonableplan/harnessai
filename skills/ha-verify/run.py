@@ -366,8 +366,9 @@ def cmd_record(args: argparse.Namespace) -> int:
         if plan.pipeline.current_step != "building":
             regress(plan, "building")
 
-    # failed verify 시 rework tasks 를 needs_rebuild 로 전이 — ha-build --skip-done 이
-    # stale 코드를 통과시키는 것을 막는다 (ha-redesign applied 와 동일 패턴).
+    # failed verify 시 rework tasks 를 needs_rebuild 로 전이 — done 인 채로 두면
+    # ha-build --resume 이 재선택하지 않아 stale 코드가 그대로 남는다
+    # (ha-redesign applied · ha-review REJECT 와 동일 패턴).
     rebuild_required_tasks: list[str] = []
     if not passed and rework_tasks:
         tasks_path = plan_path.parent / "tasks.md"

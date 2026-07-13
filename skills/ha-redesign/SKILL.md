@@ -308,7 +308,8 @@ python ~/.claude/skills/ha-log/run.py append \
 - **forward 상태 유지**: redesign 은 `current_step` 안 바꿈.
 - **post-build stale 자동 가드**: `applied` 시 `affected_tasks` 중 status=`done` 인
   태스크는 **run.py 가 자동으로 `needs_rebuild` 로 전이**한다. 이는 재설계로 spec 이 바뀐
-  stale 코드가 `/ha-verify` / `/ha-build --skip-done` 를 통과하는 것을 막는 안전 가드.
+  stale 코드가 재빌드 없이 `/ha-verify` 를 그대로 통과하는 것을 막는 안전 가드다 —
+  `/ha-build --resume` 은 done 태스크를 재선택하지 않으므로, 상태를 내려야 재빌드 대상이 된다.
   전이된 태스크 목록은 stdout JSON 의 `rebuild_required_tasks` 필드로 보고된다.
   **추가 (F3)**: run.py 가 섹션별 hash 를 diff 해, agent 의 `affected_tasks` 에서 빠졌지만
   변경 섹션을 `skeleton 참조` 로 가리키는 task 를 **결정론적으로 파생**해 합산한다
@@ -346,8 +347,8 @@ SKILL.md 의 "다른 결정 보존" 룰을 Agent prompt 에 강하게 박아둔 
 
 **`needs_rebuild` 된 task 처리**: `/ha-build complete --task T-XXX --status done` 으로
 재구현 후 마킹. 또는 사용자가 stale 이 아님을 확인하고 직접 tasks.md 의 status 를
-`done` 으로 되돌릴 수 있음 (명시적 결정). `/ha-build --skip-done` 은 `needs_rebuild`
-상태를 done 으로 취급하지 않으므로 자동 skip 안 됨 — 반드시 재실행 대상이 된다.
+`done` 으로 되돌릴 수 있음 (명시적 결정). `/ha-build --resume` 은 `needs_rebuild` 를
+**최우선으로 선택**하므로 (done 은 재선택하지 않는다) 반드시 재실행 대상이 된다.
 
 ## 메모리/룰 호환성
 
