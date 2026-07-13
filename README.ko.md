@@ -103,8 +103,9 @@ export HARNESS_AI_HOME="$(pwd)"       # (설치 스크립트가 안내)
 /ha-plan     # Orchestrator 가 tasks.md 로 분해
 /ha-build T-001          # 태스크별 구현 [sonnet]
 /ha-verify   # toolchain 실행 + skeleton 정합성 게이트 [sonnet]
-/ha-review   # 보안훅 + LESSON + ai-slop + 테스트 분포 종합 리뷰
 /ha-smoke    # 런타임 기동 검증 — 앱이 실제로 뜨는지 (advisory)
+/ha-accept   # GWT 수용 시나리오 — 합의한 대로 동작하는지 (advisory)
+/ha-review   # 보안훅 + LESSON + ai-slop + 테스트 분포 종합 리뷰
 ```
 
 또는 드라이버에게 전체 파이프라인을 맡긴다:
@@ -136,9 +137,11 @@ export HARNESS_AI_HOME="$(pwd)"       # (설치 스크립트가 안내)
   /ha-verify ─────▶ [1] harness integrity (skeleton ↔ 실재 FS)
                     [2] profile toolchain (pytest/ruff/pyright)
                                          ▼
-  /ha-review ─────▶ 보안훅 7 + LESSON 31 + ai-slop 7 + 테스트 분포
-                                         ▼
   /ha-smoke  ─────▶ 런타임 기동 probe (exit 0 / URL readiness) — advisory
+                                         ▼
+  /ha-accept ─────▶ GWT 수용 기준 → 실행 시나리오 (acceptance.yaml) — advisory
+                                         ▼
+  /ha-review ─────▶ 보안훅 7 + LESSON 31 + ai-slop 7 + 테스트 분포
                                          ▼
                                APPROVE / REJECT → /ship
 ```
@@ -350,7 +353,7 @@ rate_limiting · mobile.{navigation,build_config,lifecycle}
 - Claude Code plugin manifest 로 배포
 - 벡터 메모리 (CrewAI 방식) — 프로젝트별 LESSON embedding
 - 실행 sandbox (OpenHands 방식) — 격리된 subprocess 환경
-- `ha-smoke` 확장 — user_journey 브라우저 스모크 (GWT 수용 기준 체크리스트). 선언 엔드포인트 liveness 일괄 점검은 v0.13.0 출시; 기동 게이트 코어는 v0.12.0
+- `ha-smoke` 확장 — user_journey **브라우저** 스모크. HTTP/CLI 레벨 GWT 수용 시나리오는 v0.21.0 에 `/ha-accept` 로 출시 (브라우저 전용 기준은 underivable 로 유보); 선언 엔드포인트 liveness 일괄 점검은 v0.13.0; 기동 게이트 코어는 v0.12.0
 - Spec Kit 흡수 — 설계품질 게이트 (skeleton 품질 checklist, analyze + constitution 권위, ha-converge) + 멀티에이전트 (Gemini/Copilot 어댑터). 설계: `docs/spec-kit-absorption-design.md`
 
 ---

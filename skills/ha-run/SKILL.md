@@ -2,8 +2,8 @@
 name: ha-run
 description: |
   HarnessAI — 원커맨드 자동 드라이버. 파이프라인 전체(init → design → plan →
-  build → verify → smoke → review → ship 확인)를 상태기계 기준으로 자동 운전한다.
-  HITL 지점(인터뷰 · smoke FAIL 판단 · 배포 확인 · 게이트 BLOCK)에서만 멈춘다.
+  build → verify → smoke → accept → review → ship 확인)를 상태기계 기준으로 자동 운전한다.
+  HITL 지점(인터뷰 · smoke/accept FAIL 판단 · 배포 확인 · 게이트 BLOCK)에서만 멈춘다.
   Use when: "알아서 끝까지 진행해줘", "다음 뭐 해야 해", "이어서 계속", "/ha-run"
 ---
 
@@ -40,14 +40,15 @@ JSON 출력: `action` / `mode`(auto|hitl) / `skill` / `args` / `reason` / `curre
 **`mode: "hitl"`** → 사용자 개입 지점. action 별:
 - `init` / `design` → 해당 스킬을 Skill 툴로 호출 — **스킬 자체가 인터뷰를 진행**하므로
   드라이버는 넘겨주기만 한다. 인터뷰 완료 후 루프 복귀.
-- `review` (smoke FAIL) → AskUserQuestion 으로 선택지 제시:
-  "① smoke 실패 원인 수정 (원인 태스크 rebuild)" / "② advisory 로 간주하고 리뷰 진행".
+- `review` (smoke FAIL 또는 accept FAIL — `reason` 에 어느 쪽인지 명시됨) → AskUserQuestion 으로
+  선택지 제시: "① 실패 원인 수정 (원인 태스크 rebuild)" / "② advisory 로 간주하고 리뷰 진행".
   ① 선택 시 구체 4단계:
     1. `harness analyze-failure <출력파일> --tasks docs/tasks.md` → 실패 T-ID 식별
+       (accept FAIL 은 실패 시나리오의 `feature` → 해당 기능 구현 태스크로 역추적)
     2. `ha-verify record --passed false --rework-tasks <T-ID>` → verify_history 기록 + tasks.md needs_rebuild 전이
     3. plan.pipeline → building 자동 회귀 (pipeline_advisor 가 build --resume 반환)
     4. `/ha-build --resume` → needs_rebuild 태스크 자동 선택 후 재구현
-    fallback: smoke output 에서 T-ID 매칭 못 하면 entrypoint 태스크 또는 사용자 선택
+    fallback: 출력에서 T-ID 매칭 못 하면 entrypoint 태스크 또는 사용자 선택
 - `ship_confirm` → AskUserQuestion: "배포/PR 을 완료했나요?" — 완료 시에만 `/ha-ship` 호출.
   미완료면 배포 방법 안내 후 정지 (shipped 는 릴리스 선언 — 선마킹 금지).
 
@@ -78,6 +79,27 @@ JSON 출력: `action` / `mode`(auto|hitl) / `skill` / `args` / `reason` / `curre
 ⏸ 확인 필요: 앱 기동 검증이 실패했습니다 — 수정할까요, 그대로 리뷰로 갈까요?
 ✅ 파이프라인 완료 — 8단계 · 태스크 12개 · rework 1회
 ```
+
+## 외부 루프 모드 (옵트인 — Ralph-style fresh context)
+
+긴 자율 런에서 세션 컨텍스트가 부패하거나 30루프 상한에 닿을 때, 세션 안에서 루프를
+돌리는 대신 **스텝마다 fresh `claude -p` 세션**으로 실행할 수 있다 (상태가 전부
+harness-plan.md/tasks.md 에 있어 restart-safe — "상태 캐싱 금지" 원칙의 이점 회수):
+
+```bash
+python ~/.claude/harness/bin/ha-loop --project . [--dry-run]
+```
+
+- `run.py next` 가 결정론 드라이버 — auto 스텝만 `claude -p "/<skill> <args>"` 로 실행
+  (headless 에서 user-invoked 스킬 호출은 공식 지원).
+- **HITL 지점 (init/design 인터뷰 · smoke/accept FAIL 판단 · 배포 확인) → exit 2 정지** —
+  인터랙티브 세션에서 /ha-run 으로 이어서 진행.
+- 게이트 BLOCK (하위 exit≠0) → 우회 플래그 자동 부여 없이 정지 (본 스킬 가드레일 동일).
+- 무전이 3연속 / `--max-loops` (기본 50) 초과 → 정지. 재실행하면 파일 상태에서 이어짐.
+- 권한 기본 `--permission-mode acceptEdits --allowedTools Bash,Agent` — 환경 따라
+  `--claude-args` 로 조정. `--bare` 금지 (스킬 자동발견이 꺼짐).
+- **트레이드오프**: 스텝마다 컨텍스트를 새로 읽으므로 짧은 런은 세션 내 /ha-run 이 더 싸다.
+  긴 런 (태스크 수십 개 규모) 전용.
 
 ## 가드레일
 

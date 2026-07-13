@@ -17,7 +17,7 @@ allowed-tools:
 
 **입력**: 코드 (built 상태)
 **출력**: 검증 결과 + verify_history 갱신
-**다음**: 통과 시 `/ha-review`, 실패 시 `/ha-build`로 복귀
+**다음**: 통과 시 `/ha-smoke` (advisory 사다리 smoke → accept 거쳐 `/ha-review`), 실패 시 `/ha-build`로 복귀
 
 ## 실행 순서
 

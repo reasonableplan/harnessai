@@ -19,7 +19,7 @@ test/lint/type 은 코드 조각의 정합성만 본다 — import 누락, 엔�
 
 **입력**: verified 또는 reviewed 상태
 **출력**: 기동 PASS/FAIL + verify_history 갱신 (상태 전이 없음 — advisory)
-**다음**: PASS 시 `/ha-ship` 진행 가능, FAIL 시 원인 수정 후 `/ha-verify` 부터 재검증
+**다음**: PASS 시 `/ha-accept` (GWT 수용 검증) 진행, FAIL 시 원인 수정 후 `/ha-verify` 부터 재검증
 
 ## 실행 순서
 
@@ -108,7 +108,7 @@ python ~/.claude/skills/ha-smoke/run.py record \
 ```
 ✅ /ha-smoke PASS
   backend: HTTP 200 @ http://127.0.0.1:8137/docs (uvicorn 기동 3.2s)
-다음: /ha-ship
+다음: /ha-accept (GWT 수용 기준 시나리오 검증)
 ```
 
 실패:

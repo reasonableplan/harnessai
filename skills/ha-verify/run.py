@@ -387,7 +387,7 @@ def cmd_record(args: argparse.Namespace) -> int:
         "verify_history_count": len(plan.verify_history),
         "rework_tasks": rework_tasks,
         "rebuild_required_tasks": rebuild_required_tasks,
-        "next": "/ha-review" if passed else "/ha-build --resume" if rework_tasks else "/ha-build <T-ID> (실패 원인 수정 후)",
+        "next": "/ha-smoke" if passed else "/ha-build --resume" if rework_tasks else "/ha-build <T-ID> (실패 원인 수정 후)",
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0

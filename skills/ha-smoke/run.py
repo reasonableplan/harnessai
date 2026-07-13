@@ -11,19 +11,17 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import platform
-import signal
 import subprocess
 import sys
 import tempfile
-import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "_ha_shared"))
+from runtime import kill_tree, wait_ready  # noqa: E402
 from utils import (  # noqa: E402, I001
     assert_state,
     get_active_profiles,
@@ -55,31 +53,6 @@ def suggest_smoke_command(cwd: Path) -> str | None:
             if (pkg / "__init__.py").is_file() and (pkg / "__main__.py").is_file():
                 return f"python -m {pkg.name} --help"
     return None
-
-
-def _kill_tree(proc: subprocess.Popen) -> None:
-    """프로세스와 자식 전부 종료 (dev server 가 자식 프로세스를 띄우는 케이스)."""
-    if proc.poll() is not None:
-        return
-    try:
-        if sys.platform == "win32":
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=15,
-            )
-        else:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-    except (OSError, subprocess.TimeoutExpired):
-        pass  # 이미 죽었거나 권한 문제 — 아래 wait/kill 폴백이 처리
-    try:
-        proc.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait(timeout=10)
 
 
 def _tail(text: str) -> str:
@@ -159,71 +132,48 @@ def _probe_url(
             **kwargs,
         )
         try:
-            deadline = time.monotonic() + ready_timeout
-            while time.monotonic() < deadline:
-                rc = proc.poll()
-                if rc is not None:
+            result = wait_ready(url, ready_timeout, proc=proc)
+            if not result.ready:
+                if result.exited:
+                    detail = f"프로세스가 ready 전에 종료 (exit code {result.exit_code})"
+                elif result.status is not None:
+                    detail = f"HTTP {result.status} @ {url}"
+                else:
+                    detail = f"{ready_timeout}s 내 {url} 미응답 (ready 타임아웃 초과)"
+                return {
+                    "passed": False,
+                    "mode": "url",
+                    "detail": detail,
+                    "output_tail": _read_log_tail(log),
+                }
+            status = result.status
+            if endpoints:
+                origin = "{0.scheme}://{0.netloc}".format(urlsplit(url))
+                broken, probed = _check_endpoints(origin, endpoints)
+                if broken:
                     return {
                         "passed": False,
                         "mode": "url",
-                        "detail": f"프로세스가 ready 전에 종료 (exit code {rc})",
+                        "detail": (
+                            f"기동 OK (HTTP {status} @ {url}) 이나 선언 "
+                            f"엔드포인트 깨짐: " + ", ".join(broken)
+                        ),
                         "output_tail": _read_log_tail(log),
                     }
-                try:
-                    with urllib.request.urlopen(url, timeout=2) as resp:
-                        status = resp.status
-                    if 200 <= status < 400:
-                        if endpoints:
-                            origin = "{0.scheme}://{0.netloc}".format(urlsplit(url))
-                            broken, probed = _check_endpoints(origin, endpoints)
-                            if broken:
-                                return {
-                                    "passed": False,
-                                    "mode": "url",
-                                    "detail": (
-                                        f"기동 OK (HTTP {status} @ {url}) 이나 선언 "
-                                        f"엔드포인트 깨짐: " + ", ".join(broken)
-                                    ),
-                                    "output_tail": _read_log_tail(log),
-                                }
-                            return {
-                                "passed": True,
-                                "mode": "url",
-                                "detail": (
-                                    f"HTTP {status} @ {url}; 선언 GET 엔드포인트 "
-                                    f"{probed}개 OK"
-                                ),
-                                "output_tail": _read_log_tail(log),
-                            }
-                        return {
-                            "passed": True,
-                            "mode": "url",
-                            "detail": f"HTTP {status} @ {url}",
-                            "output_tail": _read_log_tail(log),
-                        }
-                    return {
-                        "passed": False,
-                        "mode": "url",
-                        "detail": f"HTTP {status} @ {url}",
-                        "output_tail": _read_log_tail(log),
-                    }
-                except urllib.error.HTTPError as e:
-                    return {
-                        "passed": False,
-                        "mode": "url",
-                        "detail": f"HTTP {e.code} @ {url}",
-                        "output_tail": _read_log_tail(log),
-                    }
-                except (urllib.error.URLError, OSError):
-                    time.sleep(0.5)  # 아직 안 떴음 — 재시도
+                return {
+                    "passed": True,
+                    "mode": "url",
+                    "detail": f"HTTP {status} @ {url}; 선언 GET 엔드포인트 {probed}개 OK",
+                    "output_tail": _read_log_tail(log),
+                }
             return {
-                "passed": False,
+                "passed": True,
                 "mode": "url",
-                "detail": f"{ready_timeout}s 내 {url} 미응답 (ready 타임아웃 초과)",
+                "detail": f"HTTP {status} @ {url}",
                 "output_tail": _read_log_tail(log),
             }
         finally:
-            _kill_tree(proc)
+            kill_tree(proc)
 
 
 def _read_log_tail(log) -> str:
@@ -321,7 +271,7 @@ def cmd_record(args: argparse.Namespace) -> int:
         "summary": args.summary,
         "current_step": plan.pipeline.current_step,
         "verify_history_count": len(plan.verify_history),
-        "next": "/ha-ship" if passed else "/ha-build <T-ID> (기동 실패 원인 수정 후 재검증)",
+        "next": "/ha-accept" if passed else "/ha-build <T-ID> (기동 실패 원인 수정 후 재검증)",
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0

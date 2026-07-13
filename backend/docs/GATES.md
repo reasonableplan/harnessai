@@ -22,6 +22,7 @@
 | tasks.md schema 검증 (5컬럼/상태값/의존성) | BLOCK | `--allow-format-drift` |
 | skeleton hash 비교 | advisory | — |
 | tasks/skeleton 쓰기 실패 시 전이 중단 | BLOCK | — |
+| T-000 자동 주입 (scaffold 프로파일 보유 + 미부트스트랩 시, v0.20.0) | 자동 가드 | — (LLM 이 직접 T-000 작성 시 중복 주입 skip) |
 
 ### /ha-build
 | 게이트 | severity | 우회 |
@@ -29,11 +30,14 @@
 | frozen gate (HITL 미완료 시 진입 차단) | BLOCK | `--skip-frozen-gate` |
 | skeleton drift gate (freeze 후 외부 수정) | BLOCK | `--accept-skeleton-drift` |
 | depends_on 미충족 / 병렬 그룹 내 의존 | BLOCK | — (직렬화 필요) |
+| scaffold 선행 게이트 (T-000 미해결 시 다른 태스크 차단, v0.20.0) | BLOCK | `--skip-scaffold-gate` |
+| 스텁 미구현 게이트 (declared 파일에 HARNESS-STUB 잔존 시 done 차단, v0.20.0) | BLOCK | — (구현 또는 파일 삭제가 조치) |
 | LESSON-021 toolchain (test+lint+type, done 전용) | BLOCK | `--skip-toolchain` |
 | git repo/설치 사전 조건 (not-git 시 done 차단 — 빌드 전 기간 보안훅 무검사 방지, v0.19.3 P0) | BLOCK | `--skip-security` |
 | security gate | BLOCK | `--skip-security` |
 | no-tests 우회 감지 (B3) | advisory(WARN) | — |
 | built 전이 시 skipped 공개 | advisory(WARN) | — |
+| scaffold complete 의 `--skip-toolchain` 특례 (갓 스캐폴드된 앱 test 스크립트 부재, v0.20.0) | advisory(정당한 우회) | security gate 는 유지 (`--skip-security` 미적용) |
 
 ### /ha-verify
 | 게이트 | severity | 우회 |
@@ -70,6 +74,15 @@
 | 런타임 기동 probe (exit 0 / URL readiness) — `verify_history` step=`smoke` 기록 | advisory(상태 전이 없음) | — |
 | 계층2 — 기동 후 선언 GET 엔드포인트 타격 (404/5xx=FAIL, 떠도 라우트 깨짐) | advisory | — |
 
+### /ha-accept
+| 게이트 | severity | 우회 |
+|---|---|---|
+| verified/reviewed 상태에서만 실행 (prepare/record) | BLOCK(exit 2) | — |
+| acceptance.yaml 스키마/미선언 엔드포인트 참조/비활성 프로파일 (validate, v0.21.0) | BLOCK | — (파생 수정이 조치) |
+| run `--profile` 매칭 시나리오 0개 — 공허 통과 차단 | BLOCK(exit 2) | — (오타/파생 누락 수정) |
+| GWT 시나리오 실행 FAIL / 부팅 실패 (run) — `verify_history` step=`accept` 기록 | advisory(상태 전이 없음) | HITL 판단 (smoke 동일) |
+| 커버리지 (시나리오 0개 확정 기능 / underivable 집계) | advisory | — |
+
 ### /ha-converge
 | 게이트 | severity | 우회 |
 |---|---|---|
@@ -82,5 +95,5 @@
 | reviewed 상태에서만 마킹 | BLOCK | — |
 
 ## 집계
-- BLOCK 계열: **20** · advisory/HITL 계열: **17+** (2026-07-06 전수 재집계 — v0.19.2 "작성 가이드" 잔재 + v0.19.3 ha-build git 사전 조건 반영. 기준: severity 가 BLOCK 표기인 행. 보안훅/ai-slop findings 행은 BLOCK/WARN 혼합이라 "+" 계상)
+- BLOCK 계열: **25** · advisory/HITL 계열: **20+** (2026-07-13 v0.21.0 /ha-accept 반영 — 상태 BLOCK(exit 2)·validate BLOCK·공허 매칭 BLOCK 3건 + run/커버리지 advisory 2건 추가. 직전 재집계는 2026-07-12 v0.20.0: scaffold 선행 게이트 BLOCK + scaffold complete `--skip-toolchain` 특례 advisory + 스텁 미구현 게이트 BLOCK. T-000 자동 주입은 BLOCK/advisory 어디에도 속하지 않는 "자동 가드" — done→needs_rebuild 전이와 동일 부류라 이 집계에서 제외. 기준: severity 가 BLOCK 표기인 행. 보안훅/ai-slop findings 행은 BLOCK/WARN 혼합이라 "+" 계상)
 - 다이어그램/README 의 "8개 게이트" 는 이 표 기준으로 갱신할 것.

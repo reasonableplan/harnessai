@@ -148,14 +148,49 @@ def test_verified_without_smoke_advises_smoke() -> None:
     assert advice.skill == "/ha-smoke"
 
 
-def test_verified_smoke_passed_advises_review_auto() -> None:
+def test_verified_smoke_passed_advises_accept_auto() -> None:
+    """smoke 통과 후 다음 advisory 칸은 수용검증(/ha-accept) — 리뷰 전에 제안."""
     plan = _plan("verified")
     plan.verify_history.append(_rec("ha-verify", passed=True))
     plan.verify_history.append(_rec("smoke", passed=True))
     advice = advise(plan)
+    assert advice.action == "accept"
+    assert advice.mode == MODE_AUTO
+    assert advice.skill == "/ha-accept"
+
+
+def test_verified_smoke_and_accept_passed_advises_review_auto() -> None:
+    plan = _plan("verified")
+    plan.verify_history.append(_rec("ha-verify", passed=True))
+    plan.verify_history.append(_rec("smoke", passed=True))
+    plan.verify_history.append(_rec("accept", passed=True))
+    advice = advise(plan)
     assert advice.action == "review"
     assert advice.mode == MODE_AUTO
     assert advice.skill == "/ha-review"
+
+
+def test_verified_accept_failed_advises_review_hitl() -> None:
+    """accept 는 advisory — FAIL 이면 진행/수정을 사용자가 선택 (smoke 와 동일 시맨틱)."""
+    plan = _plan("verified")
+    plan.verify_history.append(_rec("ha-verify", passed=True))
+    plan.verify_history.append(_rec("smoke", passed=True))
+    plan.verify_history.append(_rec("accept", passed=False))
+    advice = advise(plan)
+    assert advice.action == "review"
+    assert advice.mode == MODE_HITL
+    assert "accept" in advice.reason
+
+
+def test_verified_stale_accept_from_previous_cycle_advises_accept_again() -> None:
+    """이전 rework 사이클의 accept 기록은 무효 — 마지막 성공 ha-verify 이후 기록만 인정."""
+    plan = _plan("verified")
+    plan.verify_history.append(_rec("accept", passed=True))
+    plan.verify_history.append(_rec("ha-verify", passed=False))
+    plan.verify_history.append(_rec("ha-verify", passed=True))
+    plan.verify_history.append(_rec("smoke", passed=True))
+    advice = advise(plan)
+    assert advice.action == "accept"
 
 
 def test_verified_smoke_failed_advises_review_hitl() -> None:

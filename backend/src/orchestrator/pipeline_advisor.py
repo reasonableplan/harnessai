@@ -23,7 +23,7 @@ MODE_HITL = "hitl"
 class Advice:
     """Next pipeline action for the /ha-run driver."""
 
-    action: str  # init|design|plan|build|verify|smoke|review|ship_confirm|done
+    action: str  # init|design|plan|build|verify|smoke|accept|review|ship_confirm|done
     mode: str  # MODE_AUTO | MODE_HITL
     skill: str  # skill to invoke (e.g. "/ha-verify"); "" when none
     args: str  # skill arguments (e.g. "--resume"); "" when none
@@ -41,22 +41,32 @@ def _rework_reason(plan: HarnessPlan) -> str | None:
     return None
 
 
-def _smoke_state(plan: HarnessPlan) -> str:
+def _advisory_state(plan: HarnessPlan, step_name: str) -> str:
     """Return 'pending' | 'passed' | 'failed' for the current verify cycle.
 
-    Only smoke records appended after the most recent passing ha-verify count —
-    a smoke result from a previous rework cycle validated different code.
+    Only records appended after the most recent passing ha-verify count —
+    a smoke/accept result from a previous rework cycle validated different code.
     """
     last_verify = -1
     for i, rec in enumerate(plan.verify_history):
         if rec.step == "ha-verify" and rec.passed:
             last_verify = i
-    smokes = [
-        rec for i, rec in enumerate(plan.verify_history) if rec.step == "smoke" and i > last_verify
+    records = [
+        rec
+        for i, rec in enumerate(plan.verify_history)
+        if rec.step == step_name and i > last_verify
     ]
-    if not smokes:
+    if not records:
         return "pending"
-    return "passed" if smokes[-1].passed else "failed"
+    return "passed" if records[-1].passed else "failed"
+
+
+def _smoke_state(plan: HarnessPlan) -> str:
+    return _advisory_state(plan, "smoke")
+
+
+def _accept_state(plan: HarnessPlan) -> str:
+    return _advisory_state(plan, "accept")
 
 
 def advise(plan: HarnessPlan | None) -> Advice:
@@ -129,12 +139,31 @@ def advise(plan: HarnessPlan | None) -> Advice:
                 "",
                 "smoke FAIL (advisory) — 수정 후 재검증할지, 그대로 리뷰로 진행할지 사용자 선택 필요",
             )
+        # smoke passed — 수용검증(accept) 이 검증 사다리의 다음 advisory 칸.
+        # accept 는 앱 부팅을 전제하므로 smoke 통과 뒤에만 제안한다 (설계 §5).
+        accept = _accept_state(plan)
+        if accept == "pending":
+            return Advice(
+                "accept",
+                MODE_AUTO,
+                "/ha-accept",
+                "",
+                "수용 검증 (advisory) — GWT 수용 기준대로 실제 동작하는지 확인",
+            )
+        if accept == "failed":
+            return Advice(
+                "review",
+                MODE_HITL,
+                "/ha-review",
+                "",
+                "accept FAIL (advisory) — 수정 후 재검증할지, 그대로 리뷰로 진행할지 사용자 선택 필요",
+            )
         return Advice(
             "review",
             MODE_AUTO,
             "/ha-review",
             "",
-            "smoke 통과 — 보안 훅/슬롭/컨벤션 종합 리뷰",
+            "smoke·accept 통과 — 보안 훅/슬롭/컨벤션 종합 리뷰",
         )
     if step == "reviewed":
         return Advice(

@@ -4,6 +4,40 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.21.0] — 2026-07-13 — "수용검증 계층 /ha-accept: GWT 수용 기준 → 실행 시나리오"
+
+검증 사다리의 마지막 빈 칸 — test/lint/type(verify) → 기동(smoke) → **"요구사항대로
+동작하는가"(accept)**. ha-design Step D 에서 사용자와 확정한 GWT 수용 기준이 문서에서
+실행 가능한 게이트로 격상. 조사 근거: SDD 수렴(Spec Kit/Kiro)·EARS 표기법·선언적 러너
+landscape (Tavern/Hurl/StepCI — 의존성 대비 래핑 비용 동일해 stdlib 자체 구축 결정).
+설계: `backend/docs/acceptance-layer-design.md`
+
+### Added
+
+- **/ha-accept 스킬** — prepare (skeleton 에서 GWT/확정기능/선언 엔드포인트 추출,
+  구버전 skeleton 은 `legacy_skeleton` 명시) → LLM 파생 (`docs/acceptance.yaml` —
+  파생은 LLM, 실행은 결정론, ha-plan 패턴) → validate (스키마 BLOCK + skeleton
+  교차검증 BLOCK + 커버리지 advisory) → run (http=booted_server / cli=subprocess,
+  stdlib 미니 러너 — dotted path 단언·{var} 캡처/치환) → record (verify_history
+  step=`accept`, advisory — 상태 전이 없음). 도출 불가 GWT 는 `underivable` 에 사유
+  명시 (Kiro EARS 차용 — 조용한 커버리지 구멍 차단)
+- **`skills/_ha_shared/runtime.py`** — kill_tree/wait_ready/booted_server 공용 추출.
+  ha-smoke 도 동일 모듈로 리팩터 (동작 불변, 기존 테스트 무수정 그린)
+- **pipeline_advisor accept 통합** — smoke passed → accept 제안 (앱 부팅 전제),
+  accept FAIL → HITL (smoke 와 동일 시맨틱)
+- **공허 통과 3중 차단** — kind 별 expect 허용 키 분리 (http 스텝의 `exit` 같은 교차
+  키는 조용한 무시 대신 BLOCK) / run `--profile` 매칭 0개 BLOCK (오타가 공허 통과로
+  둔갑 방지) / 부팅 실패 시 전 시나리오 실행-불가 FAIL (발명된 PASS 금지)
+- 회귀 65 tests (accept 56 + runtime + advisor). GATES 집계 BLOCK 25
+
+### Fixed
+
+- **파이프라인 순서 문서↔실행 불일치** — advisor(실제 드라이버)는
+  verify→smoke→accept→review 로 운전하는데 CLAUDE.md/README×2/ha-verify next 힌트가
+  verify→review→smoke (advisor 도입 전 stale) → 코드 1곳 + 문서 5곳을 실행 현실에 정렬
+
+---
+
 ## [0.20.0] — 2026-07-12 — "스캐폴딩 흡수: T-000 결정론 부트스트랩 + 스텁 스탬퍼"
 
 "결정론으로 처리 가능한 구조는 LLM 에게 맡기지 않는다" — 설정 보일러플레이트와 파일

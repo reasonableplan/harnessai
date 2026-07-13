@@ -110,8 +110,9 @@ In a fresh Claude Code session:
 /ha-plan     # Orchestrator decomposes into tasks.md
 /ha-build T-001          # implement one task [sonnet]
 /ha-verify   # run toolchain + skeleton integrity gate [sonnet]
-/ha-review   # security hooks + LESSONs + ai-slop + test distribution
 /ha-smoke    # runtime launch probe — does the app actually start? (advisory)
+/ha-accept   # GWT acceptance scenarios — does it behave as agreed? (advisory)
+/ha-review   # security hooks + LESSONs + ai-slop + test distribution
 ```
 
 Or let the driver walk the whole pipeline for you:
@@ -143,9 +144,11 @@ Or let the driver walk the whole pipeline for you:
   /ha-verify ─────▶ [1] harness integrity (skeleton ↔ real FS)
                     [2] profile toolchain (pytest / ruff / pyright)
                                           ▼
-  /ha-review ─────▶ Security hooks × 7 + LESSONs × 37 + ai-slop × 7 + test distribution
-                                          ▼
   /ha-smoke  ─────▶ runtime launch probe (exit 0 / URL readiness) — advisory
+                                          ▼
+  /ha-accept ─────▶ GWT acceptance criteria → executable scenarios (acceptance.yaml) — advisory
+                                          ▼
+  /ha-review ─────▶ Security hooks × 7 + LESSONs × 37 + ai-slop × 7 + test distribution
                                           ▼
                                APPROVE / REJECT → /ship
 ```
@@ -366,7 +369,7 @@ Each agent's rules live in `backend/agents/<role>/CLAUDE.md` — editable.
 - Claude Code plugin manifest distribution
 - Vector memory (CrewAI-style) — per-project LESSON embedding
 - Execution sandbox (OpenHands-style) — isolated subprocess environment
-- `ha-smoke` extensions — user_journey browser smoke (GWT acceptance criteria as checklist). Declared-endpoint liveness sweep shipped in v0.13.0; core launch gate in v0.12.0
+- `ha-smoke` extensions — user_journey **browser** smoke. HTTP/CLI-level GWT acceptance scenarios shipped as `/ha-accept` in v0.21.0 (browser-only criteria stay `underivable`); declared-endpoint liveness sweep in v0.13.0; core launch gate in v0.12.0
 - Spec Kit absorption — design-quality gates (`/checklist`-style skeleton quality, `/analyze` + constitution authority, `ha-converge`) + multi-agent (Gemini/Copilot adapters). Design: `docs/spec-kit-absorption-design.md`
 - `/ha-export` — read-only 기술명세서 / 화면설계서 / 페르소나 renders from skeleton (single source of truth preserved)
 
