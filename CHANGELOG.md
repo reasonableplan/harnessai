@@ -4,6 +4,37 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.21.2] — 2026-07-13 — "/ha-accept 표현력: 집계는 변화량으로 (D-7)"
+
+dogfood 에서 드러난 수용검증의 천장 — 전역 집계 GWT(월 합계·절약액)를 자기완결 시나리오로
+표현할 방법이 없어 GWT 9개 중 4개가 underivable 이었다. 조사 결과 **선언형 HTTP 러너 중
+캡처값 산술을 지원하는 도구는 없고**(Hurl: "셸에서 계산해 --variable 로 주입", Karate/Postman:
+JS 탈출구), LLM 이 시나리오를 파생하는 우리 구조에서 스크립트 탈출구는 검증 위조 경로가 된다.
+그래서 RSpec `change{}.by(delta)` 를 전용 단언 키로 이식했다.
+
+### Added
+
+- **`expect.json_delta: {<dotted>: {from: <capture 변수>, add: <숫자>}}`** — 응답값이
+  `baseline + add` 인지 검증 (감소는 음수). DB 격리 없이도 집계를 자기완결적으로 단언한다.
+- **`expect.json_not_contains: {<dotted(list)>: 스칼라 | {필드: 값}}`** — "목록에 없음" 부정
+  단언 (Hurl `not contains` 선례). 해지 후 미표시 같은 GWT 를 검증 가능.
+- **날짜식 `{today}` / `{today±N}`** — 실행일 기준 로컬 날짜. "오늘 기준 2일 후 결제" 처럼
+  실행일에 의존하는 GWT 를 고정 날짜 없이 표현.
+- validate: 두 새 단언의 구조 검증 (형식이 깨진 delta 를 러너가 넘기면 공허 단언이 된다) — BLOCK.
+
+### Fixed
+
+- `_substitute`: 문자열 전체가 `{var}` 면 타입 보존 (id `7` 이 `"7"` 이 되어 `7 != "7"` 로
+  단언이 조용히 어긋나던 문제).
+
+### 검증 (subtrack 재파생)
+
+시나리오 5 → **8**, underivable 4 → 2 (둘 다 순수 브라우저 UI), **미커버 feature 0**.
+8개 전부 실 dev 서버에서 PASS — 이전 실행이 남긴 데이터로 오염된 DB 위에서 통과해
+delta 단언의 자기완결성을 실증.
+
+---
+
 ## [0.21.1] — 2026-07-13 — "subtrack dogfood: 게이트 무음 통과 + rework 상태기계"
 
 실전 드라이런(subtrack — Next.js 16 + Drizzle/SQLite)으로 v0.20.0 스캐폴딩과 v0.21.0

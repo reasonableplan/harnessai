@@ -84,6 +84,7 @@
 |---|---|---|
 | verified/reviewed 상태에서만 실행 (prepare/record) | BLOCK(exit 2) | — |
 | acceptance.yaml 스키마/미선언 엔드포인트 참조/비활성 프로파일 (validate, v0.21.0) | BLOCK | — (파생 수정이 조치) |
+| `json_delta` / `json_not_contains` 구조 검증 (형식 깨진 단언 = 공허 단언, v0.21.2) | BLOCK | — |
 | run `--profile` 매칭 시나리오 0개 — 공허 통과 차단 | BLOCK(exit 2) | — (오타/파생 누락 수정) |
 | GWT 시나리오 실행 FAIL / 부팅 실패 (run) — `verify_history` step=`accept` 기록 | advisory(상태 전이 없음) | HITL 판단 (smoke 동일) |
 | 커버리지 (시나리오 0개 확정 기능 / underivable 집계) | advisory | — |

@@ -73,6 +73,24 @@ scenarios:
         expect:
           status: 200
           json: {done: false, title: "우유 사기"}   # dotted path = 기대값 (부분 일치)
+  - id: A-003
+    feature: "월 지출 합계"
+    gwt: "Given 빈 목록 / When 17,000원 구독 추가 / Then 월 합계에 17,000원 반영"
+    profile: fastapi
+    kind: http
+    steps:
+      - method: GET
+        path: /api/summary
+        capture: {base_total: "monthlyTotal"}       # 집계 baseline
+      - method: POST
+        path: /api/subscriptions
+        json: {name: "넷플릭스", amount: 17000, startedOn: "{today+2}"}   # 날짜식
+        expect: {status: 201}
+      - method: GET
+        path: /api/summary
+        expect:
+          json_delta: {monthlyTotal: {from: base_total, add: 17000}}   # 변화량 단언
+          json_not_contains: {cancelled: {name: "넷플릭스"}}            # 부재 단언
   - id: A-002
     feature: "todo CLI 추가"
     gwt: "Given 빈 목록 / When CLI 로 추가 / Then 목록에 표시"
@@ -87,8 +105,17 @@ underivable:
     reason: browser-only
 ```
 
-단언 최소 집합: `status`, `json`(dotted path 부분 일치), `exit`, `stdout_contains`.
-`capture` 는 dotted path → 변수, `{var}` 는 이후 스텝의 path/json 값/run 문자열에 치환.
+단언 집합 (http): `status`, `json`(dotted path 부분 일치), `json_delta`, `json_not_contains`.
+(cli): `exit`, `stdout_contains`.
+
+- `capture` 는 dotted path → 변수. `{var}` 는 이후 스텝의 path/json 값/run 문자열/expect 값에
+  치환된다. 문자열 전체가 `{var}` 면 타입이 보존된다 (id 7 → "7" 이 되지 않음).
+- **`json_delta: {<dotted>: {from: <변수>, add: <숫자>}}`** — 응답값이 `baseline + add` 인지 본다.
+  감소는 음수 (`add: -17000`).
+- **`json_not_contains: {<dotted(list)>: 스칼라 | {필드: 값}}`** — 리스트에 그 원소(또는 필드가
+  일치하는 원소)가 **없어야** 통과.
+- **날짜식 `{today}` / `{today+N}` / `{today-N}`** — 실행일 기준 로컬 날짜(YYYY-MM-DD). "오늘
+  기준 2일 후 결제" 처럼 실행일에 의존하는 GWT 에 쓴다 (고정 날짜는 다음 날 깨진다).
 
 **파생 규칙 (엄수 — AI-Gherkin 안티패턴 방어)**:
 
@@ -102,6 +129,13 @@ underivable:
 - **자기 완결적 시나리오** — v1 은 dev 인스턴스를 대상으로 직접 실행한다(임시 DB
   프로비저닝 없음). 각 시나리오는 자신이 만든 리소스만 조회/검증할 것 — 다른
   시나리오나 기존 데이터에 의존하면 실행 순서에 따라 flaky 해진다.
+- **집계는 절대값이 아니라 `json_delta` 로** — 합계·개수·잔액처럼 DB 전체 상태의 함수인 값에
+  `json: {monthlyTotal: 27000}` 같은 절대값 단언을 쓰면, 다른 시나리오가 만든 데이터에 오염돼
+  실행 순서에 따라 깨진다. 반드시 baseline 을 `capture` 하고 변화량으로 단언할 것.
+  ("Then 월 합계 27,000원" → 17,000 + 120,000/12 두 건을 만들고 `add: 27000`)
+- **실행일에 의존하는 GWT 는 `{today±N}` 로** — "오늘 기준 2일 전 결제일" 을 고정 날짜로 쓰면
+  내일 깨진다.
+- **"목록에 없음" 은 `json_not_contains` 로** — 부정 조건을 검증 없이 넘기지 말 것.
 - `feature` 필드는 `prepare` 가 보고한 확정 기능명과 **정확히 동일한 문자열**로
   쓸 것 — 다르면 커버리지 집계가 "시나리오 0개"로 오탐한다.
 

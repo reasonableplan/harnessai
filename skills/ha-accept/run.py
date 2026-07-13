@@ -22,6 +22,7 @@ import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from datetime import date, timedelta
 from pathlib import Path
 
 import yaml
@@ -126,11 +127,65 @@ _ALLOWED_KINDS = frozenset({"http", "cli"})
 # kind 별 허용 expect 키 — http 스텝의 exit, cli 스텝의 status 같은 교차 키는
 # 러너가 조용히 무시해 "검증된 줄 아는" 공허 단언이 되므로 스키마에서 차단한다.
 _EXPECT_KEYS_BY_KIND: dict[str, frozenset[str]] = {
-    "http": frozenset({"status", "json"}),
+    "http": frozenset({"status", "json", "json_delta", "json_not_contains"}),
     "cli": frozenset({"exit", "stdout_contains"}),
 }
+_DELTA_KEYS = frozenset({"from", "add"})
 # bad_kind 시나리오의 스텝 검사용 폴백 (kind 위반은 이미 별도 보고됨)
 _ALLOWED_EXPECT_KEYS = frozenset().union(*_EXPECT_KEYS_BY_KIND.values())
+
+
+def _validate_delta(delta: object, step_label: str) -> list[AcceptViolation]:
+    """expect.json_delta 구조 검사 — {dotted: {from: <변수>, add: <숫자>}}.
+
+    형식이 깨진 delta 를 러너가 조용히 넘기면 "집계를 검증한 줄 아는" 공허 단언이 된다.
+    """
+    if delta is None:
+        return []
+    if not isinstance(delta, dict):
+        return [AcceptViolation("bad_expect_value", f"{step_label}.expect.json_delta 는 dict 여야 함")]
+
+    violations: list[AcceptViolation] = []
+    for dotted, spec in delta.items():
+        label = f"{step_label}.expect.json_delta.{dotted}"
+        if not isinstance(spec, dict) or set(spec) != _DELTA_KEYS:
+            violations.append(
+                AcceptViolation("bad_expect_value", f"{label} 는 {{from, add}} 두 키만 가져야 함")
+            )
+            continue
+        if not isinstance(spec["from"], str) or not spec["from"]:
+            violations.append(
+                AcceptViolation("bad_expect_value", f"{label}.from 은 capture 한 변수명(문자열)")
+            )
+        if isinstance(spec["add"], bool) or not isinstance(spec["add"], (int, float)):
+            violations.append(
+                AcceptViolation("bad_expect_value", f"{label}.add 는 숫자 (감소는 음수)")
+            )
+    return violations
+
+
+def _validate_not_contains(not_contains: object, step_label: str) -> list[AcceptViolation]:
+    """expect.json_not_contains 구조 검사 — {dotted(list): 스칼라 | {필드: 값}}."""
+    if not_contains is None:
+        return []
+    if not isinstance(not_contains, dict):
+        return [
+            AcceptViolation(
+                "bad_expect_value", f"{step_label}.expect.json_not_contains 는 dict 여야 함"
+            )
+        ]
+
+    violations: list[AcceptViolation] = []
+    for dotted, wanted in not_contains.items():
+        if isinstance(wanted, list):
+            violations.append(
+                AcceptViolation(
+                    "bad_expect_value",
+                    f"{step_label}.expect.json_not_contains.{dotted} 는 스칼라(원소) 또는 "
+                    "dict(필드 부분일치) 여야 함 — 리스트는 의미가 모호함",
+                )
+            )
+    return violations
 
 
 def _validate_schema(data: dict) -> list[AcceptViolation]:
@@ -207,6 +262,10 @@ def _validate_schema(data: dict) -> list[AcceptViolation]:
                                 f"{step_label}.expect 허용되지 않은 키 (kind={kind}): {key}",
                             )
                         )
+                violations.extend(_validate_delta(expect.get("json_delta"), step_label))
+                violations.extend(
+                    _validate_not_contains(expect.get("json_not_contains"), step_label)
+                )
 
             capture = step.get("capture") or {}
             if not isinstance(capture, dict):
@@ -311,18 +370,40 @@ def _get_dotted(obj: object, dotted: str) -> object:
     return cur
 
 
-_VAR_RE = re.compile(r"\{(\w+)\}")
+_VAR_RE = re.compile(r"\{(\w+(?:[+-]\d+)?)\}")
+_TODAY_RE = re.compile(r"^today(?:([+-])(\d+))?$")
+
+
+def _resolve_var(name: str, variables: dict[str, object]) -> object:
+    """{name} 해석 — 예약어 today/today±N 은 실행일 기준 로컬 날짜, 나머지는 capture 변수.
+
+    러너와 서버가 같은 호스트에서 도는 v1 전제라 로컬 날짜가 서버의 '오늘' 과 일치한다.
+    고정 날짜로는 "오늘 기준 2일 후" 같은 실행일 의존 GWT 를 표현할 수 없다.
+    """
+    m = _TODAY_RE.match(name)
+    if m:
+        offset = int(m.group(2) or 0)
+        if m.group(1) == "-":
+            offset = -offset
+        return (date.today() + timedelta(days=offset)).isoformat()
+    if name not in variables:
+        raise KeyError(name)
+    return variables[name]
 
 
 def _substitute(value: object, variables: dict[str, object]) -> object:
-    """문자열의 {var} 를 variables 로 치환 (dict/list 는 재귀). 미정의 변수는 KeyError."""
+    """문자열의 {var} 를 치환 (dict/list 재귀). 미정의 변수는 KeyError.
+
+    문자열 전체가 하나의 placeholder 면 값의 타입을 보존한다 — 문자열로 뭉개면
+    id 7 이 "7" 이 되어 단언이 조용히 어긋난다 (7 != "7").
+    """
     if isinstance(value, str):
+        whole = _VAR_RE.fullmatch(value)
+        if whole:
+            return _resolve_var(whole.group(1), variables)
 
         def repl(m: re.Match[str]) -> str:
-            name = m.group(1)
-            if name not in variables:
-                raise KeyError(name)
-            return str(variables[name])
+            return str(_resolve_var(m.group(1), variables))
 
         return _VAR_RE.sub(repl, value)
     if isinstance(value, dict):
@@ -330,6 +411,67 @@ def _substitute(value: object, variables: dict[str, object]) -> object:
     if isinstance(value, list):
         return [_substitute(v, variables) for v in value]
     return value
+
+
+def _check_delta(delta: dict, resp_json: object, variables: dict[str, object]) -> str | None:
+    """json_delta 단언 — 실패 사유 문자열, 통과면 None.
+
+    전역 집계(월 합계 등)는 DB 전체 상태의 함수라 절대값으로는 자기완결 시나리오가
+    될 수 없다. baseline 을 capture 해두고 변화량으로 단언한다 (RSpec change{}.by).
+    """
+    for dotted, spec in delta.items():
+        var = spec["from"]
+        if var not in variables:
+            return f"json_delta.{dotted}: baseline 변수 '{var}' 미정의 (앞 스텝에서 capture 필요)"
+        base = variables[var]
+        if isinstance(base, bool) or not isinstance(base, (int, float)):
+            return f"json_delta.{dotted}: baseline '{var}' 이 숫자가 아님 (실제 {base!r})"
+
+        try:
+            got = _get_dotted(resp_json, dotted)
+        except (KeyError, IndexError, TypeError, ValueError):
+            return f"응답에 json.{dotted} 경로 없음"
+        if isinstance(got, bool) or not isinstance(got, (int, float)):
+            return f"json_delta.{dotted}: 응답값이 숫자가 아님 (실제 {got!r})"
+
+        want = base + spec["add"]
+        if got != want:
+            return (
+                f"json_delta.{dotted}: 기대 {want} (baseline {base} {spec['add']:+}) "
+                f"실제 {got} (변화량 {got - base:+})"
+            )
+    return None
+
+
+def _check_not_contains(not_contains: dict, resp_json: object) -> str | None:
+    """json_not_contains 단언 — 실패 사유 문자열, 통과면 None.
+
+    "목록에 없음" 을 표현할 수단이 없으면 해지 후 미표시 같은 GWT 를 검증할 수 없다
+    (Hurl 의 not contains 선례). dict 값은 원소의 필드 부분일치, 스칼라는 원소 자체.
+    """
+    for dotted, wanted in not_contains.items():
+        try:
+            got = _get_dotted(resp_json, dotted)
+        except (KeyError, IndexError, TypeError, ValueError):
+            return f"응답에 json.{dotted} 경로 없음"
+        if not isinstance(got, list):
+            return f"json_not_contains.{dotted}: 리스트가 아님 (실제 {type(got).__name__})"
+
+        if isinstance(wanted, dict):
+            hit = next(
+                (
+                    e
+                    for e in got
+                    if isinstance(e, dict) and all(e.get(k) == v for k, v in wanted.items())
+                ),
+                None,
+            )
+        else:
+            hit = wanted if wanted in got else None
+
+        if hit is not None:
+            return f"json_not_contains.{dotted}: {wanted!r} 가 목록에 존재함 ({hit!r})"
+    return None
 
 
 def _fail(scenario: dict, step_idx: int | None, detail: str) -> dict:
@@ -385,7 +527,13 @@ def _run_http_scenario(scenario: dict, origin: str) -> dict:
         except json.JSONDecodeError:
             resp_json = None
 
-        expect = step.get("expect") or {}
+        raw_expect = step.get("expect") or {}
+        try:
+            expect = _substitute(raw_expect, variables)
+        except KeyError as e:
+            return _fail(scenario, step_idx, f"미정의 변수 참조: {e}")
+        assert isinstance(expect, dict)  # _substitute 는 dict 를 dict 로 반환
+
         if "status" in expect and status != expect["status"]:
             return _fail(scenario, step_idx, f"status 기대 {expect['status']} 실제 {status}")
 
@@ -397,6 +545,16 @@ def _run_http_scenario(scenario: dict, origin: str) -> dict:
                     return _fail(scenario, step_idx, f"응답에 json.{dotted} 경로 없음")
                 if got != want:
                     return _fail(scenario, step_idx, f"json.{dotted} 기대 {want!r} 실제 {got!r}")
+
+        if "json_delta" in expect:
+            failure = _check_delta(expect["json_delta"], resp_json, variables)
+            if failure:
+                return _fail(scenario, step_idx, failure)
+
+        if "json_not_contains" in expect:
+            failure = _check_not_contains(expect["json_not_contains"], resp_json)
+            if failure:
+                return _fail(scenario, step_idx, failure)
 
         for var, dotted in (step.get("capture") or {}).items():
             try:

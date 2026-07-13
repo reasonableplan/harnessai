@@ -382,3 +382,79 @@ def test_cmd_validate_blocks_undeclared_endpoint_reference(
     assert rc == 1
     assert out["passed"] is False
     assert any(v["kind"] == "endpoint_not_declared" for v in out["cross_violations"])
+
+
+# ── v0.21.2 — json_delta / json_not_contains 스키마 ──────────────────────────
+
+
+def _step_with_expect(expect: dict) -> dict:
+    return {"method": "GET", "path": "/api/todos/{todo_id}", "expect": expect}
+
+
+def _data_with_expect(expect: dict, *, kind: str = "http") -> dict:
+    return {
+        "version": 1,
+        "scenarios": [_good_scenario(kind=kind, steps=[_step_with_expect(expect)])],
+    }
+
+
+def test_schema_accepts_json_delta(ha_accept) -> None:
+    data = _data_with_expect({"json_delta": {"monthlyTotal": {"from": "base", "add": 17000}}})
+    assert ha_accept._validate_schema(data) == []
+
+
+def test_schema_accepts_negative_delta(ha_accept) -> None:
+    """해지 → 합계 감소. add 음수로 표현 (RSpec change{}.by(-n) 과 동일)."""
+    data = _data_with_expect({"json_delta": {"monthlyTotal": {"from": "base", "add": -17000}}})
+    assert ha_accept._validate_schema(data) == []
+
+
+def test_schema_blocks_json_delta_missing_from(ha_accept) -> None:
+    data = _data_with_expect({"json_delta": {"monthlyTotal": {"add": 1}}})
+    kinds = [v.kind for v in ha_accept._validate_schema(data)]
+    assert "bad_expect_value" in kinds
+
+
+def test_schema_blocks_json_delta_non_numeric_add(ha_accept) -> None:
+    """add 가 숫자가 아니면 BLOCK — 러너가 조용히 넘기면 공허 단언이 된다."""
+    data = _data_with_expect({"json_delta": {"monthlyTotal": {"from": "base", "add": "17000원"}}})
+    kinds = [v.kind for v in ha_accept._validate_schema(data)]
+    assert "bad_expect_value" in kinds
+
+
+def test_schema_blocks_json_delta_unknown_key(ha_accept) -> None:
+    data = _data_with_expect({"json_delta": {"monthlyTotal": {"from": "base", "add": 1, "x": 2}}})
+    kinds = [v.kind for v in ha_accept._validate_schema(data)]
+    assert "bad_expect_value" in kinds
+
+
+def test_schema_accepts_json_not_contains(ha_accept) -> None:
+    data = _data_with_expect({"json_not_contains": {"upcoming": {"id": "{todo_id}"}}})
+    assert ha_accept._validate_schema(data) == []
+
+
+def test_schema_blocks_json_not_contains_list_value(ha_accept) -> None:
+    """값은 스칼라(원소 자체) 또는 dict(필드 부분일치) 만 — 리스트는 의미 불명."""
+    data = _data_with_expect({"json_not_contains": {"upcoming": [1, 2]}})
+    kinds = [v.kind for v in ha_accept._validate_schema(data)]
+    assert "bad_expect_value" in kinds
+
+
+def test_schema_blocks_delta_on_cli_kind(ha_accept) -> None:
+    """cli 스텝에 http 전용 키 → 기존 교차키 차단과 동일하게 BLOCK."""
+    data = {
+        "version": 1,
+        "scenarios": [
+            _good_scenario(
+                kind="cli",
+                steps=[
+                    {
+                        "run": "python -m app add x",
+                        "expect": {"json_delta": {"total": {"from": "b", "add": 1}}},
+                    }
+                ],
+            )
+        ],
+    }
+    kinds = [v.kind for v in ha_accept._validate_schema(data)]
+    assert "bad_expect_key" in kinds

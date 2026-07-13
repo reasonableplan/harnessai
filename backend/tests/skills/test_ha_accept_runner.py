@@ -421,3 +421,226 @@ def test_cmd_record_appends_verify_history(ha_accept, tmp_path, monkeypatch, cap
     assert saved == [(plan, plan_path)]
     assert out["passed"] is True
     assert out["current_step"] == "verified"
+
+
+# ── v0.21.2 스키마 확장 — 집계(delta)/부정단언/날짜식 ────────────────────────
+#
+# 전역 집계 GWT(월 합계·절약액)는 절대값으로는 자기완결 시나리오가 될 수 없다
+# (다른 시나리오가 만든 데이터에 오염). RSpec change{}.by(delta) 를 이식해
+# "변화량" 으로 단언한다. 부정 단언(미포함)과 실행일 기준 날짜식도 함께.
+
+
+class _SummaryHandler(BaseHTTPRequestHandler):
+    """POST /api/subs 로 금액 추가 → GET /api/summary 의 monthlyTotal/upcoming 반영."""
+
+    _total = 0
+    _upcoming: list[dict] = []
+    _next_id = 1
+
+    def _write_json(self, code: int, payload: dict) -> None:
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):  # noqa: N802
+        length = int(self.headers.get("Content-Length", 0))
+        payload = json.loads(self.rfile.read(length) if length else b"{}")
+        if self.path == "/api/subs":
+            item = {
+                "id": _SummaryHandler._next_id,
+                "amount": payload.get("amount", 0),
+                "startedOn": payload.get("startedOn"),
+            }
+            _SummaryHandler._next_id += 1
+            _SummaryHandler._total += item["amount"]
+            _SummaryHandler._upcoming.append(item)
+            self._write_json(201, {"data": item})
+            return
+        if self.path.endswith("/cancel"):
+            sub_id = int(self.path.split("/")[3])
+            remaining = [s for s in _SummaryHandler._upcoming if s["id"] != sub_id]
+            cancelled = [s for s in _SummaryHandler._upcoming if s["id"] == sub_id]
+            _SummaryHandler._upcoming = remaining
+            for s in cancelled:
+                _SummaryHandler._total -= s["amount"]
+            self._write_json(200, {"data": {"status": "cancelled"}})
+            return
+        self._write_json(404, {"error": "not found"})
+
+    def do_GET(self):  # noqa: N802
+        if self.path == "/api/summary":
+            self._write_json(
+                200,
+                {"monthlyTotal": _SummaryHandler._total, "upcoming": _SummaryHandler._upcoming},
+            )
+            return
+        self._write_json(404, {"error": "not found"})
+
+    def log_message(self, *a):
+        pass
+
+
+@pytest.fixture
+def summary_server():
+    _SummaryHandler._total = 0
+    _SummaryHandler._upcoming = []
+    _SummaryHandler._next_id = 1
+    port = _free_port()
+    server = ThreadingHTTPServer(("127.0.0.1", port), _SummaryHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def _delta_scenario(add: int) -> dict:
+    return {
+        "id": "A-010",
+        "feature": "월 합계",
+        "kind": "http",
+        "steps": [
+            {"method": "GET", "path": "/api/summary", "capture": {"base_total": "monthlyTotal"}},
+            {
+                "method": "POST",
+                "path": "/api/subs",
+                "json": {"amount": 17000},
+                "expect": {"status": 201},
+            },
+            {
+                "method": "GET",
+                "path": "/api/summary",
+                "expect": {"json_delta": {"monthlyTotal": {"from": "base_total", "add": add}}},
+            },
+        ],
+    }
+
+
+def test_json_delta_pass_on_shared_state(ha_accept, summary_server) -> None:
+    """기존 데이터가 이미 있어도 변화량이 맞으면 PASS (자기완결)."""
+    _SummaryHandler._total = 99000  # 다른 시나리오가 남긴 오염
+    r = ha_accept._run_http_scenario(_delta_scenario(17000), summary_server)
+    assert r["passed"] is True, r["detail"]
+
+
+def test_json_delta_fail_reports_expected_and_actual(ha_accept, summary_server) -> None:
+    """변화량이 다르면 FAIL — 기대/실제 델타를 detail 에 보고."""
+    r = ha_accept._run_http_scenario(_delta_scenario(10000), summary_server)
+    assert r["passed"] is False
+    assert r["failed_step"] == 3
+    assert "17000" in r["detail"]
+
+
+def test_json_delta_undefined_baseline_fails(ha_accept, summary_server) -> None:
+    """capture 안 한 변수를 from 으로 참조 → FAIL (조용한 통과 금지)."""
+    scenario = {
+        "id": "A-011",
+        "feature": "월 합계",
+        "kind": "http",
+        "steps": [
+            {
+                "method": "GET",
+                "path": "/api/summary",
+                "expect": {"json_delta": {"monthlyTotal": {"from": "nope", "add": 0}}},
+            }
+        ],
+    }
+    r = ha_accept._run_http_scenario(scenario, summary_server)
+    assert r["passed"] is False
+    assert "nope" in r["detail"]
+
+
+def test_json_not_contains_pass_after_cancel(ha_accept, summary_server) -> None:
+    """해지한 구독이 upcoming 목록에서 사라졌음을 부정 단언으로 검증."""
+    scenario = {
+        "id": "A-012",
+        "feature": "해지",
+        "kind": "http",
+        "steps": [
+            {
+                "method": "POST",
+                "path": "/api/subs",
+                "json": {"amount": 17000},
+                "expect": {"status": 201},
+                "capture": {"sub_id": "data.id"},
+            },
+            {"method": "POST", "path": "/api/subs/{sub_id}/cancel", "expect": {"status": 200}},
+            {
+                "method": "GET",
+                "path": "/api/summary",
+                "expect": {"json_not_contains": {"upcoming": {"id": "{sub_id}"}}},
+            },
+        ],
+    }
+    r = ha_accept._run_http_scenario(scenario, summary_server)
+    assert r["passed"] is True, r["detail"]
+
+
+def test_json_not_contains_fail_when_present(ha_accept, summary_server) -> None:
+    """아직 목록에 있으면 FAIL — 해지 전 상태를 잡는다."""
+    scenario = {
+        "id": "A-013",
+        "feature": "해지",
+        "kind": "http",
+        "steps": [
+            {
+                "method": "POST",
+                "path": "/api/subs",
+                "json": {"amount": 17000},
+                "expect": {"status": 201},
+                "capture": {"sub_id": "data.id"},
+            },
+            {
+                "method": "GET",
+                "path": "/api/summary",
+                "expect": {"json_not_contains": {"upcoming": {"id": "{sub_id}"}}},
+            },
+        ],
+    }
+    r = ha_accept._run_http_scenario(scenario, summary_server)
+    assert r["passed"] is False
+    assert "upcoming" in r["detail"]
+
+
+def test_substitute_whole_placeholder_preserves_type(ha_accept) -> None:
+    """'{id}' 단독 치환은 원래 타입 유지 — 문자열화하면 7 != '7' 로 단언이 무음 통과한다."""
+    assert ha_accept._substitute("{id}", {"id": 7}) == 7
+    assert ha_accept._substitute("/api/x/{id}", {"id": 7}) == "/api/x/7"
+
+
+def test_substitute_today_date_expressions(ha_accept) -> None:
+    """{today} / {today+2} / {today-1} — 실행일 기준 로컬 날짜 (서버와 동일 호스트)."""
+    from datetime import date, timedelta
+
+    today = date.today()
+    assert ha_accept._substitute("{today}", {}) == today.isoformat()
+    assert ha_accept._substitute("{today+2}", {}) == (today + timedelta(days=2)).isoformat()
+    assert ha_accept._substitute("{today-1}", {}) == (today - timedelta(days=1)).isoformat()
+
+
+def test_json_delta_uses_today_in_body(ha_accept, summary_server) -> None:
+    """날짜식이 요청 바디에도 적용된다 (결제일 D-2 같은 실행일 의존 시나리오)."""
+    from datetime import date, timedelta
+
+    scenario = {
+        "id": "A-014",
+        "feature": "결제일",
+        "kind": "http",
+        "steps": [
+            {
+                "method": "POST",
+                "path": "/api/subs",
+                "json": {"amount": 1000, "startedOn": "{today+2}"},
+                "expect": {
+                    "status": 201,
+                    "json": {"data.startedOn": (date.today() + timedelta(days=2)).isoformat()},
+                },
+            }
+        ],
+    }
+    r = ha_accept._run_http_scenario(scenario, summary_server)
+    assert r["passed"] is True, r["detail"]
