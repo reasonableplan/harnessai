@@ -608,3 +608,33 @@ def test_reject_warns_when_task_id_not_transitioned(ha_review: ModuleType, tmp_p
     assert any("needs_rebuild 미전이" in line and "T-999" in line for line in captured)
     payload = json.loads(captured[-1])
     assert payload["rebuild_required_tasks"] == []
+
+
+def test_reject_parses_four_digit_task_id(ha_review: ModuleType, tmp_path: Path) -> None:
+    """캐노니컬 T-ID 는 T-\d+ (task_id.py) — 3자리 가정은 T-1000 을 조용히 놓친다."""
+    plan_path = tmp_path / "harness-plan.md"
+    plan_path.write_text("", encoding="utf-8")
+    (tmp_path / "tasks.md").write_text(
+        "| ID     | Agent         | Depends On | Description | Status     |\n"
+        "|--------|---------------|------------|-------------|------------|\n"
+        "| T-1000 | backend_coder | -          | 대형 프로젝트 | done       |\n",
+        encoding="utf-8",
+    )
+
+    mock_plan = MagicMock()
+    mock_plan.pipeline.current_step = "verified"
+    captured: list[str] = []
+
+    with (
+        patch.object(ha_review, "load_plan", return_value=(mock_plan, plan_path, tmp_path)),
+        patch.object(ha_review, "assert_state"),
+        patch.object(ha_review, "record_verify"),
+        patch.object(ha_review, "regress"),
+        patch.object(ha_review, "save_plan"),
+        patch("builtins.print", side_effect=lambda data, **kw: captured.append(data)),
+    ):
+        code = ha_review.cmd_record(_reject_args('["[hook] src/x.py:1 — 위반 → T-1000"]'))
+
+    assert code == 0
+    payload = json.loads(captured[-1])
+    assert payload["rebuild_required_tasks"] == ["T-1000"]

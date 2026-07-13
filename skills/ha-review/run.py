@@ -844,7 +844,9 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     return 0
 
 
-_TASK_ID_RE = re.compile(r"\bT-\d{3}\b")
+# 캐노니컬 T-ID 는 T-NNN 이되 자릿수를 고정하지 않는다 (task_id.py TASK_ID_RE = ^T-\d+$).
+# 3자리로 고정하면 T-1000 같은 ID 를 조용히 놓쳐 재작업 대상이 비게 된다.
+_TASK_ID_RE = re.compile(r"\bT-\d+\b")
 
 
 def _rework_task_ids(violations: list[str], rework_arg: object) -> list[str]:

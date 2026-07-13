@@ -101,5 +101,5 @@
 | reviewed 상태에서만 마킹 | BLOCK | — |
 
 ## 집계
-- BLOCK 계열: **25** · advisory/HITL 계열: **20+** (2026-07-13 v0.21.0 /ha-accept 반영 — 상태 BLOCK(exit 2)·validate BLOCK·공허 매칭 BLOCK 3건 + run/커버리지 advisory 2건 추가. 직전 재집계는 2026-07-12 v0.20.0: scaffold 선행 게이트 BLOCK + scaffold complete `--skip-toolchain` 특례 advisory + 스텁 미구현 게이트 BLOCK. T-000 자동 주입은 BLOCK/advisory 어디에도 속하지 않는 "자동 가드" — done→needs_rebuild 전이와 동일 부류라 이 집계에서 제외. 기준: severity 가 BLOCK 표기인 행. 보안훅/ai-slop findings 행은 BLOCK/WARN 혼합이라 "+" 계상)
+- BLOCK 계열: **28** · advisory/HITL 계열: **24+** (2026-07-13 v0.21.1~v0.21.2 재집계 — subtrack dogfood 후속으로 BLOCK 3건 추가: ha-review REJECT 재작업 T-ID 필수 · ha-smoke 부적격 endpoint · ha-accept 새 단언(json_delta/json_not_contains) 구조 검증. rework 재진입 되돌림 / REJECT needs_rebuild 전이 / probe 카운트 노출은 "자동 가드" 라 BLOCK 집계 제외. 직전 집계는 v0.21.0 /ha-accept 반영 — 상태 BLOCK(exit 2)·validate BLOCK·공허 매칭 BLOCK 3건 + run/커버리지 advisory 2건 추가. 직전 재집계는 2026-07-12 v0.20.0: scaffold 선행 게이트 BLOCK + scaffold complete `--skip-toolchain` 특례 advisory + 스텁 미구현 게이트 BLOCK. T-000 자동 주입은 BLOCK/advisory 어디에도 속하지 않는 "자동 가드" — done→needs_rebuild 전이와 동일 부류라 이 집계에서 제외. 기준: severity 가 BLOCK 표기인 행. 보안훅/ai-slop findings 행은 BLOCK/WARN 혼합이라 "+" 계상)
 - 다이어그램/README 의 "8개 게이트" 는 이 표 기준으로 갱신할 것.

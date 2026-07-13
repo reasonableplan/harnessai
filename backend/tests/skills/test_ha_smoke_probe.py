@@ -291,3 +291,17 @@ def test_suggest_smoke_none_when_no_runnable_package(ha_smoke, tmp_path: Path) -
     (tmp_path / "src" / "lib").mkdir()
     (tmp_path / "src" / "lib" / "__init__.py").touch()  # __main__.py 없음 → 제안 없음
     assert ha_smoke.suggest_smoke_command(tmp_path) is None
+
+
+def test_endpoints_without_url_is_hard_fail(ha_smoke, tmp_path) -> None:
+    """exit 모드(--url 없음)에 --endpoint 를 주면 조용히 무시하지 말고 FAIL.
+
+    무시하면 "엔드포인트를 검사했다" 는 착각 그대로 exit 0 이 난다 (D-6 과 동종).
+    """
+    r = ha_smoke.run_probe(
+        _py("print(1)"),
+        cwd=tmp_path,
+        endpoints=["/api/items"],
+    )
+    assert r["passed"] is False
+    assert "--url" in r["detail"]

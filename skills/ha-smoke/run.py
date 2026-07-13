@@ -234,6 +234,15 @@ def run_probe(
     """
     if url:
         return _probe_url(cmd, Path(cwd), url, ready_timeout, endpoints)
+    if endpoints:
+        # exit 모드는 엔드포인트를 때릴 대상이 없다 — 조용히 무시하면 "검사했다" 는
+        # 착각 그대로 exit 0 이 난다 (부적격 endpoint 무음 skip 과 동종).
+        return {
+            "passed": False,
+            "mode": "exit",
+            "detail": "--endpoint 는 url 모드 전용 — --url 없이 주면 타격 대상이 없다 (--url 지정 필요)",
+            "output_tail": "",
+        }
     return _probe_exit(cmd, Path(cwd), timeout)
 
 

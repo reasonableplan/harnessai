@@ -118,7 +118,7 @@ backend/
     skeleton.md            — 실행 시 생성 (Architect+Designer 출력으로 채워짐, v2)
     harness-plan.md        — v2 파이프라인 상태 (YAML frontmatter)
     shared-lessons.md      — 과거 실수 패턴 LESSON-NNN
-    GATES.md               — 게이트 전수표 (BLOCK 15 + advisory 10+)
+    GATES.md               — 게이트 전수표 (BLOCK 28 + advisory 24+)
   src/
     main.py                — FastAPI 서버 진입점 (포트 3002)
     dashboard/             — REST API + WebSocket 대시보드
@@ -142,7 +142,7 @@ backend/
         base.py               — BaseProvider 추상 인터페이스
         claude_cli.py         — Claude CLI subprocess provider
   tests/
-    orchestrator/             — 1308개 테스트 (E2E 통합 포함, tests/skills 포함 전체)
+    orchestrator/             — 1601개 테스트 (E2E 통합 포함, tests/skills 포함 전체)
     dashboard/                — EventMapper 17개 테스트
 
 ## HarnessAI v2 파이프라인 (`/ha-*` 스킬)

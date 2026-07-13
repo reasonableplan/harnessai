@@ -99,6 +99,32 @@ underivable:
 `stdout_contains`. 캡처: dotted path → 변수, `{var}` 치환은 path/json 값/run 문자열.
 dotted path 게터는 ~20줄 (jsonpath 라이브러리 도입 금지 — YAGNI).
 
+### 2.1 v0.21.2 확장 — 집계·부재·날짜 (subtrack dogfood D-7)
+
+v1 최소 집합으로는 **전역 집계 GWT**("월 합계 27,000원 표시")를 자기완결 시나리오로
+표현할 수 없었다 — `/api/summary` 는 DB 전체 상태의 함수라 절대값 단언이 다른 시나리오가
+만든 데이터에 오염된다. 실전에서 GWT 9개 중 4개가 underivable 로 빠졌다.
+
+조사: **선언형 HTTP 러너 중 캡처값 산술을 지원하는 도구는 없다** — Hurl 은 "셸에서 계산해
+`--variable` 로 주입" 을 문서화하고, Karate/Postman 은 JS 탈출구로 푼다. LLM 이 시나리오를
+파생하는 우리 구조에서 스크립트 탈출구는 검증 위조 경로이므로, RSpec `change{}.by(delta)` 를
+전용 단언 키로 이식한다 (탈출구 없이 표현력만 확장).
+
+- `expect.json_delta: {<dotted>: {from: <capture 변수>, add: <숫자>}}` — 응답값이
+  `baseline + add` 인지 검증. 감소는 음수. **DB 격리 없이** 집계를 자기완결 단언한다
+  (시나리오별 임시 DB 를 도입해도 같은 인스턴스 순차 실행이라 오염은 남는다 — delta 가 더 견고).
+- `expect.json_not_contains: {<dotted(list)>: 스칼라 | {필드: 값}}` — 부재 단언 (Hurl
+  `not contains` 선례). "해지 구독은 다가오는 결제일에 미표시" 같은 부정 Then.
+- 날짜식 `{today}` / `{today±N}` — 실행일 기준 로컬 날짜 (러너·서버 동일 호스트 전제).
+  고정 날짜로 쓰면 D-day 의존 GWT 가 다음 날 깨진다.
+- `_substitute` 타입 보존: 문자열 전체가 `{var}` 면 원 타입 유지 (id `7` 이 `"7"` 이 되면
+  `7 != "7"` 로 단언이 조용히 어긋난다).
+- validate 는 두 새 단언의 **구조를 BLOCK 검증**한다 — 형식이 깨진 delta 를 러너가 넘기면
+  "집계를 검증한 줄 아는" 공허 단언이 된다.
+
+검증(subtrack 재파생): 시나리오 5 → 8, underivable 4 → 2(순수 브라우저 UI만),
+미커버 feature 0, 8/8 실 서버 PASS (오염된 DB 위에서 통과 — 자기완결성 실증).
+
 ## 3. /ha-accept 스킬 (신규)
 
 ```
