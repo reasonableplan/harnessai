@@ -72,12 +72,12 @@
 - [ ] 상태 전이는 `state.flow` 섹션 규칙 따라라
 - [ ] **스펙 블록이 없거나 불완전하면 구현 중단 → 에스컬레이션** (위 "자율 결정 금지" 절차)
 
-### 3. 상태 관리
-- [ ] **서버 데이터 포함 모든 상태는 Zustand store** — store action 안에서 API 함수 직접 호출
+### 3. 상태 관리 — 전략은 conventions.md 가 결정 (자율 결정 금지 표 참조)
+- [ ] **전략 먼저 확인**: conventions 가 "Zustand only" 면 서버 데이터 포함 모든 상태를 Zustand store 로 (store action 안에서 API 함수 직접 호출). "Zustand + TanStack Query 하이브리드" 면 서버 상태는 TanStack Query, 클라이언트 상태만 Zustand. 미지정이면 에스컬레이션 — 임의 선택 금지
 - [ ] **UI 상태는 Zustand** — 인증 정보, 사이드바, 전역 필터 등
 - [ ] **로컬 상태는 useState** — 폼 입력, 모달 열림/닫힘
 - [ ] **per-feature store**: 기능별 store는 `containers/feature/store/` 안에. `shared/store/`는 진짜 전역만
-- [ ] store action 패턴: `fetchX → isLoading true → API 호출 → state 저장 → catch → error state`
+- [ ] store action 패턴 (Zustand only 전략일 때): `fetchX → isLoading true → API 호출 → state 저장 → catch → error state`
 - [ ] 셀렉터는 필드별 개별 구독: `useStore(s => s.field)` — 전체 구독 금지
 
 > ⚠️ **URL params가 source of truth** (LESSON-005): `selectedProjectId` 같은 메모리 상태는 새로고침 시 null.
@@ -126,7 +126,7 @@ npx tsc --noEmit && npm run build
 - skeleton에 없는 페이지/컴포넌트 추가
 - 허용 라이브러리 화이트리스트에 없는 패키지 설치
 - `any` 타입 사용
-- 컴포넌트에서 API 직접 호출 (store action 통해서만)
+- 컴포넌트에서 axios/fetch 직접 호출 (conventions 의 서버 상태 경로 경유만 — Zustand only 면 store action, 하이브리드면 TanStack Query 훅)
 - `style={}` 인라인 스타일 (동적 width/height 제외)
 - JSX에 2개 이상 Tailwind 클래스 직접 작성 (CVA 사용)
 - 빈 catch 블록
@@ -135,16 +135,11 @@ npx tsc --noEmit && npm run build
 - Zustand store에 URL로 표현 가능한 컨텍스트 저장 (useParams 사용)
 - CSS 리셋을 `@layer` 밖에 작성 (Tailwind v4 유틸리티 무력화 — LESSON-011)
 
-## 허용 라이브러리
-```
-react, react-dom, zustand, axios,
-tailwindcss, postcss, autoprefixer,
-react-hook-form, react-router-dom,
-@radix-ui/*, class-variance-authority, clsx, tailwind-merge,
-lucide-react, zod,
-vitest, @testing-library/react, @testing-library/user-event, jsdom
-```
-이 목록에 없는 건 Architect 승인 필요.
+## 화이트리스트 — 프로파일이 단일 소스
+
+허용 라이브러리 목록은 이 문서에 두지 않는다 (하드코딩 = drift 원인). **ha-build `prepare`
+출력의 활성 frontend 프로파일(react-vite / nextjs 등) whitelist 가 단일 소스** — runtime/dev/prefix_allowed
+를 거기서 확인. 목록 밖 의존성은 Architect 승인 필요 (`--status blocked` 에스컬레이션).
 
 
 ## 핸드오프 노트 (구현 후 — PR 설명/최종 보고에, 코드 파일 밖에)

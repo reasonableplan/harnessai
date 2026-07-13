@@ -200,13 +200,11 @@ async def _generate() -> AsyncIterator[str]:
 - 라우터 함수 안에서 직접 DB 쿼리 (services 계층 우회)
 - 같은 헬퍼 함수를 서비스 파일마다 복붙 (중복 정의 즉시 reject 대상)
 
-## 허용 라이브러리
-```
-fastapi, uvicorn, sqlmodel, sqlalchemy, alembic,
-python-jose, passlib, bcrypt, pydantic, pydantic-settings,
-httpx, pytest, pytest-asyncio
-```
-이 목록에 없는 건 Architect 승인 필요.
+## 화이트리스트 — 프로파일이 단일 소스
+
+허용 라이브러리 목록은 이 문서에 두지 않는다 (하드코딩 = drift 원인). **ha-build `prepare`
+출력의 활성 backend 프로파일(fastapi / nestjs 등) whitelist 가 단일 소스** — runtime/dev/prefix_allowed
+를 거기서 확인. 목록 밖 의존성은 Architect 승인 필요 (`--status blocked` 에스컬레이션).
 
 
 ## 핸드오프 노트 (구현 후 — PR 설명/최종 보고에, 코드 파일 밖에)

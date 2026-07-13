@@ -4,6 +4,28 @@ HarnessAI 의 모든 주요 변경 사항. 형식은 [Keep a Changelog](https://
 
 ---
 
+## [0.19.5] — 2026-07-08 — "프롬프트 전수 평가 후속 + 유사도구 조사 채택 배치 3건"
+
+v0.19.4 전수 평가에서 남긴 결함 수정 + 외부 유사도구 조사(Ralph 루프/DeepWiki 인용 방식)
+에서 채택한 3건.
+
+### Fixed
+
+- web coder 프롬프트 whitelist 단일소스 백포트 (모바일 4종과 동일 원칙 — v0.19.4 후속)
+- frontend coder §3 모순 표현 정리, orchestrator 프롬프트 qa 잔재 제거
+
+### Added
+
+- **ha-review FP 학습 루프** — `--allow-block` 처리 내역을 `[FP 후보]` lesson 으로
+  자동 추출 (origin 태그) — 같은 오탐을 다음 리뷰가 반복하지 않게 누적
+- **ha-deepinit validate 인용 게이트** — Agent 가 쓴 AGENTS.md 의 백틱 파일 인용
+  실존/라인 범위 검증 (DeepWiki 방식) — 환각 경로 차단
+- **`harness/bin/ha-loop`** — Ralph 식 외부 루프 (스텝마다 fresh `claude -p` 세션,
+  옵트인) — 긴 자율 런의 컨텍스트 부패/30루프 상한 해소
+- 회귀 27 tests (pytest 1441)
+
+---
+
 ## [0.19.4] — 2026-07-06 — "push 전 전면 감사: 프롬프트/문서 stale 제거 + whitelist 단일소스화"
 
 프롬프트 표면 전수 감사 (SKILL.md 15 + 에이전트 프롬프트 12 + 프로파일/문서) + 외부

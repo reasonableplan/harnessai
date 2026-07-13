@@ -177,6 +177,9 @@ run.py 자동 검증:
 - `verify_history` 에 새 엔트리 (step="ha-review")
 - **APPROVE + BLOCK 1건 이상** → exit 1 (조치: REJECT 또는 코드 수정 후 prepare 재실행, 또는 --allow-block)
 - **REJECT + violations 빈 값 또는 빈 배열** → exit 1 (가드레일: REJECT 시 재작업 T-ID 없이 보고 금지)
+- **`--allow-block` 우회 시 사용자 교정 학습**: 우회된 BLOCK 을 `[FP 후보]` Pending lesson 으로
+  자동 기록 (origin=프로젝트 태그, 출력 JSON `fp_lesson` 필드). 명시적 우회 = 가장 강한 FP 신호.
+  스캔 실패는 우회를 막지 않음 (WARN 후 생략).
 - APPROVE (BLOCK 0건) → "verified" → "reviewed" 전이
 - REJECT → "building" 으로 회귀
 
@@ -190,6 +193,9 @@ LESSON 가치 있는 케이스:
 - *체계적* 패턴 — 한 번이 아니라 *3 번 이상* 발생할 가능성 있는 결함
 - *방어 가능한* 결함 — 명확한 규칙으로 막을 수 있는 것
 - *프레임워크 / 라이브러리 특수* — Python/FastAPI/React 등의 함정
+- **사용자 교정** — 리뷰 대화 중 사용자가 finding 을 오탐으로 뒤집은 경우: 제목에
+  `[FP 후보]` prefix + `--origin <프로젝트>` 로 기록 (훅 정밀도 학습 신호.
+  `--allow-block` 우회는 record 가 자동 기록하므로 중복 호출 불필요)
 
 LESSON 가치 *없는* 케이스 (skip):
 - 일회성 typo / 오타
@@ -206,7 +212,8 @@ python ~/.claude/skills/ha-review/run.py extract-lesson \
   --title "<짧은 제목 — 50자 이하>" \
   --problem "<문제 설명 — 무엇이 잘못됐는지>" \
   --rule "<규칙 — 어떻게 막을지, 코드 예시 가능>" \
-  --evidence "<리뷰에서 발견한 위치 / 빈도 — 선택>"
+  --evidence "<리뷰에서 발견한 위치 / 빈도 — 선택>" \
+  --origin "<발생 프로젝트 이름 — 프로젝트-로컬 개연성 태그, 선택>"
 ```
 
 3. run.py 가 자동:
@@ -219,6 +226,8 @@ python ~/.claude/skills/ha-review/run.py extract-lesson \
    - 사용자가 `shared-lessons.md` 직접 편집
    - 승인 → Pending 섹션 → main 섹션으로 이동 + `auto_extracted` 마커 제거
    - 거부 → 해당 LESSON 블록 삭제
+   - **프로젝트 한정 교훈** (`origin:` 태그 참조) → 전역 promote 하지 말고 해당 프로젝트의
+     `docs/conventions.md` 로 이동 후 블록 삭제 (로컬 FP 가 전역 리뷰를 물러지게 하는 것 방지)
 
 **중요**: Claude 가 *자동으로* main 섹션에 박지 않음. *반드시 Pending 섹션* 만 사용. 가짜 LESSON 자동 적용 방지.
 

@@ -878,6 +878,7 @@ def cmd_record(args: argparse.Namespace) -> int:
         return 1
 
     # ── R6/#8: approve → diff 추출 (empty-guard + BLOCK-guard 공유) ──
+    fp_lesson: str | None = None
     if verdict == "approve":
         diff, _diff_scope = _extract_diff(project, getattr(args, "base", None))
 
@@ -923,6 +924,10 @@ def cmd_record(args: argparse.Namespace) -> int:
                     "       의도적 우회: --allow-block 명시."
                 )
                 return 1
+        else:
+            # 사용자 교정 학습: 우회된 BLOCK 은 가장 강한 FP 신호 → Pending lesson 후보로 기록
+            fp_result = _extract_fp_candidate_lesson(plan, plan_path, project, diff)
+            fp_lesson = fp_result.get("lesson_id") if fp_result else None
 
     passed = verdict == "approve"
     summary = args.summary or ("APPROVE" if passed else "REJECT")
@@ -943,27 +948,33 @@ def cmd_record(args: argparse.Namespace) -> int:
         "summary": summary,
         "current_step": plan.pipeline.current_step,
         "violations": violations,
+        "fp_lesson": fp_lesson,
         "next": "(다음 단계 선택) /ship | /retro" if passed else "/ha-build <T-ID>",
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0
 
 
-def cmd_extract_lesson(args: argparse.Namespace) -> int:
-    """v0.10.0 — 리뷰에서 발견한 패턴을 shared-lessons.md 의 Pending 섹션에 append.
+def _append_pending_lesson(
+    *,
+    lessons_path: Path,
+    title: str,
+    problem: str,
+    rule: str,
+    evidence: str = "",
+    origin: str | None = None,
+) -> tuple[int, dict]:
+    """Pending Lessons 섹션에 auto_extracted lesson 을 append.
 
-    auto_extracted: true 마커 박힘. 사용자 promotion 으로만 main 섹션 진입.
+    Returns (exit_code, output). 중복 제목은 (0, skipped) — promotion 은 사람 몫.
+    origin = 발생 프로젝트 태그 — promotion 시 전역 promote / 프로젝트 conventions
+    이동 / 삭제를 판별하는 근거 (프로젝트-로컬 FP 가 전역 오염되는 것 방지).
     """
     from datetime import UTC, datetime
 
-    if args.lessons_path:
-        lessons_path = Path(args.lessons_path)
-    else:
-        lessons_path = HARNESS_HOME / "backend" / "docs" / "shared-lessons.md"
-
     if not lessons_path.exists():
         info(f"[FAIL] shared-lessons.md 없음: {lessons_path}")
-        return 1
+        return 1, {}
 
     text = lessons_path.read_text(encoding="utf-8")
 
@@ -973,24 +984,26 @@ def cmd_extract_lesson(args: argparse.Namespace) -> int:
     lesson_id = f"LESSON-{next_id:03d}"
 
     # 중복 방지 — title 이 기존 LESSON 과 lowercase 비교 시 거부
-    title_norm = args.title.strip().lower()
+    title_norm = title.strip().lower()
     for existing_title in re.findall(r"## LESSON-\d+: (.+)", text):
         if title_norm == existing_title.strip().lower():
             info(f"[SKIP] 중복 LESSON 제목 — 기존: {existing_title}")
-            output = {"lesson_id": None, "skipped": True, "reason": "duplicate_title"}
-            print(json.dumps(output, ensure_ascii=False, indent=2))
-            return 0
+            return 0, {"lesson_id": None, "skipped": True, "reason": "duplicate_title"}
 
     extracted_at = datetime.now(UTC).strftime("%Y-%m-%d")
+    marker = f"<!-- auto_extracted: true / promotion_pending: true / extracted_at: {extracted_at}"
+    if origin:
+        marker += f" / origin: {origin}"
+    marker += " -->"
 
     block = (
-        f"## {lesson_id}: {args.title.strip()}\n"
-        f"<!-- auto_extracted: true / promotion_pending: true / extracted_at: {extracted_at} -->\n\n"
-        f"**문제**: {args.problem.strip()}\n\n"
-        f"**규칙**: {args.rule.strip()}\n"
+        f"## {lesson_id}: {title.strip()}\n"
+        f"{marker}\n\n"
+        f"**문제**: {problem.strip()}\n\n"
+        f"**규칙**: {rule.strip()}\n"
     )
-    if args.evidence:
-        block += f"\n**근거**: {args.evidence.strip()}\n"
+    if evidence:
+        block += f"\n**근거**: {evidence.strip()}\n"
     block += "\n---\n"
 
     pending_header = "## Pending Lessons (자동 추출 — 사용자 promotion 대기)"
@@ -1020,18 +1033,95 @@ def cmd_extract_lesson(args: argparse.Namespace) -> int:
         lessons_path.write_text(new_text, encoding="utf-8")
     except OSError as e:
         info(f"[FAIL] shared-lessons.md 쓰기 실패: {e}")
-        return 1
+        return 1, {}
 
-    output = {
+    return 0, {
         "lesson_id": lesson_id,
-        "title": args.title.strip(),
+        "title": title.strip(),
         "extracted_at": extracted_at,
         "section": "Pending Lessons",
         "promotion_pending": True,
         "lessons_path": str(lessons_path),
     }
-    print(json.dumps(output, ensure_ascii=False, indent=2))
-    return 0
+
+
+def _extract_fp_candidate_lesson(
+    plan: object, plan_path: Path, project: Path, diff: str
+) -> dict | None:
+    """--allow-block 우회 시 우회된 BLOCK findings 를 [FP 후보] Pending lesson 으로 기록.
+
+    사용자의 명시적 우회 = 가장 강한 FP 신호 (사용자 교정 학습). fail-soft —
+    스캔/기록 실패가 명시적 우회 자체를 막으면 안 되므로 WARN 후 None 반환.
+    """
+    from datetime import UTC, datetime
+
+    try:
+        profiles = get_active_profiles(plan, project)
+        skel_path = plan_path.parent / "skeleton.md"
+        skeleton_text = skel_path.read_text(encoding="utf-8") if skel_path.exists() else ""
+        findings = _collect_findings(project, profiles, diff, skeleton_text)
+    except Exception as e:
+        info(f"[WARN] allow-block FP 스캔 실패 — lesson 추출 생략: {e}")
+        return None
+
+    blocks = [
+        f for f in (findings["security"] + findings["ai_slop"]) if f.get("severity") == "BLOCK"
+    ]
+    if not blocks:
+        return None
+
+    hooks = sorted({f.get("hook", "?") for f in blocks})
+    lines = [
+        f"[{f.get('hook', '?')}] {f.get('message', '')}"
+        + (f" — `{f['snippet'][:60]}`" if f.get("snippet") else "")
+        for f in blocks[:5]
+    ]
+    if len(blocks) > 5:
+        lines.append(f"외 {len(blocks) - 5}건")
+
+    code, output = _append_pending_lesson(
+        lessons_path=HARNESS_HOME / "backend" / "docs" / "shared-lessons.md",
+        title=f"[FP 후보] {project.name}: {'/'.join(hooks)} BLOCK 우회",
+        problem="사용자가 --allow-block 으로 우회한 BLOCK: " + "; ".join(lines),
+        rule=(
+            "같은 우회가 반복되면 훅 패턴의 FP 개연성을 검토 (패턴 조정 / 프로파일 예외). "
+            "실제 위반의 상습 우회일 수도 있음 — promotion 시 판별."
+        ),
+        evidence=(
+            f"record --allow-block @ {project.name} "
+            f"({datetime.now(UTC).strftime('%Y-%m-%d')})"
+        ),
+        origin=project.name,
+    )
+    if code != 0:
+        return None
+    return output
+
+
+def cmd_extract_lesson(args: argparse.Namespace) -> int:
+    """v0.10.0 — 리뷰에서 발견한 패턴을 shared-lessons.md 의 Pending 섹션에 append.
+
+    auto_extracted: true 마커 박힘. 사용자 promotion 으로만 main 섹션 진입.
+    """
+    if args.lessons_path:
+        lessons_path = Path(args.lessons_path)
+    else:
+        lessons_path = HARNESS_HOME / "backend" / "docs" / "shared-lessons.md"
+
+    origin_raw = getattr(args, "origin", None)
+    origin = origin_raw.strip() if isinstance(origin_raw, str) and origin_raw.strip() else None
+
+    code, output = _append_pending_lesson(
+        lessons_path=lessons_path,
+        title=args.title,
+        problem=args.problem,
+        rule=args.rule,
+        evidence=args.evidence or "",
+        origin=origin,
+    )
+    if code == 0:
+        print(json.dumps(output, ensure_ascii=False, indent=2))
+    return code
 
 
 def main() -> int:
@@ -1074,6 +1164,11 @@ def main() -> int:
         "--lessons-path",
         default="",
         help="shared-lessons.md 경로 (기본: <HARNESS_AI_HOME>/backend/docs/shared-lessons.md)",
+    )
+    e.add_argument(
+        "--origin",
+        default="",
+        help="발생 프로젝트 태그 (선택 — promotion 시 전역/프로젝트-로컬 판별 근거)",
     )
     args = parser.parse_args()
     if args.cmd == "prepare":

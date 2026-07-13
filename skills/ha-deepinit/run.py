@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -200,6 +201,118 @@ def cmd_augment_plan(args: argparse.Namespace) -> int:
     return 0
 
 
+_CITATION_TOKEN_RE = re.compile(r"`([^`]+)`")
+_CITATION_PATH_RE = re.compile(r"(?P<path>[\w\-./\\]+?)(?::(?P<line>\d+)(?:-\d+)?)?")
+
+
+def _extract_citations(text: str) -> list[tuple[str, int | None]]:
+    """백틱 토큰에서 파일 인용 (`path` / `path:line`) 만 추출.
+
+    URL(://), 공백 포함 명령, 점 표기 코드 식별자는 제외 — 경로 구분자가 있거나
+    확장자가 _LANG_BY_EXT 에 있는 토큰만 인용으로 취급 (오탐 방지).
+    """
+    citations: list[tuple[str, int | None]] = []
+    for token in _CITATION_TOKEN_RE.findall(text):
+        token = token.strip()
+        if not token or " " in token or "://" in token:
+            continue
+        m = _CITATION_PATH_RE.fullmatch(token)
+        if not m:
+            continue
+        path_part = m.group("path").removeprefix("./")
+        has_sep = "/" in path_part or "\\" in path_part
+        known_ext = Path(path_part).suffix.lower() in _LANG_BY_EXT
+        if not (has_sep or known_ext):
+            continue
+        line = int(m.group("line")) if m.group("line") else None
+        citations.append((path_part, line))
+    return citations
+
+
+def _find_agents_md(project: Path) -> list[Path]:
+    """검증 대상 AGENTS.md 목록 (제외 디렉토리/숨김 경로 밖)."""
+    out = []
+    for p in project.rglob("AGENTS.md"):
+        parents = p.relative_to(project).parts[:-1]
+        if any(part in _EXCLUDE_DIRS or part.startswith(".") for part in parents):
+            continue
+        out.append(p)
+    return sorted(out)
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    """AGENTS.md 인용 게이트 — 백틱 파일 인용의 실재 + 최소 개수 + 라인 범위 검증.
+
+    인용 없는 요약 = 검증 불가 주장. 주 실패 모드는 Agent 가 쓴 환각 경로 —
+    경로 실재 검증이 이를 기계적으로 차단한다 (DeepWiki 식 source citation 이식).
+    """
+    project = Path(args.project).resolve() if args.project else project_root()
+    if not project.exists():
+        info(f"[FAIL] project not found: {project}")
+        return 1
+
+    min_citations: int = args.min_citations
+    agents_files = _find_agents_md(project)
+    if not agents_files:
+        info(f"[FAIL] AGENTS.md 없음: {project} — /ha-deepinit 생성 단계(§3~4) 선행 필요")
+        return 3
+
+    files_out = []
+    passed = True
+    for agents_md in agents_files:
+        text = agents_md.read_text(encoding="utf-8")
+        citations = _extract_citations(text)
+        missing: list[str] = []
+        line_overflow: list[str] = []
+        for path_part, line in citations:
+            resolved = None
+            for base in (agents_md.parent, project):
+                candidate = base / path_part
+                if candidate.exists():
+                    resolved = candidate
+                    break
+            if resolved is None:
+                missing.append(path_part if line is None else f"{path_part}:{line}")
+                continue
+            if line is not None and resolved.is_file():
+                try:
+                    n_lines = len(
+                        resolved.read_text(encoding="utf-8", errors="replace").splitlines()
+                    )
+                except OSError as e:
+                    info(f"[WARN] 인용 파일 읽기 실패 (라인 검증 skip): {resolved} — {e}")
+                    continue
+                if line > n_lines:
+                    line_overflow.append(f"{path_part}:{line} (파일 {n_lines}줄)")
+
+        count_ok = len(citations) >= min_citations
+        file_ok = count_ok and not missing and not line_overflow
+        passed = passed and file_ok
+        files_out.append(
+            {
+                "file": str(agents_md),
+                "citation_count": len(citations),
+                "count_ok": count_ok,
+                "missing": missing,
+                "line_overflow": line_overflow,
+            }
+        )
+
+    if not passed:
+        info(
+            "[FAIL] AGENTS.md 인용 게이트 위반 — 환각 경로/라인 초과/인용 부족.\n"
+            "       해당 AGENTS.md 를 수정 후 validate 재실행 (완화: --min-citations 0)."
+        )
+    output = {
+        "project": str(project),
+        "passed": passed,
+        "min_citations": min_citations,
+        "files": files_out,
+    }
+    print(json.dumps(output, ensure_ascii=False, indent=2))
+    return 0 if passed else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="ha-deepinit")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -214,11 +327,19 @@ def main() -> int:
     a.add_argument("--project", default="", help="스캔할 프로젝트 경로 (기본: harness-plan.md 의 project)")
     a.add_argument("--no-backup", action="store_true", help="backup 생성 skip")
 
+    v = sub.add_parser("validate", help="AGENTS.md 인용 게이트 — 백틱 파일 인용 실재/최소개수/라인범위 검증")
+    v.add_argument("--project", default="", help="(기본: git root 또는 cwd)")
+    v.add_argument(
+        "--min-citations", type=int, default=1, help="AGENTS.md 당 최소 파일 인용 수 (0=완화)"
+    )
+
     args = parser.parse_args()
     if args.cmd == "scan":
         return cmd_scan(args)
     if args.cmd == "augment-plan":
         return cmd_augment_plan(args)
+    if args.cmd == "validate":
+        return cmd_validate(args)
     parser.print_help()
     return 2
 

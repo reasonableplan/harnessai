@@ -58,8 +58,8 @@
 - `### Phase N — 이름` 헤더로 Phase를 구분한다
 - 테이블 열 순서: ID, 에이전트, 의존성, 설명, 상태 (변경 금지 — 파서 고정)
 - 의존성 없으면 `-`
-- 에이전트는 반드시: `backend_coder`, `frontend_coder`, `mobile_coder_rn`, `mobile_coder_flutter`, `mobile_coder_android`, `mobile_coder_ios`, `qa` 중 하나
-- **`reviewer` 태스크는 출력 금지** — Phase 리뷰는 파이프라인이 자동으로 처리함
+- 에이전트는 반드시: `backend_coder`, `frontend_coder`, `mobile_coder_rn`, `mobile_coder_flutter`, `mobile_coder_android`, `mobile_coder_ios` 중 하나
+- **`reviewer` / `qa` 태스크는 출력 금지** — 검증은 파이프라인 게이트가 담당 (v2: ha-verify + ha-review. `qa` 배정은 v1 Orchestra 경로 전용)
 
 ### Task → Agent 매핑 규칙 (M0-B 확장)
 
@@ -71,7 +71,7 @@
 | **모바일 — Flutter** | `mobile_coder_flutter` | `mobile/` + flutter profile (`pubspec.yaml` 의 flutter:) |
 | **모바일 — Android 네이티브 (Kotlin + Compose)** | `mobile_coder_android` | `android/` + android-kotlin profile (`build.gradle.kts`) |
 | **모바일 — iOS 네이티브 (Swift + SwiftUI)** | `mobile_coder_ios` | `ios/` + ios-swift profile (`Package.swift` / `Podfile`) |
-| 통합 테스트 / E2E 시나리오 | `qa` | (모든 layer) |
+| 통합 테스트 / E2E 시나리오 (v1 Orchestra 전용) | `qa` | v2 태스크 배정 금지 — ha-verify/ha-review 게이트 담당 |
 
 **모노레포 시 dispatch 우선순위**:
 1. task 의 작업 path 가 `mobile/` / `apps/mobile/` / `android/` / `ios/` → 해당 mobile profile 의 mobile_coder_*
@@ -110,8 +110,8 @@ Phase 2+ — 확장 (MVP 이후)
 2. API 엔드포인트 (Backend Coder) — DB 모델에 의존
 3. 프론트엔드 컴포넌트 (Frontend Coder) — API에 의존
 4. 페이지 조합 (Frontend Coder) — 컴포넌트에 의존
-5. Phase 리뷰 (Reviewer) — 해당 Phase 전체 태스크 완료 후
-6. 통합 테스트 (QA) — 최종 Phase 리뷰 통과 후
+5. Phase 리뷰 (Reviewer) — 해당 Phase 전체 태스크 완료 후 (v1 전용 — 태스크로 출력 금지)
+6. 통합 테스트 (QA) — 최종 Phase 리뷰 통과 후 (v1 전용 — 태스크로 출력 금지)
 ```
 
 ### Phase 리뷰 트리거

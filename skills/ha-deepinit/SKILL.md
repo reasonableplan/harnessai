@@ -42,7 +42,7 @@ Agent({
   description: "Analyze <dir>",
   subagent_type: "Explore",
   model: "sonnet",   // 부모 모델(1M 컨텍스트 등) 상속 방지 — 표준 컨텍스트 강제
-  prompt: "디렉토리 <dir> 의 역할, 주요 파일, 컨벤션 패턴, 외부 의존성을 200단어 이내로 요약해서 AGENTS.md 형식으로 출력. 파일 N개 미만이면 단순 인덱스만."
+  prompt: "디렉토리 <dir> 의 역할, 주요 파일, 컨벤션 패턴, 외부 의존성을 200단어 이내로 요약해서 AGENTS.md 형식으로 출력. 모든 역할/컨벤션 주장에는 근거 인용을 백틱으로 포함 — `상대/경로.py` 또는 `상대/경로.py:라인`, 실재 파일만 (validate 게이트가 경로 실재를 기계 검증). 파일 3개 미만이면 요약 없이 단순 인덱스만."
 })
 ```
 
@@ -68,6 +68,16 @@ Agent({
 ### 4. 디렉토리별 AGENTS.md 작성
 각 sub-agent 결과를 해당 디렉토리에 `AGENTS.md` 로 저장 (이미 있으면 backup).
 
+### 4.5. 인용 게이트 (validate — 필수)
+```bash
+python ~/.claude/skills/ha-deepinit/run.py validate --project "$PROJECT_ROOT"
+```
+- 각 AGENTS.md 의 백틱 파일 인용 (`path` / `path:line`) 을 기계 검증:
+  경로 실재 (AGENTS.md 디렉토리 → 프로젝트 루트 순 해석) + 최소 1개 존재 + 라인 번호가 파일 길이 이내
+- **exit 1 (환각 경로 / 라인 초과 / 인용 0개) → 해당 AGENTS.md 수정 후 재실행.**
+  인용 없는 요약 = 검증 불가 주장 — Agent 산출물의 주 실패 모드가 환각 경로다.
+- 의도적 완화 (인덱스만 있는 소형 디렉토리 등): `--min-citations 0`
+
 ### 5. (선택) harness-plan 보강
 이미 `/ha-init` 이 실행됐다면 `harness-plan.md` 의 `user_description_original` 을 분석 결과 요약으로 보강:
 ```bash
@@ -86,6 +96,7 @@ python ~/.claude/skills/ha-deepinit/run.py augment-plan
 
 ## 가드레일
 
+- **validate (§4.5) 통과 전 완료 보고 금지** — 인용 게이트가 이 스킬의 유일한 기계 검증
 - 기존 AGENTS.md 가 있으면 항상 backup (`.AGENTS.md.bak-<ts>`)
 - 분석 결과를 코드에 반영 (수정) X — 문서만
 - 큰 프로젝트(>500 파일)는 depth 2 권장 (성능)
