@@ -361,7 +361,9 @@ _DB_PATTERNS: list[tuple[re.Pattern[str], str, Severity]] = [
         Severity.BLOCK,
     ),
     (
-        re.compile(r'\btext\s*\(\s*["\'](?:SELECT|INSERT|UPDATE|DELETE)', re.IGNORECASE),
+        # 키워드 뒤 \b 필수 — Drizzle 컬럼 빌더 text('updated_at')/text('deleted_at') 가
+        # UPDATE/DELETE 접두 매칭으로 오인되던 FP (subtrack dogfood D-5).
+        re.compile(r'\btext\s*\(\s*["\'](?:SELECT|INSERT|UPDATE|DELETE)\b', re.IGNORECASE),
         "SQLAlchemy text() raw SQL — ORM 사용 필수",
         Severity.BLOCK,
     ),

@@ -171,12 +171,19 @@ python ~/.claude/skills/ha-review/run.py record \
   --verdict approve|reject \
   --summary "<요약>" \
   --violations '["[훅명:BLOCK] 파일:라인 — 설명 → T-NNN"]' \  # REJECT 시 필수
+  [--rework-tasks "T-003,T-005"]  # 생략 시 violations 의 T-NNN 을 파싱
+  [--no-rework]                   # 태스크 재작업이 아닌 REJECT (환경 문제 등)
   [--allow-block]  # BLOCK 있어도 approve 강제 (의도적 우회)
 ```
 run.py 자동 검증:
 - `verify_history` 에 새 엔트리 (step="ha-review")
 - **APPROVE + BLOCK 1건 이상** → exit 1 (조치: REJECT 또는 코드 수정 후 prepare 재실행, 또는 --allow-block)
 - **REJECT + violations 빈 값 또는 빈 배열** → exit 1 (가드레일: REJECT 시 재작업 T-ID 없이 보고 금지)
+- **REJECT + 재작업 T-ID 없음** (violations 에 `T-NNN` 없고 `--rework-tasks` 도 없음) → exit 1.
+  `--no-rework` 로만 우회. REJECT 는 building 으로 회귀시키므로 재작업 대상을 특정하지 않으면
+  `/ha-build --resume` 이 빈 손으로 멈춘다.
+- **REJECT** → 지목된 태스크를 `needs_rebuild` 로 전이 (출력 `rebuild_required_tasks`) →
+  `/ha-build --resume` 이 자동 선택. ha-verify 의 `--rework-tasks` 와 동일 계약.
 - **`--allow-block` 우회 시 사용자 교정 학습**: 우회된 BLOCK 을 `[FP 후보]` Pending lesson 으로
   자동 기록 (origin=프로젝트 태그, 출력 JSON `fp_lesson` 필드). 명시적 우회 = 가장 강한 FP 신호.
   스캔 실패는 우회를 막지 않음 (WARN 후 생략).
@@ -252,7 +259,7 @@ python ~/.claude/skills/ha-review/run.py extract-lesson \
   (확인: grep -n "auth.py" docs/tasks.md)
 
 다음:
-  /ha-build T-003
+  /ha-build --resume   (record 가 T-003 을 needs_rebuild 로 내려둠 — 자동 선택)
   수정 후: /ha-verify → /ha-review 재실행
 ```
 

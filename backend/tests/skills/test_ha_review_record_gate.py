@@ -461,3 +461,106 @@ def test_record_approve_error_message_mentions_block(
 
     captured = capsys.readouterr()
     assert "BLOCK 위반" in captured.err or "BLOCK 위반" in captured.out
+
+
+# ── D-8 (dogfood subtrack): REJECT → 위반 태스크 needs_rebuild 전이 ──────────
+#
+# REJECT 는 pipeline 을 building 으로 회귀시키지만 태스크는 done 그대로였다.
+# → /ha-build --resume 이 "빌드할 태스크 없음" 으로 dead-end (rework 루프 단절).
+# ha-verify record --passed false --rework-tasks 와 동일한 계약으로 맞춘다.
+
+_TASKS_MD = (
+    "| ID    | Agent         | Depends On | Description | Status     |\n"
+    "|-------|---------------|------------|-------------|------------|\n"
+    "| T-003 | backend_coder | -          | auth 서비스 | done       |\n"
+    "| T-004 | backend_coder | -          | 대시보드    | done       |\n"
+)
+
+
+def _reject_args(violations: str, *, rework_tasks: str | None = None, no_rework: bool = False):
+    args = MagicMock()
+    args.verdict = "reject"
+    args.violations = violations
+    args.summary = "review reject"
+    args.allow_block = False
+    args.rework_tasks = rework_tasks
+    args.no_rework = no_rework
+    return args
+
+
+def _run_reject(ha_review: ModuleType, tmp_path: Path, args) -> tuple[int, list[str]]:
+    plan_path = tmp_path / "harness-plan.md"
+    plan_path.write_text("", encoding="utf-8")
+    (tmp_path / "tasks.md").write_text(_TASKS_MD, encoding="utf-8")
+
+    mock_plan = MagicMock()
+    mock_plan.pipeline.current_step = "verified"
+    mock_plan.verify_history = []
+
+    captured: list[str] = []
+
+    with (
+        patch.object(ha_review, "load_plan", return_value=(mock_plan, plan_path, tmp_path)),
+        patch.object(ha_review, "assert_state"),
+        patch.object(ha_review, "record_verify"),
+        patch.object(ha_review, "regress"),
+        patch.object(ha_review, "save_plan"),
+        patch("builtins.print", side_effect=lambda data, **kw: captured.append(data)),
+    ):
+        code = ha_review.cmd_record(args)
+    return code, captured
+
+
+def test_reject_marks_violation_tasks_for_rebuild(ha_review: ModuleType, tmp_path: Path) -> None:
+    """violations 의 T-ID → tasks.md 가 needs_rebuild 로 전이 + 출력에 보고."""
+    args = _reject_args(
+        '["[code-quality:WARN] app/loading.tsx:20 — inline style → T-003"]',
+        rework_tasks=None,
+    )
+    code, captured = _run_reject(ha_review, tmp_path, args)
+
+    assert code == 0
+    text = (tmp_path / "tasks.md").read_text(encoding="utf-8")
+    assert "needs_rebuild" in text
+    rows = {
+        line.split("|")[1].strip(): line.split("|")[5].strip()
+        for line in text.splitlines()
+        if line.startswith("| T-")
+    }
+    assert rows["T-003"] == "needs_rebuild"
+    assert rows["T-004"] == "done"  # 지목되지 않은 태스크는 불변
+
+    payload = json.loads(captured[-1])
+    assert payload["rebuild_required_tasks"] == ["T-003"]
+
+
+def test_reject_rework_tasks_flag_overrides_violation_parsing(
+    ha_review: ModuleType, tmp_path: Path
+) -> None:
+    """--rework-tasks CSV 가 있으면 그것이 재작업 대상 (ha-verify 와 동일 계약)."""
+    args = _reject_args('["[hook] 파일 설명 (T-ID 없음)"]', rework_tasks="T-003,T-004")
+    code, _ = _run_reject(ha_review, tmp_path, args)
+
+    assert code == 0
+    text = (tmp_path / "tasks.md").read_text(encoding="utf-8")
+    assert text.count("needs_rebuild") == 2
+
+
+def test_reject_without_any_task_id_exits_1(ha_review: ModuleType, tmp_path: Path) -> None:
+    """violations 에 T-ID 도 없고 --rework-tasks/--no-rework 도 없으면 차단."""
+    args = _reject_args('["[hook:BLOCK] src/foo.py:1 — 설명만 있고 재작업 대상 미지정"]')
+    code, _ = _run_reject(ha_review, tmp_path, args)
+
+    assert code == 1
+    assert "needs_rebuild" not in (tmp_path / "tasks.md").read_text(encoding="utf-8")
+
+
+def test_reject_no_rework_flag_allows_missing_task_id(
+    ha_review: ModuleType, tmp_path: Path
+) -> None:
+    """환경 문제 등 태스크 재작업이 아닌 REJECT → --no-rework 로 통과, 태스크 불변."""
+    args = _reject_args('["[env] 설명"]', no_rework=True)
+    code, _ = _run_reject(ha_review, tmp_path, args)
+
+    assert code == 0
+    assert "needs_rebuild" not in (tmp_path / "tasks.md").read_text(encoding="utf-8")

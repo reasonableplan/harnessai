@@ -520,3 +520,133 @@ def test_scaffold_subcommand_handles_install_timeout(
     assert entry["scaffolded"] is True
     assert entry["moved"] == 1
     assert entry["install_ok"] is False
+
+
+# ── 스캐폴드 산출물 후처리 + 실패 관측성 (subtrack dogfood D-1~D-4) ─────────────
+
+
+def test_fix_scaffold_package_name_rewrites_sandbox_leak(ha_build, tmp_path: Path) -> None:
+    """D-1: package.json name 의 샌드박스 임시명(ha-scaffold-*)을 프로젝트 디렉토리명으로 재작성."""
+    (tmp_path / "package.json").write_text(
+        json.dumps({"name": "ha-scaffold-_abc123", "private": True}), encoding="utf-8"
+    )
+
+    ha_build._fix_scaffold_package_name(tmp_path)
+
+    pkg = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))
+    assert not pkg["name"].startswith("ha-scaffold-")
+    assert pkg["name"] == ha_build._npm_safe_name(tmp_path.name)
+    assert pkg["private"] is True  # 다른 필드 보존
+
+
+def test_fix_scaffold_package_name_keeps_real_name(ha_build, tmp_path: Path) -> None:
+    """샌드박스 임시명이 아니면 무변경."""
+    (tmp_path / "package.json").write_text(json.dumps({"name": "myapp"}), encoding="utf-8")
+
+    ha_build._fix_scaffold_package_name(tmp_path)
+
+    pkg = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))
+    assert pkg["name"] == "myapp"
+
+
+def test_fix_scaffold_package_name_noop_without_package_json(ha_build, tmp_path: Path) -> None:
+    """package.json 부재 시 크래시 없이 무동작."""
+    ha_build._fix_scaffold_package_name(tmp_path)
+
+
+_CNA_WORKSPACE_TEMPLATE = (
+    "allowBuilds:\n"
+    "  sharp: set this to true or false\n"
+    "  unrs-resolver: set this to true or false\n"
+    "ignoredBuiltDependencies:\n"
+    "  - sharp\n"
+    "  - unrs-resolver\n"
+)
+
+
+def test_approve_scaffold_builds_replaces_placeholder(ha_build, tmp_path: Path) -> None:
+    """D-2: create-next-app 템플릿의 allowBuilds 플레이스홀더 → true 승인 + 중복 ignored 블록 제거."""
+    ws = tmp_path / "pnpm-workspace.yaml"
+    ws.write_text(_CNA_WORKSPACE_TEMPLATE, encoding="utf-8")
+
+    ha_build._approve_scaffold_builds(tmp_path)
+
+    text = ws.read_text(encoding="utf-8")
+    assert "set this to true or false" not in text
+    assert "sharp: true" in text
+    assert "unrs-resolver: true" in text
+    assert "ignoredBuiltDependencies" not in text
+
+
+def test_approve_scaffold_builds_noop_without_placeholder(ha_build, tmp_path: Path) -> None:
+    """플레이스홀더 없는(이미 사용자가 관리하는) 파일은 그대로 둔다."""
+    ws = tmp_path / "pnpm-workspace.yaml"
+    original = "allowBuilds:\n  esbuild: true\n"
+    ws.write_text(original, encoding="utf-8")
+
+    ha_build._approve_scaffold_builds(tmp_path)
+
+    assert ws.read_text(encoding="utf-8") == original
+
+
+def test_approve_scaffold_builds_noop_without_file(ha_build, tmp_path: Path) -> None:
+    """pnpm-workspace.yaml 부재 시 크래시 없이 무동작."""
+    ha_build._approve_scaffold_builds(tmp_path)
+
+
+def test_scaffold_postprocess_wired_into_pipeline(ha_build, tmp_path, monkeypatch, capsys) -> None:
+    """D-1/D-2 후처리가 cmd_scaffold 병합 직후에 실제로 수행되는지 (배선 검증)."""
+    _patch_scaffold_run(ha_build, monkeypatch, tmp_path, _TASKS_TABLE_SCAFFOLD_ONLY)
+    scaffold_cmd = _py(
+        "import json, pathlib; "
+        "pathlib.Path('package.json').write_text(json.dumps({'name': pathlib.Path.cwd().name})); "
+        "pathlib.Path('pnpm-workspace.yaml').write_text('allowBuilds:\\n  sharp: set this to true or false\\n')"
+    )
+    fake_profile = _profile(
+        "fakeprofile", scaffold=scaffold_cmd, detect={"files": ["package.json"]}
+    )
+    monkeypatch.setattr(ha_build, "get_active_profiles", lambda plan, project: [fake_profile])
+
+    rc = ha_build.cmd_scaffold(SimpleNamespace(task="T-000"))
+
+    assert rc == 0
+    pkg = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))
+    assert not pkg["name"].startswith("ha-scaffold-")
+    ws_text = (tmp_path / "pnpm-workspace.yaml").read_text(encoding="utf-8")
+    assert "set this to true or false" not in ws_text
+
+
+def test_install_failure_surfaces_stdout(ha_build, tmp_path, monkeypatch, capsys) -> None:
+    """D-3: 실패 원인이 stdout 에만 있어도 FAIL 메시지에 포함 (pnpm 은 stdout 에 에러를 쓴다)."""
+    _patch_scaffold_run(ha_build, monkeypatch, tmp_path, _TASKS_TABLE_SCAFFOLD_ONLY)
+    fake_profile = _profile(
+        "fakeprofile",
+        scaffold=_py("open('package.json', 'w').write('{}')"),
+        # 마커를 런타임 조합으로 생성 — 명령 문자열 echo 만으로 통과하는 공허 테스트 방지
+        install=_py(
+            "import sys; print('ERR_PNPM_' + 'IGNORED_BUILDS: approve needed'); sys.exit(1)"
+        ),
+        detect={"files": ["package.json"]},
+    )
+    monkeypatch.setattr(ha_build, "get_active_profiles", lambda plan, project: [fake_profile])
+
+    rc = ha_build.cmd_scaffold(SimpleNamespace(task="T-000"))
+
+    assert rc == 1
+    cap = capsys.readouterr()
+    assert "ERR_PNPM_IGNORED_BUILDS" in cap.err
+
+
+def test_scaffold_failure_next_hint_is_not_done(ha_build, tmp_path, monkeypatch, capsys) -> None:
+    """D-4: 실패(rc=1) 시 next 힌트가 done 마킹을 유도하면 안 됨."""
+    _patch_scaffold_run(ha_build, monkeypatch, tmp_path, _TASKS_TABLE_SCAFFOLD_ONLY)
+    fake_profile = _profile(
+        "fakeprofile", scaffold=_py("import sys; sys.exit(1)"), detect={"files": ["package.json"]}
+    )
+    monkeypatch.setattr(ha_build, "get_active_profiles", lambda plan, project: [fake_profile])
+
+    rc = ha_build.cmd_scaffold(SimpleNamespace(task="T-000"))
+
+    assert rc == 1
+    out = json.loads(capsys.readouterr().out)
+    assert "--status done" not in out["next"]

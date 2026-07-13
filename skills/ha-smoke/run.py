@@ -90,18 +90,31 @@ def _probe_exit(cmd: str, cwd: Path, timeout: int) -> dict:
     }
 
 
-def _check_endpoints(origin: str, endpoints: list[str]) -> tuple[list[str], int]:
-    """기동한 서버의 선언 GET 엔드포인트를 타격 → (깨진 것 목록, 실제 타격 개수).
+def _invalid_endpoints(endpoints: list[str]) -> list[str]:
+    """경로가 아닌 --endpoint 값 (절대 경로가 아님) 을 골라낸다.
+
+    Git Bash(MSYS) 는 `--endpoint /api/items` 를 `C:/Program Files/Git/api/items` 로
+    변환한다. 이 값은 ':' 를 포함해 아래 path 파라미터 skip 에 걸리므로, 검사 0건인
+    채 PASS 가 나 계층2 가 무음으로 무력화된다 (dogfood D-6). 경로가 아니면 기동
+    전에 하드 FAIL 시킨다.
+    """
+    return [e for e in endpoints if not e.startswith("/")]
+
+
+def _check_endpoints(origin: str, endpoints: list[str]) -> tuple[list[str], int, int]:
+    """기동한 서버의 선언 GET 엔드포인트를 타격 → (깨진 것, 타격 개수, skip 개수).
 
     404(미등록) / 5xx(핸들러 크래시) 만 깨짐으로 본다. 2xx/3xx/401/403/422 등은
     "라우트가 존재하고 핸들러가 도달함" 이므로 OK. path 파라미터({id}, :id) 는
-    실제 값 없이 못 때리므로 skip.
+    실제 값 없이 못 때리므로 skip — skip 개수는 호출측이 detail 에 노출한다.
     """
     broken: list[str] = []
     probed = 0
+    skipped = 0
     for path in endpoints:
         if "{" in path or ":" in path:
-            continue  # path 파라미터 — 실제 값 필요, v1 skip
+            skipped += 1  # path 파라미터 — 실제 값 필요, v1 skip
+            continue
         probed += 1
         try:
             with urllib.request.urlopen(origin + path, timeout=3) as resp:
@@ -113,12 +126,27 @@ def _check_endpoints(origin: str, endpoints: list[str]) -> tuple[list[str], int]
             continue
         if code == 404 or code >= 500:
             broken.append(f"GET {path} ({code})")
-    return broken, probed
+    return broken, probed, skipped
 
 
 def _probe_url(
     cmd: str, cwd: Path, url: str, ready_timeout: int, endpoints: list[str] | None = None
 ) -> dict:
+    if endpoints:
+        invalid = _invalid_endpoints(endpoints)
+        if invalid:
+            return {
+                "passed": False,
+                "mode": "url",
+                "detail": (
+                    "부적격 --endpoint (경로는 '/' 로 시작해야 함): "
+                    + ", ".join(invalid)
+                    + " — Git Bash 는 /api/x 를 Windows 경로로 변환한다. "
+                    "MSYS_NO_PATHCONV=1 을 앞에 붙여 재실행."
+                ),
+                "output_tail": "",
+            }
+
     with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as log:
         kwargs: dict = {}
         if sys.platform != "win32":
@@ -149,7 +177,7 @@ def _probe_url(
             status = result.status
             if endpoints:
                 origin = "{0.scheme}://{0.netloc}".format(urlsplit(url))
-                broken, probed = _check_endpoints(origin, endpoints)
+                broken, probed, skipped = _check_endpoints(origin, endpoints)
                 if broken:
                     return {
                         "passed": False,
@@ -160,10 +188,14 @@ def _probe_url(
                         ),
                         "output_tail": _read_log_tail(log),
                     }
+                # 타격/skip 개수를 항상 노출 — "0개 OK" 가 성공처럼 읽히면 안 된다.
                 return {
                     "passed": True,
                     "mode": "url",
-                    "detail": f"HTTP {status} @ {url}; 선언 GET 엔드포인트 {probed}개 OK",
+                    "detail": (
+                        f"HTTP {status} @ {url}; 선언 GET 엔드포인트 {probed}개 OK "
+                        f"(파라미터 경로 skip {skipped}개)"
+                    ),
                     "output_tail": _read_log_tail(log),
                 }
             return {

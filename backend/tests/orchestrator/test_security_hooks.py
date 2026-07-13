@@ -130,6 +130,36 @@ class TestDbGuard:
         assert not any(f.severity == Severity.BLOCK for f in findings)
 
 
+class TestDbGuardDrizzleColumnFp:
+    """subtrack dogfood D-5: Drizzle 컬럼 빌더 text('updated_at') 가 SQLAlchemy raw SQL 로
+    오인되던 FP — SQL 키워드 뒤 단어 경계(\\b)가 없어 updated_at/deleted_at 이 매칭됐다."""
+
+    def test_drizzle_updated_at_column_clean(self) -> None:
+        code = "updatedAt: text('updated_at').notNull(),"
+        findings = check_db_guard(code)
+        assert findings == []
+
+    def test_drizzle_deleted_at_column_clean(self) -> None:
+        code = "deletedAt: text('deleted_at'),"
+        findings = check_db_guard(code)
+        assert findings == []
+
+    def test_drizzle_selected_plan_column_clean(self) -> None:
+        code = "selectedPlan: text('selected_plan'),"
+        findings = check_db_guard(code)
+        assert findings == []
+
+    def test_real_update_raw_sql_still_blocked(self) -> None:
+        code = 'db.execute(text("UPDATE users SET name = :n"))'
+        findings = check_db_guard(code)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+    def test_real_delete_raw_sql_still_blocked(self) -> None:
+        code = "db.execute(text('DELETE FROM sessions'))"
+        findings = check_db_guard(code)
+        assert any(f.severity == Severity.BLOCK for f in findings)
+
+
 # ---------------------------------------------------------------------------
 # 4. dependency-check
 # ---------------------------------------------------------------------------

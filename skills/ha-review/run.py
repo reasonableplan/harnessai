@@ -41,6 +41,7 @@ from src.orchestrator.security_hooks import (  # noqa: E402
     strip_test_files_from_diff,
 )
 from src.orchestrator.context import extract_section_by_id  # noqa: E402
+from src.orchestrator.plan_manager import PlanManager as _PlanManager  # noqa: E402
 from src.orchestrator.skeleton_hash import check_skeleton_hash  # noqa: E402
 
 
@@ -843,6 +844,26 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     return 0
 
 
+_TASK_ID_RE = re.compile(r"\bT-\d{3}\b")
+
+
+def _rework_task_ids(violations: list[str], rework_arg: object) -> list[str]:
+    """REJECT 의 재작업 대상 T-ID — --rework-tasks CSV 우선, 없으면 violations 에서 파싱.
+
+    ha-verify record --rework-tasks 와 동일한 계약. 순서 보존 + 중복 제거.
+    """
+    if isinstance(rework_arg, str) and rework_arg.strip():
+        raw = [t.strip() for t in rework_arg.split(",")]
+    else:
+        raw = [tid for v in violations for tid in _TASK_ID_RE.findall(v)]
+
+    seen: list[str] = []
+    for tid in raw:
+        if tid and tid not in seen:
+            seen.append(tid)
+    return seen
+
+
 def cmd_record(args: argparse.Namespace) -> int:
     plan, plan_path, project = load_plan()
     assert_state(plan, ["verified"], "/ha-review record")
@@ -868,6 +889,11 @@ def cmd_record(args: argparse.Namespace) -> int:
         except json.JSONDecodeError:
             violations = [violations_raw]
 
+    # ── D-8: reject 는 재작업 대상 T-ID 를 반드시 특정 (ha-verify 와 동일 계약) ──
+    rework_arg = getattr(args, "rework_tasks", None)
+    no_rework = getattr(args, "no_rework", False) is True
+    rework_tasks: list[str] = []
+
     # ── R5: reject + violations 없음 → exit 1 ────────────────────────
     if verdict == "reject" and not violations:
         info(
@@ -876,6 +902,19 @@ def cmd_record(args: argparse.Namespace) -> int:
             '       예시: --violations \'["[auth-guard:BLOCK] src/foo.py:42 — JWT type claim 누락 → T-003"]\''
         )
         return 1
+
+    if verdict == "reject" and not no_rework:
+        rework_tasks = _rework_task_ids(violations, rework_arg)
+        if not rework_tasks:
+            info(
+                "[FAIL] /ha-review record reject 거부 — 재작업 T-ID 없음.\n"
+                "       violations 에 T-NNN 이 없고 --rework-tasks 도 비었습니다.\n"
+                "       REJECT 는 building 으로 회귀시키므로 어떤 태스크를 다시 빌드할지\n"
+                "       특정하지 않으면 /ha-build --resume 이 빈 손으로 멈춥니다.\n"
+                '       조치: --violations 에 "→ T-003" 을 포함하거나 --rework-tasks "T-003",\n'
+                "             태스크 재작업이 아닌 사유면 --no-rework."
+            )
+            return 1
 
     # ── R6/#8: approve → diff 추출 (empty-guard + BLOCK-guard 공유) ──
     fp_lesson: str | None = None
@@ -941,6 +980,18 @@ def cmd_record(args: argparse.Namespace) -> int:
         if plan.pipeline.current_step != "building":
             regress(plan, "building")
 
+    # 위반 태스크를 needs_rebuild 로 전이 — 안 하면 tasks 는 done 인데 pipeline 만
+    # building 이라 /ha-build --resume 이 빈 손으로 멈춘다 (ha-verify 와 동일 패턴).
+    rebuild_required_tasks: list[str] = []
+    if not passed and rework_tasks:
+        tasks_path = plan_path.parent / "tasks.md"
+        if tasks_path.exists():
+            try:
+                rebuild_required_tasks = _PlanManager().mark_for_rebuild(tasks_path, rework_tasks)
+            except OSError as exc:
+                info(f"[WARN] needs_rebuild 전이 실패 (tasks.md 쓰기 오류): {exc}")
+                info("       수동으로 해당 태스크 status 를 확인하세요.")
+
     save_plan(plan, plan_path)
 
     output = {
@@ -948,8 +999,10 @@ def cmd_record(args: argparse.Namespace) -> int:
         "summary": summary,
         "current_step": plan.pipeline.current_step,
         "violations": violations,
+        "rework_tasks": rework_tasks,
+        "rebuild_required_tasks": rebuild_required_tasks,
         "fp_lesson": fp_lesson,
-        "next": "(다음 단계 선택) /ship | /retro" if passed else "/ha-build <T-ID>",
+        "next": "(다음 단계 선택) /ship | /retro" if passed else "/ha-build --resume",
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0
@@ -1143,6 +1196,16 @@ def main() -> int:
     r.add_argument("--verdict", required=True)
     r.add_argument("--summary", default="")
     r.add_argument("--violations", default="", help="JSON 배열 string")
+    r.add_argument(
+        "--rework-tasks",
+        default=None,
+        help="reject 시 재작업 T-ID CSV (생략하면 violations 에서 T-NNN 파싱)",
+    )
+    r.add_argument(
+        "--no-rework",
+        action="store_true",
+        help="reject 지만 태스크 재작업 대상이 아님 (환경 문제 등)",
+    )
     r.add_argument(
         "--allow-block",
         action="store_true",

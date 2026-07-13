@@ -211,6 +211,62 @@ def test_declared_endpoints_report_all_broken(ha_smoke, tmp_path) -> None:
     assert "/ok" not in r["detail"]  # 살아있는 건 보고 안 함
 
 
+# ── 무음 vacuous 금지 (dogfood D-6: subtrack) ───────────────────────────────
+
+
+def test_endpoint_without_leading_slash_is_hard_fail(ha_smoke, tmp_path) -> None:
+    """'/' 로 시작하지 않는 endpoint → 기동 전 FAIL + MSYS 힌트.
+
+    Git Bash 는 `--endpoint /api/items` 를 `C:/Program Files/Git/api/items` 로 바꾼다.
+    이 값이 ':' 를 포함해 path 파라미터 skip 휴리스틱에 걸리면 검사 0건인 채로 PASS 가
+    난다 (계층2 무음 무력화).
+    """
+    port = _free_port()
+    r = ha_smoke.run_probe(
+        _py("print(1)"),
+        cwd=tmp_path,
+        url=f"http://127.0.0.1:{port}/",
+        endpoints=["C:/Program Files/Git/api/items"],
+        ready_timeout=5,
+    )
+    assert r["passed"] is False
+    assert "MSYS_NO_PATHCONV" in r["detail"]
+
+
+def test_probe_detail_reports_probed_and_skipped_counts(ha_smoke, tmp_path) -> None:
+    """타격 개수 + 파라미터 skip 개수를 detail 에 항상 명시."""
+    port = _free_port()
+    script = _routed_server(tmp_path, {"/": 200, "/api/items": 200})
+    cmd = f'"{sys.executable}" "{script}" {port}'
+    r = ha_smoke.run_probe(
+        cmd,
+        cwd=tmp_path,
+        url=f"http://127.0.0.1:{port}/",
+        endpoints=["/api/items", "/api/items/{id}"],
+        ready_timeout=30,
+    )
+    assert r["passed"] is True
+    assert "1개" in r["detail"]
+    assert "skip 1" in r["detail"]
+
+
+def test_param_only_endpoints_surface_zero_probed(ha_smoke, tmp_path) -> None:
+    """파라미터 경로만 선언 → PASS 지만 '0개' 타격 사실이 detail 에 드러난다."""
+    port = _free_port()
+    script = _routed_server(tmp_path, {"/": 200})
+    cmd = f'"{sys.executable}" "{script}" {port}'
+    r = ha_smoke.run_probe(
+        cmd,
+        cwd=tmp_path,
+        url=f"http://127.0.0.1:{port}/",
+        endpoints=["/items/{id}"],
+        ready_timeout=30,
+    )
+    assert r["passed"] is True
+    assert "0개" in r["detail"]
+    assert "skip 1" in r["detail"]
+
+
 # ── suggest_smoke_command (dogfood #8: toolchain.smoke 미설정 시 자동 제안) ──
 
 

@@ -69,6 +69,11 @@ url 모드는 root 하나만 200 이면 PASS 라 **"떠도 라우트가 깨진"*
   넘긴다 (run.py 가 자동 skip — 그대로 `--endpoint` 로 줘도 됨).
 - 각 GET 경로를 `--endpoint /api/...` 로 반복 전달. 404/5xx = FAIL,
   2xx/3xx/401/403/422 = OK (라우트 존재 + 핸들러 도달).
+- **Windows Git Bash 는 `MSYS_NO_PATHCONV=1` 을 앞에 붙일 것** — 안 붙이면 `/api/x` 가
+  `C:/Program Files/Git/api/x` 로 변환된다 (run.py 가 이제 하드 FAIL 로 잡지만, 애초에 붙이는 게 맞다).
+- probe 결과의 `detail` 은 **실제 타격 개수 + 파라미터 skip 개수**를 항상 보고한다.
+  `0개 OK` 가 보이면 통과가 아니라 **아무것도 검사하지 않은 것** — record summary 에 그대로
+  옮기고, 선언 GET 이 있는데 0개면 원인을 먼저 확인한다.
 
 ### 3. probe 실행
 ```bash

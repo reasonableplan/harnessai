@@ -299,3 +299,53 @@ def test_write_failure_returns_exit1(ha_build, tmp_path, monkeypatch) -> None:
 
     assert rc == 1
     assert not saved, "OSError 시 plan 갱신 없어야 함"
+
+
+# ---------------------------------------------------------------------------
+# D-9 (dogfood subtrack): rework 재진입 시 완료 태스크 상태 되돌림
+#
+# 이미 done 인 태스크를 다시 prepare 해도 tasks.md 는 done 그대로였다. 그래서
+# all_resolved 가 계속 참 → 배치의 첫 complete 가 즉시 built 로 전이 → 나머지
+# 태스크의 complete 가 상태 게이트에 막혀 스텁/toolchain/security 게이트를
+# 아예 통과하지 못했다.
+# ---------------------------------------------------------------------------
+
+
+def _status_of(ha_build, text: str, tid: str) -> str:
+    return ha_build._parse_tasks(text)[tid]["status"].strip().lower()
+
+
+def test_mark_in_progress_reverts_done_task(ha_build) -> None:
+    """done → in-progress (rework 재진입). 다른 태스크는 불변."""
+    text = _tasks_md([("T-001", "done"), ("T-002", "done")])
+    out = ha_build._mark_in_progress(text, "T-001")
+
+    assert _status_of(ha_build, out, "T-001") == "in-progress"
+    assert _status_of(ha_build, out, "T-002") == "done"
+
+
+def test_mark_in_progress_reverts_needs_rebuild_task(ha_build) -> None:
+    """needs_rebuild → in-progress (착수 마킹)."""
+    out = ha_build._mark_in_progress(_tasks_md([("T-001", "needs_rebuild")]), "T-001")
+    assert _status_of(ha_build, out, "T-001") == "in-progress"
+
+
+def test_mark_in_progress_keeps_blocked(ha_build) -> None:
+    """blocked 는 착수 대상이 아니므로 불변."""
+    out = ha_build._mark_in_progress(_tasks_md([("T-001", "blocked")]), "T-001")
+    assert _status_of(ha_build, out, "T-001") == "blocked"
+
+
+def test_rework_batch_first_complete_keeps_building(ha_build, tmp_path, monkeypatch) -> None:
+    """rework 배치(둘 다 in-progress)에서 첫 complete → built 전이 없음 (형제 게이트 보존)."""
+    plan = _make_plan("building")
+    tasks_text = _tasks_md([("T-001", "in-progress"), ("T-002", "in-progress")])
+    _tasks_path, _saved, transitions = _patch_load_plan(
+        ha_build, monkeypatch, plan, tmp_path, tasks_text
+    )
+
+    rc = ha_build.cmd_complete(_args("T-001", "done", skip_toolchain=True, skip_security=True))
+
+    assert rc == 0
+    assert plan.pipeline.current_step == "building"
+    assert all(target != "built" for target, _ in transitions)

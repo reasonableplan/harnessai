@@ -143,6 +143,84 @@ def _merge_no_overwrite(src_dir: Path, dst_dir: Path) -> tuple[int, list[str]]:
     return moved, skipped
 
 
+# ── 스캐폴드 산출물 결정론 후처리 (subtrack dogfood D-1/D-2) ─────────────────
+_SCAFFOLD_SANDBOX_PREFIX = "ha-scaffold-"
+_ALLOWBUILDS_PLACEHOLDER = "set this to true or false"
+
+
+def _npm_safe_name(name: str) -> str:
+    """디렉토리명 → npm package name (소문자·허용 문자만·선행 구두점 제거)."""
+    safe = re.sub(r"[^a-z0-9._-]+", "-", name.lower()).lstrip("._-").rstrip("-")
+    return safe or "app"
+
+
+def _fix_scaffold_package_name(target: Path) -> None:
+    """병합된 package.json 의 샌드박스 임시명(ha-scaffold-*)을 프로젝트 디렉토리명으로 재작성.
+
+    create-next-app 류는 cwd 디렉토리명으로 package name 을 짓는다 — 샌드박스에서
+    실행하므로 임시명이 산출물로 샌다 (D-1).
+    """
+    pkg_path = target / "package.json"
+    if not pkg_path.exists():
+        return
+    try:
+        pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        info(f"[WARN] package.json name 재작성 건너뜀 (파싱 실패): {exc}")
+        return
+    if not isinstance(pkg, dict) or not str(pkg.get("name", "")).startswith(
+        _SCAFFOLD_SANDBOX_PREFIX
+    ):
+        return
+    pkg["name"] = _npm_safe_name(target.resolve().name)
+    try:
+        pkg_path.write_text(
+            json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        info(f"[INFO] package.json name 재작성: {pkg['name']} (샌드박스 임시명 제거)")
+    except OSError as exc:
+        info(f"[WARN] package.json name 재작성 실패: {exc}")
+
+
+def _approve_scaffold_builds(target: Path) -> None:
+    """create-next-app 이 남긴 pnpm-workspace.yaml allowBuilds 플레이스홀더를 true 로 승인.
+
+    플레이스홀더가 남으면 pnpm 10+ 이 비대화형 install 을 ERR_PNPM_IGNORED_BUILDS 로
+    실패시킨다 (D-2). 갓 생성된 템플릿(플레이스홀더 존재)에만 적용하며, allowBuilds 와
+    중복 선언인 ignoredBuiltDependencies 블록은 함께 제거한다.
+    """
+    ws_path = target / "pnpm-workspace.yaml"
+    if not ws_path.exists():
+        return
+    try:
+        text = ws_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        info(f"[WARN] pnpm-workspace.yaml 읽기 실패 — allowBuilds 승인 건너뜀: {exc}")
+        return
+    if _ALLOWBUILDS_PLACEHOLDER not in text:
+        return
+    lines: list[str] = []
+    in_ignored = False
+    for line in text.splitlines():
+        if line.startswith("ignoredBuiltDependencies:"):
+            in_ignored = True
+            continue
+        if in_ignored and (not line.strip() or line.lstrip() != line or line.startswith("-")):
+            continue
+        in_ignored = False
+        lines.append(line.replace(_ALLOWBUILDS_PLACEHOLDER, "true"))
+    try:
+        ws_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        info("[INFO] pnpm-workspace.yaml allowBuilds 플레이스홀더 승인(true) — 비대화형 install 차단 해제")
+    except OSError as exc:
+        info(f"[WARN] pnpm-workspace.yaml 쓰기 실패: {exc}")
+
+
+def _proc_detail(r: subprocess.CompletedProcess[str]) -> str:
+    """실패 프로세스의 원인 텍스트 — stderr 와 stdout 둘 다 (pnpm 은 stdout 에 에러를 쓴다, D-3)."""
+    return "\n".join(s for s in ((r.stderr or "").strip(), (r.stdout or "").strip()) if s)[-2000:]
+
+
 def _parse_tasks(tasks_text: str) -> dict[str, dict[str, str]]:
     """tasks.md 에서 태스크 dict 파싱: {T-001: {agent, depends_on, description, status}}.
 
@@ -331,10 +409,18 @@ def _declared_stub_files(project: Path, declared: list[str]) -> list[str]:
 
 
 def _mark_in_progress(tasks_text: str, tid: str) -> str:
-    """tid 행이 대기/pending 이면 status 컬럼을 in-progress 로 교체 (그 외 상태 무변경)."""
+    """tid 행의 status 를 in-progress 로 교체 (착수 마킹). blocked 등은 무변경.
+
+    대상: 대기/pending · needs_rebuild · 이미 완료된 상태(done/skipped).
+    완료 태스크의 재진입은 rework (ha-review REJECT 후 재빌드 등) 인데, 상태를
+    되돌리지 않으면 all_resolved 가 계속 참이라 배치의 첫 complete 가 곧바로 built
+    로 전이하고 나머지 태스크의 complete 가 상태 게이트에 막힌다 — 스텁/toolchain/
+    security 게이트를 통과할 기회 자체가 사라진다 (dogfood D-9).
+    """
+    startable = (*_PENDING_STATES, *_NEEDS_REBUILD_STATES, *_RESOLVED_STATES)
 
     def repl(m: re.Match[str]) -> str:
-        if m.group(2).strip().lower() in _PENDING_STATES:
+        if m.group(2).strip().lower() in startable:
             return f"{m.group(1)}{'in-progress':<10}{m.group(3)}"
         return m.group(0)
 
@@ -528,6 +614,12 @@ def cmd_prepare(args: argparse.Namespace) -> int:
                 + "\n  · 부분 산출물을 점검하고 '이어서' 또는 '처음부터' 결정하세요 (덮어쓰기 주의)."
             )
         else:
+            prior = tasks[tid]["status"].strip().lower()
+            if prior in _RESOLVED_STATES:
+                info(
+                    f"[WARN] {tid} 이미 완료됨 (status={prior}) — rework 재진입으로 보고 "
+                    "in-progress 로 되돌립니다. 기존 산출 파일은 덮어쓰지 않습니다."
+                )
             new_tasks_text = _mark_in_progress(new_tasks_text, tid)
             tasks[tid]["status"] = "in-progress"
     if new_tasks_text != tasks_text:
@@ -923,7 +1015,8 @@ def cmd_complete(args: argparse.Namespace) -> int:
                     "--project", str(plan_path.parent.parent),
                 ],
                 capture_output=True,
-                timeout=5,
+                # Windows python 콜드스타트만으로 5s 를 넘겨 일지가 유실됐다 (dogfood D-10).
+                timeout=20,
                 check=False,
             )
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as _worklog_err:
@@ -990,7 +1083,7 @@ def cmd_scaffold(args: argparse.Namespace) -> int:
             )
             continue
 
-        sandbox = Path(tempfile.mkdtemp(prefix="ha-scaffold-"))
+        sandbox = Path(tempfile.mkdtemp(prefix=_SCAFFOLD_SANDBOX_PREFIX))
         try:
             try:
                 r = subprocess.run(
@@ -1010,7 +1103,7 @@ def cmd_scaffold(args: argparse.Namespace) -> int:
             if r.returncode != 0:
                 info(
                     f"[FAIL] {p.id} scaffold 명령 실패 (rc={r.returncode}): "
-                    f"{p.toolchain.scaffold}\n{r.stderr}"
+                    f"{p.toolchain.scaffold}\n{_proc_detail(r)}"
                 )
                 overall_ok = False
                 results.append(
@@ -1019,6 +1112,9 @@ def cmd_scaffold(args: argparse.Namespace) -> int:
                 continue
 
             moved, skipped = _merge_no_overwrite(sandbox, target)
+            # 결정론 후처리 (D-1/D-2) — 병합 직후, install 전.
+            _fix_scaffold_package_name(target)
+            _approve_scaffold_builds(target)
 
             install_ok = True
             if p.toolchain.install:
@@ -1032,7 +1128,7 @@ def cmd_scaffold(args: argparse.Namespace) -> int:
                     if not install_ok:
                         info(
                             f"[FAIL] {p.id} install 실패 (rc={ir.returncode}): "
-                            f"{p.toolchain.install}\n{ir.stderr}"
+                            f"{p.toolchain.install}\n{_proc_detail(ir)}"
                         )
                         overall_ok = False
                 except subprocess.TimeoutExpired:
@@ -1060,7 +1156,12 @@ def cmd_scaffold(args: argparse.Namespace) -> int:
     output = {
         "task": args.task,
         "profiles": results,
-        "next": f"complete --task {args.task} --status done --skip-toolchain",
+        # 실패 시 done 유도 금지 (D-4) — SKILL 의 "실패면 blocked 처리" 와 정합.
+        "next": (
+            f"complete --task {args.task} --status done --skip-toolchain"
+            if overall_ok
+            else "위 [FAIL] 원인 해결 후 scaffold 재실행 (성공 프로파일은 멱등 skip)"
+        ),
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0 if overall_ok else 1
